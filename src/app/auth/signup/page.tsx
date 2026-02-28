@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, Suspense } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -10,7 +10,7 @@ const roles = [
   { id: 'delivery', icon: '🛵', title: 'Delivery Partner', desc: 'Deliver & earn per order' },
 ]
 
-export default function SignupPage() {
+function SignupForm() {
   const params = useSearchParams()
   const defaultRole = params.get('role') || 'customer'
 
@@ -46,7 +46,6 @@ export default function SignupPage() {
 
     if (!data.user) { setError('Signup failed — please try again'); setLoading(false); return }
 
-    // Upsert handles duplicate key gracefully
     await supabase.from('users').upsert(
       { id: data.user.id, name, email, role, phone: phone || null },
       { onConflict: 'id' }
@@ -64,7 +63,10 @@ export default function SignupPage() {
       )
     }
 
-    window.location.href = `/dashboard/${role}`
+    // Safe client-side redirect
+    if (typeof window !== 'undefined') {
+      window.location.href = `/dashboard/${role}`
+    }
   }
 
   return (
@@ -78,7 +80,9 @@ export default function SignupPage() {
         </Link>
         <div className="relative space-y-6">
           <p className="text-white/30 text-sm font-semibold tracking-widest uppercase">Join the movement</p>
-          <h2 className="font-display text-4xl font-bold text-white leading-tight">Every shop.<br />One app.<br /><span className="text-brand-500">Your city.</span></h2>
+          <h2 className="font-display text-4xl font-bold text-white leading-tight">
+            Every shop.<br />One app.<br /><span className="text-brand-500">Your city.</span>
+          </h2>
           <p className="text-white/40 text-sm leading-relaxed">Welokl connects your neighbourhood shops to your doorstep.</p>
         </div>
         <p className="relative text-white/20 text-xs">Hyperlocal. Honest. Yours.</p>
@@ -92,7 +96,7 @@ export default function SignupPage() {
           </div>
 
           <h1 className="font-display text-3xl font-bold mb-1">Create account</h1>
-          <p className="text-gray-400 text-sm mb-8">It is free, takes 30 seconds</p>
+          <p className="text-gray-400 text-sm mb-8">Free, takes 30 seconds</p>
 
           <div className="mb-6">
             <label className="block text-sm font-semibold text-gray-700 mb-3">I want to join as</label>
@@ -125,19 +129,34 @@ export default function SignupPage() {
               <label className="block text-sm font-semibold text-gray-700 mb-1.5">Password</label>
               <input type="password" value={password} onChange={e => setPassword(e.target.value)} className="input-field" placeholder="Min. 8 characters" required />
             </div>
-
             {error && <div className="bg-red-50 border border-red-200 text-red-600 text-sm rounded-xl px-4 py-3">{error}</div>}
-
             <button type="submit" disabled={loading} className="btn-primary w-full py-3 text-base">
               {loading ? 'Creating account...' : `Join as ${roles.find(r => r.id === role)?.title} →`}
             </button>
           </form>
 
           <p className="text-center text-sm text-gray-500 mt-6">
-            Already have an account? <Link href="/auth/login" className="text-brand-500 font-semibold hover:text-brand-600">Sign in</Link>
+            Already have an account?{' '}
+            <Link href="/auth/login" className="text-brand-500 font-semibold hover:text-brand-600">Sign in</Link>
           </p>
         </div>
       </div>
     </div>
+  )
+}
+
+// Wrap in Suspense — required by Next.js for useSearchParams
+export default function SignupPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-[#fafaf7] flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-8 h-8 bg-brand-500 rounded-lg mx-auto mb-3 animate-pulse" />
+          <p className="text-gray-400 text-sm">Loading...</p>
+        </div>
+      </div>
+    }>
+      <SignupForm />
+    </Suspense>
   )
 }
