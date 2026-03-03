@@ -8,55 +8,79 @@ function haversine(lat1: number, lng1: number, lat2: number, lng2: number): numb
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }
 
-export async function assignNearestPartner(orderId: string, shopLat: number, shopLng: number): Promise<string | null> {
+export async function assignNearestPartner(orderId: string, shopLat: number, shopLng: number): Promise<{ partnerId: string | null; reason: string }> {
   const supabase = createAdminClient()
 
-  // Get all online partners
+  // 1. Get ALL online partners with location
   const { data: partners } = await supabase
     .from('delivery_partners')
-    .select('*, users(id, name)')
+    .select('user_id, current_lat, current_lng, rating')
     .eq('is_online', true)
     .not('current_lat', 'is', null)
+    .not('current_lng', 'is', null)
 
-  if (!partners || partners.length === 0) return null
+  if (!partners || partners.length === 0) {
+    // No partners online — log it but DON'T block order
+    await supabase.from('order_status_log').insert({
+      order_id: orderId,
+      status: 'accepted',
+      message: 'No delivery partners online right now. Will assign when one comes online.',
+    })
+    return { partnerId: null, reason: 'no_partners_online' }
+  }
 
-  // Find partners currently busy
+  // 2. Find busy partners (already on active deliveries)
   const { data: activeOrders } = await supabase
     .from('orders')
     .select('delivery_partner_id')
-    .in('status', ['accepted', 'preparing', 'ready', 'picked_up'])
+    .in('status', ['picked_up']) // only blocked if already picked up
     .not('delivery_partner_id', 'is', null)
 
-  const busyIds = new Set((activeOrders || []).map((o: { delivery_partner_id: string }) => o.delivery_partner_id))
+  const busyIds = new Set((activeOrders || []).map((o: any) => o.delivery_partner_id))
 
-  // Filter available and sort by distance
+  // 3. Filter available partners
   const available = partners
-    .filter((p: { user_id: string; current_lat: number; current_lng: number }) => !busyIds.has(p.user_id))
-    .map((p: { user_id: string; current_lat: number; current_lng: number }) => ({
+    .filter((p: any) => !busyIds.has(p.user_id))
+    .map((p: any) => ({
       ...p,
-      distance: haversine(shopLat, shopLng, p.current_lat, p.current_lng),
+      distance: haversine(shopLat, shopLng, Number(p.current_lat), Number(p.current_lng)),
     }))
-    .sort((a: { distance: number }, b: { distance: number }) => a.distance - b.distance)
+    .sort((a: any, b: any) => a.distance - b.distance)
 
-  if (available.length === 0) return null
+  if (available.length === 0) {
+    await supabase.from('order_status_log').insert({
+      order_id: orderId,
+      status: 'accepted',
+      message: 'All delivery partners are currently busy. Will assign soon.',
+    })
+    return { partnerId: null, reason: 'all_busy' }
+  }
 
   const nearest = available[0]
 
-  // Assign
-  await supabase.from('orders').update({ delivery_partner_id: nearest.user_id }).eq('id', orderId)
+  // 4. Assign
+  await supabase.from('orders').update({
+    delivery_partner_id: nearest.user_id
+  }).eq('id', orderId)
+
   await supabase.from('order_status_log').insert({
     order_id: orderId,
-    status: 'assigned',
-    message: `Delivery partner assigned (${nearest.distance.toFixed(1)} km away)`,
+    status: 'accepted',
+    message: `Delivery partner assigned — ${nearest.distance.toFixed(1)} km away`,
   })
 
-  return nearest.user_id
+  return { partnerId: nearest.user_id, reason: 'assigned' }
 }
 
 export async function creditPartnerWallet(userId: string, orderId: string, amount: number): Promise<void> {
   const supabase = createAdminClient()
 
-  const { data: wallet } = await supabase.from('wallets').select('id, balance, total_earned').eq('user_id', userId).single()
+  const { data: wallet } = await supabase
+    .from('wallets')
+    .select('id, balance, total_earned')
+    .eq('user_id', userId)
+    .single()
+
   if (!wallet) return
 
   await supabase.from('wallets').update({
@@ -69,10 +93,9 @@ export async function creditPartnerWallet(userId: string, orderId: string, amoun
     order_id: orderId,
     amount,
     type: 'credit',
-    description: `Delivery earnings for order`,
+    description: 'Delivery earnings',
   })
 
-  await supabase.from('delivery_partners').update({
-    total_deliveries: supabase.rpc('increment', { row_id: userId }),
-  }).eq('user_id', userId)
+  // Increment delivery count safely
+  await supabase.rpc('increment_deliveries', { partner_user_id: userId })
 }

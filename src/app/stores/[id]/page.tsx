@@ -4,6 +4,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { useCart } from '@/store/cart'
+import FavouriteButton from '@/components/FavouriteButton'
 import type { Shop, Product } from '@/types'
 
 export default function StorePage() {
@@ -83,6 +84,7 @@ export default function StorePage() {
       <div className="sticky top-0 z-40 bg-white border-b border-gray-100 px-4 py-3 flex items-center gap-3">
         <button onClick={() => router.back()} className="p-2 hover:bg-gray-100 rounded-xl transition-colors">←</button>
         <span className="font-semibold text-sm flex-1 truncate">{shop.name}</span>
+        <FavouriteButton shopId={id} />
         {cart.count() > 0 && cart.shop_id === id && (
           <Link href="/cart" className="btn-primary text-sm py-1.5 px-4 flex items-center gap-1.5">
             🛒 {cart.count()}

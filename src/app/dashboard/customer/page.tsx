@@ -4,21 +4,19 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import type { Order, User } from '@/types'
 import { ORDER_STATUS_LABELS, ORDER_STATUS_ICONS } from '@/types'
+import NotificationSetup from '@/components/NotificationSetup'
 
 export default function CustomerDashboard() {
   const [user, setUser] = useState<User | null>(null)
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    loadData()
-  }, [])
+  useEffect(() => { loadData() }, [])
 
   async function loadData() {
     const supabase = createClient()
     const { data: { user: authUser } } = await supabase.auth.getUser()
     if (!authUser) { window.location.href = '/auth/login'; return }
-
     const [{ data: profile }, { data: orderData }] = await Promise.all([
       supabase.from('users').select('*').eq('id', authUser.id).single(),
       supabase.from('orders')
@@ -27,7 +25,6 @@ export default function CustomerDashboard() {
         .order('created_at', { ascending: false })
         .limit(20),
     ])
-
     setUser(profile)
     setOrders(orderData || [])
     setLoading(false)
@@ -38,7 +35,6 @@ export default function CustomerDashboard() {
 
   return (
     <div className="min-h-screen bg-[#fafaf7] pb-24">
-      {/* Header */}
       <div className="bg-white border-b border-gray-100 px-4 py-4">
         <div className="max-w-3xl mx-auto flex items-center justify-between">
           <div>
@@ -48,7 +44,7 @@ export default function CustomerDashboard() {
           <div className="flex items-center gap-2">
             <Link href="/stores" className="btn-primary text-sm py-2">Order now →</Link>
             <button onClick={async () => { const s = createClient(); await s.auth.signOut(); window.location.href = '/' }}
-              className="text-xs text-gray-400 hover:text-gray-600 px-2 py-1">Logout</button>
+              className="text-xs text-gray-400 px-2">Logout</button>
           </div>
         </div>
       </div>
@@ -60,7 +56,8 @@ export default function CustomerDashboard() {
             { icon: '🍔', label: 'Food', href: '/stores?category=food' },
             { icon: '🛒', label: 'Grocery', href: '/stores?category=grocery' },
             { icon: '💊', label: 'Pharmacy', href: '/stores?category=pharmacy' },
-            { icon: '📱', label: 'Electronics', href: '/stores?category=electronics' },
+            { icon: '🔍', label: 'Search', href: '/search' },
+            { icon: '❤️', label: 'Saved', href: '/favourites' },
           ].map(a => (
             <Link key={a.label} href={a.href}>
               <div className="card p-3 text-center hover:shadow-md transition-all active:scale-95">
@@ -75,11 +72,10 @@ export default function CustomerDashboard() {
         {activeOrders.length > 0 && (
           <div>
             <h2 className="font-bold mb-3 flex items-center gap-2">
-              <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-              Active Orders
+              <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" /> Active Orders
             </h2>
             <div className="space-y-3">
-              {activeOrders.map(order => <OrderCard key={order.id} order={order} active />)}
+              {activeOrders.map(o => <OrderCard key={o.id} order={o} active />)}
             </div>
           </div>
         )}
@@ -98,11 +94,13 @@ export default function CustomerDashboard() {
             </div>
           ) : (
             <div className="space-y-3">
-              {pastOrders.map(order => <OrderCard key={order.id} order={order} />)}
+              {pastOrders.map(o => <OrderCard key={o.id} order={o} />)}
             </div>
           )}
         </div>
       </div>
+
+      {user?.id && <NotificationSetup userId={user.id} />}
 
       {/* Bottom nav */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-50">
@@ -110,7 +108,7 @@ export default function CustomerDashboard() {
           {[
             { icon: '🏠', label: 'Home', href: '/' },
             { icon: '🛍️', label: 'Shops', href: '/stores' },
-            { icon: '🛒', label: 'Cart', href: '/cart' },
+            { icon: '❤️', label: 'Saved', href: '/favourites' },
             { icon: '📦', label: 'Orders', href: '/dashboard/customer', active: true },
           ].map(item => (
             <Link key={item.label} href={item.href}

@@ -1,11 +1,11 @@
 'use client'
 import { useEffect, useState, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
+
 import { createClient } from '@/lib/supabase/client'
 import type { Order, User, DeliveryPartner, Wallet } from '@/types'
 
 export default function DeliveryDashboard() {
-  const router = useRouter()
+  
   const [user, setUser] = useState<User | null>(null)
   const [partner, setPartner] = useState<DeliveryPartner | null>(null)
   const [wallet, setWallet] = useState<Wallet | null>(null)
@@ -16,7 +16,7 @@ export default function DeliveryDashboard() {
   const loadData = useCallback(async () => {
     const supabase = createClient()
     const { data: { user: authUser } } = await supabase.auth.getUser()
-    if (!authUser) { router.push('/auth/login'); return }
+    if (!authUser) { window.location.href = '/auth/login'; return }
 
     const [{ data: profile }, { data: partnerData }, { data: walletData }] = await Promise.all([
       supabase.from('users').select('*').eq('id', authUser.id).single(),
@@ -40,7 +40,7 @@ export default function DeliveryDashboard() {
 
     setActiveOrder(orderData)
     setLoading(false)
-  }, [router])
+  }, [])
 
   useEffect(() => {
     loadData()
@@ -101,7 +101,7 @@ export default function DeliveryDashboard() {
   async function logout() {
     const supabase = createClient()
     await supabase.auth.signOut()
-    router.push('/')
+    window.location.href = '/'
   }
 
   return (
