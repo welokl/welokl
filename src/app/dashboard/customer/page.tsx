@@ -11,12 +11,20 @@ export default function CustomerDashboard() {
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => { loadData() }, [])
-
-  async function loadData() {
+  useEffect(() => {
     const supabase = createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
-    if (!authUser) { window.location.href = '/auth/login'; return }
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT') { window.location.href = '/auth/login'; return }
+      if (session?.user) loadData(session.user.id)
+    })
+    return () => subscription.unsubscribe()
+  }, [])
+
+  async function loadData(userId?: string) {
+    const supabase = createClient()
+    const uid = userId || (await supabase.auth.getUser()).data.user?.id
+    if (!uid) return
+    const authUser = { id: uid }
     const [{ data: profile }, { data: orderData }] = await Promise.all([
       supabase.from('users').select('*').eq('id', authUser.id).single(),
       supabase.from('orders')

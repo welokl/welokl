@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/client'
 import type { Order, Shop, Product, User } from '@/types'
 import { ORDER_STATUS_LABELS, ORDER_STATUS_ICONS } from '@/types'
 
-type Tab = 'orders' | 'products' | 'analytics'
+type Tab = 'orders' | 'products' | 'analytics' | 'settings'
 
 export default function BusinessDashboard() {
   const [user, setUser] = useState<User | null>(null)
@@ -16,13 +16,14 @@ export default function BusinessDashboard() {
   const [showAddProduct, setShowAddProduct] = useState(false)
   const [actionError, setActionError] = useState('')
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (userId?: string) => {
     const supabase = createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
-    if (!authUser) { window.location.href = '/auth/login'; return }
-    const { data: profile } = await supabase.from('users').select('*').eq('id', authUser.id).single()
+    const uid = userId || (await supabase.auth.getUser()).data.user?.id
+    if (!uid) return
+    const { data: profile } = await supabase.from('users').select('*').eq('id', uid).single()
+    if (!profile) return
     setUser(profile)
-    const { data: shopData } = await supabase.from('shops').select('*').eq('owner_id', authUser.id).single()
+    const { data: shopData } = await supabase.from('shops').select('*').eq('owner_id', uid).single()
     if (!shopData) { setLoading(false); return }
     setShop(shopData)
     const [{ data: orderData }, { data: productData }] = await Promise.all([
@@ -35,12 +36,15 @@ export default function BusinessDashboard() {
   }, [])
 
   useEffect(() => {
-    loadData()
     const supabase = createClient()
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT') { window.location.href = '/auth/login'; return }
+      if (session?.user) loadData(session.user.id)
+    })
     const channel = supabase.channel('biz-orders')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, loadData)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => loadData())
       .subscribe()
-    return () => { supabase.removeChannel(channel) }
+    return () => { subscription.unsubscribe(); supabase.removeChannel(channel) }
   }, [loadData])
 
   async function updateOrderStatus(orderId: string, status: string, currentOrder?: Order) {
@@ -79,17 +83,11 @@ export default function BusinessDashboard() {
       }).catch(() => {})
     }
 
-    // Assign delivery partner when accepted
-    if (status === 'accepted' && shop && currentOrder?.type === 'delivery') {
-      const res = await fetch('/api/orders/assign', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId, shopLat: shop.latitude, shopLng: shop.longitude }),
-      })
-      const result = await res.json()
-      if (!result.partnerId) {
-        setActionError('⚠️ Order accepted, but no delivery partner is online nearby. Order will be assigned when one comes online.')
-      }
+    // NOTE: Delivery partners accept orders themselves — no auto-assign
+    // When shop marks order "ready", it becomes visible to online delivery partners
+    if (status === 'ready' && currentOrder?.type === 'delivery') {
+      setActionError('') // clear any previous error
+      // Order is now visible to all online delivery partners to accept
     }
 
     loadData()
@@ -185,7 +183,7 @@ export default function BusinessDashboard() {
 
         {/* Tabs */}
         <div className="max-w-4xl mx-auto px-4 flex border-t" style={{ borderColor: 'var(--border)' }}>
-          {(['orders','products','analytics'] as Tab[]).map(t => (
+          {(['orders','products','analytics','settings'] as Tab[]).map(t => (
             <button key={t} onClick={() => { setTab(t); setActionError('') }}
               className="px-5 py-3 text-sm font-black capitalize border-b-2 transition-all relative"
               style={tab === t
@@ -260,15 +258,12 @@ export default function BusinessDashboard() {
                 <h2 className="font-black mb-3" style={{ color: '#e65100', fontFamily: 'Nunito' }}>Active ({activeOrders.length})</h2>
                 <div className="space-y-3">
                   {activeOrders.map(order => {
+                    // Shop flow ends at "ready". Rider accepts order from their app.
+                    // For pickup (no delivery): shop can mark delivered directly.
                     const nextMap: Record<string, { label: string; next: string; disabled?: boolean; disabledMsg?: string }> = {
                       accepted: { label: '👨‍🍳 Start Preparing', next: 'preparing' },
-                      preparing: { label: '📦 Mark Ready', next: 'ready' },
-                      ready: {
-                        label: order.delivery_partner_id ? '✓ Handed to Rider' : '⏳ Waiting for Rider...',
-                        next: 'picked_up',
-                        disabled: !order.delivery_partner_id,
-                        disabledMsg: 'No rider assigned yet. Wait for a delivery partner to be assigned.'
-                      },
+                      preparing: { label: '✅ Mark Ready for Pickup', next: 'ready' },
+                      ...(order.type !== 'delivery' ? { ready: { label: '🤝 Handed to Customer', next: 'delivered' } } : {}),
                     }
                     const a = nextMap[order.status]
                     return (
@@ -282,8 +277,13 @@ export default function BusinessDashboard() {
                         <div className="text-xs mb-3" style={{ color: 'var(--ink-soft)' }}>
                           {(order as any).items?.map((i: any) => `${i.product_name} ×${i.quantity}`).join(', ')}
                           {order.type === 'delivery' && (
-                            <div className="mt-1 font-semibold" style={{ color: order.delivery_partner_id ? '#2e7d32' : '#e65100' }}>
-                              {order.delivery_partner_id ? '✓ Rider assigned' : '⏳ Assigning rider...'}
+                            <div className="mt-1.5">
+                              {order.delivery_partner_id
+                                ? <div className="text-xs font-bold px-2 py-1.5 rounded-xl" style={{background:'#f0fdf4',color:'#16a34a'}}><PartnerName partnerId={order.delivery_partner_id} /></div>
+                                : order.status === 'ready'
+                                  ? <div className="text-xs font-bold px-2 py-1.5 rounded-xl animate-pulse" style={{background:'#fff7ed',color:'#ea580c'}}>⏳ Waiting for a rider to accept this order...</div>
+                                  : <div className="text-xs text-gray-400">🛵 Riders will see this when you mark Ready</div>
+                              }
                             </div>
                           )}
                         </div>
@@ -379,6 +379,11 @@ export default function BusinessDashboard() {
         )}
 
         {/* ANALYTICS */}
+
+        {tab === 'settings' && shop && (
+          <ShopSettings shop={shop} onUpdate={loadData} />
+        )}
+
         {tab === 'analytics' && (
           <div className="space-y-4">
             <div className="grid sm:grid-cols-3 gap-4">
@@ -489,6 +494,152 @@ function AddProductModal({ shopId, onClose, onSuccess }: { shopId: string; onClo
           </div>
         </form>
       </div>
+    </div>
+  )
+}
+
+// Shows delivery partner name when they accept an order
+function PartnerName({ partnerId }: { partnerId: string }) {
+  const [name, setName] = useState<string | null>(null)
+  useEffect(() => {
+    createClient().from('users').select('name, phone').eq('id', partnerId).single()
+      .then(({ data }) => setName(data ? `🛵 ${data.name} accepted · 📞 ${data.phone || ''}` : '✓ Rider assigned'))
+  }, [partnerId])
+  return <span>{name || '✓ Rider accepted...'}</span>
+}
+
+// ── Shop Settings Component ──
+function ShopSettings({ shop, onUpdate }: { shop: any; onUpdate: () => void }) {
+  const [imageFile, setImageFile] = useState<File | null>(null)
+  const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [msg, setMsg] = useState('')
+  const [form, setForm] = useState({
+    name: shop.name || '',
+    description: shop.description || '',
+    phone: shop.phone || '',
+    opens_at: shop.opens_at || '09:00',
+    closes_at: shop.closes_at || '22:00',
+    min_order_amount: String(shop.min_order_amount || 0),
+    avg_delivery_time: String(shop.avg_delivery_time || 30),
+  })
+
+  function up(f: string, v: string) { setForm(p => ({ ...p, [f]: v })) }
+
+  function handleImage(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (file.size > 3 * 1024 * 1024) { setMsg('Image must be under 3MB'); return }
+    setImageFile(file)
+    const reader = new FileReader()
+    reader.onload = () => setImagePreview(reader.result as string)
+    reader.readAsDataURL(file)
+  }
+
+  async function saveSettings() {
+    setSaving(true); setMsg('')
+    const supabase = createClient()
+    let image_url = shop.image_url
+
+    if (imageFile) {
+      setUploading(true)
+      const ext = imageFile.name.split('.').pop() || 'jpg'
+      const path = `shops/${shop.id}/cover.${ext}`
+      const { error: uploadErr } = await supabase.storage.from('product-images').upload(path, imageFile, { upsert: true })
+      if (!uploadErr) {
+        const { data } = supabase.storage.from('product-images').getPublicUrl(path)
+        image_url = data.publicUrl
+      }
+      setUploading(false)
+    }
+
+    const { error } = await supabase.from('shops').update({
+      name: form.name,
+      description: form.description || null,
+      phone: form.phone || null,
+      opens_at: form.opens_at,
+      closes_at: form.closes_at,
+      min_order_amount: parseInt(form.min_order_amount) || 0,
+      avg_delivery_time: parseInt(form.avg_delivery_time) || 30,
+      image_url,
+    }).eq('id', shop.id)
+
+    setSaving(false)
+    if (error) { setMsg('Error: ' + error.message); return }
+    setMsg('✓ Shop updated!')
+    onUpdate()
+  }
+
+  return (
+    <div className="space-y-5 max-w-lg">
+      {/* Shop photo */}
+      <div className="card p-5">
+        <h3 className="font-black text-sm mb-3">Shop Cover Photo</h3>
+        <label className="block cursor-pointer">
+          {(imagePreview || shop.image_url) ? (
+            <div className="relative rounded-2xl overflow-hidden mb-2">
+              <img src={imagePreview || shop.image_url} alt="Shop" className="w-full h-40 object-cover" />
+              <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 hover:opacity-100 transition-opacity rounded-2xl">
+                <span className="text-white font-bold text-sm">📷 Change photo</span>
+              </div>
+            </div>
+          ) : (
+            <div className="w-full h-32 rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-2 mb-2 hover:border-orange-400 transition-colors" style={{ borderColor: '#e5e7eb', background: '#fafafa' }}>
+              <span className="text-3xl">🏪</span>
+              <span className="text-sm text-gray-400 font-medium">Add a cover photo</span>
+            </div>
+          )}
+          <input type="file" accept="image/*" onChange={handleImage} className="hidden" />
+        </label>
+        <p className="text-xs text-gray-400">Recommended: 800×400px · Max 3MB</p>
+      </div>
+
+      {/* Basic settings */}
+      <div className="card p-5 space-y-4">
+        <h3 className="font-black text-sm">Shop Info</h3>
+        {[
+          { f: 'name', l: 'Shop Name', ph: '' },
+          { f: 'description', l: 'Description', ph: 'What do you sell?' },
+          { f: 'phone', l: 'Phone Number', ph: '+91 98765 43210' },
+        ].map(({ f, l, ph }) => (
+          <div key={f}>
+            <label className="block text-sm font-bold mb-1.5">{l}</label>
+            <input value={(form as any)[f]} onChange={e => up(f, e.target.value)} className="input-field" placeholder={ph} />
+          </div>
+        ))}
+      </div>
+
+      {/* Hours & delivery */}
+      <div className="card p-5 space-y-4">
+        <h3 className="font-black text-sm">Hours & Delivery</h3>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-sm font-bold mb-1.5">Opens at</label>
+            <input type="time" value={form.opens_at} onChange={e => up('opens_at', e.target.value)} className="input-field" />
+          </div>
+          <div>
+            <label className="block text-sm font-bold mb-1.5">Closes at</label>
+            <input type="time" value={form.closes_at} onChange={e => up('closes_at', e.target.value)} className="input-field" />
+          </div>
+          <div>
+            <label className="block text-sm font-bold mb-1.5">Min Order (₹)</label>
+            <input type="number" value={form.min_order_amount} onChange={e => up('min_order_amount', e.target.value)} className="input-field" min="0" />
+          </div>
+          <div>
+            <label className="block text-sm font-bold mb-1.5">Avg Delivery (min)</label>
+            <input type="number" value={form.avg_delivery_time} onChange={e => up('avg_delivery_time', e.target.value)} className="input-field" min="5" />
+          </div>
+        </div>
+      </div>
+
+      {msg && <div className={`p-3 rounded-2xl text-sm font-bold ${msg.startsWith('✓') ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`}>{msg}</div>}
+
+      <button onClick={saveSettings} disabled={saving || uploading}
+        className="w-full py-3.5 rounded-2xl font-black text-white text-sm active:scale-95 transition-all"
+        style={{ background: '#ff5a1f', boxShadow: '0 4px 14px rgba(255,90,31,0.3)' }}>
+        {uploading ? 'Uploading photo...' : saving ? 'Saving...' : 'Save Changes'}
+      </button>
     </div>
   )
 }

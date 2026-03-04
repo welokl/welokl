@@ -186,14 +186,21 @@ export default function OrderPage() {
         )}
 
         {/* Waiting for partner */}
-        {!partner && ['accepted', 'preparing', 'ready'].includes(order.status) && order.type === 'delivery' && (
+        {!partner && ['accepted', 'preparing'].includes(order.status) && order.type === 'delivery' && (
           <div className="card p-4 flex items-center gap-3">
-            <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center animate-pulse">
-              🛵
-            </div>
+            <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center animate-pulse">🛵</div>
             <div>
-              <p className="font-semibold text-sm">Finding delivery partner...</p>
-              <p className="text-xs text-gray-400">We are assigning the nearest rider</p>
+              <p className="font-semibold text-sm">Shop is preparing your order</p>
+              <p className="text-xs text-gray-400">A rider will accept once order is ready for pickup</p>
+            </div>
+          </div>
+        )}
+        {!partner && order.status === 'ready' && order.type === 'delivery' && (
+          <div className="card p-4 flex items-center gap-3" style={{border:'1.5px solid #fed7aa',background:'#fff7ed'}}>
+            <div className="w-10 h-10 rounded-full flex items-center justify-center text-xl animate-bounce" style={{background:'#fff3ef'}}>🛵</div>
+            <div>
+              <p className="font-bold text-sm" style={{color:'#c2410c'}}>Looking for a rider...</p>
+              <p className="text-xs" style={{color:'#ea580c'}}>Your order is packed and ready. A rider is on their way to accept.</p>
             </div>
           </div>
         )}

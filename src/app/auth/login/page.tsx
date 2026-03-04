@@ -23,21 +23,26 @@ export default function LoginPage() {
       return
     }
 
-    // Get role from metadata first (fastest)
+    // Fetch role from DB with retries — ensure session is fully persisted
     let role = data.user.user_metadata?.role
 
-    // If no metadata role, fetch from DB
     if (!role) {
-      const { data: profile } = await supabase
-        .from('users')
-        .select('role')
-        .eq('id', data.user.id)
-        .single()
-      role = profile?.role || 'customer'
+      for (let i = 0; i < 5; i++) {
+        await new Promise(r => setTimeout(r, 300))
+        const { data: profile } = await supabase
+          .from('users')
+          .select('role')
+          .eq('id', data.user.id)
+          .single()
+        if (profile?.role) { role = profile.role; break }
+      }
     }
 
-    // Wait briefly for session cookie to be written, then hard redirect
-    await new Promise(r => setTimeout(r, 300))
+    role = role || 'customer'
+
+    // Force a fresh session check before navigating
+    await supabase.auth.getSession()
+    await new Promise(r => setTimeout(r, 400))
     window.location.replace(`/dashboard/${role}`)
   }
 
