@@ -77,6 +77,8 @@ export default function AdminDashboard() {
   }, [])
 
   useEffect(() => {
+    // Prevent back button going to wrong dashboard
+    window.history.replaceState(null, '', '/dashboard/admin')
     const supabase = createClient()
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_OUT') { window.location.href = '/auth/login'; return }

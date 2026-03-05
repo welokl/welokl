@@ -36,6 +36,8 @@ export default function BusinessDashboard() {
   }, [])
 
   useEffect(() => {
+    // Replace history entry so back button goes to home, not /dashboard/customer
+    window.history.replaceState(null, '', '/dashboard/business')
     const supabase = createClient()
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_OUT') { window.location.href = '/auth/login'; return }
@@ -115,11 +117,11 @@ export default function BusinessDashboard() {
 
   if (!loading && !shop) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-6" style={{ background: 'var(--paper)' }}>
+      <div className="min-h-screen flex items-center justify-center p-6" style={{ background: 'var(--bg)' }}>
         <div className="card p-8 max-w-md w-full text-center">
           <div className="text-6xl mb-4">🏪</div>
-          <h2 className="font-black text-xl mb-2" style={{ fontFamily: 'Nunito' }}>Set up your shop</h2>
-          <p className="mb-6 text-sm" style={{ color: 'var(--ink-soft)' }}>Create your shop to start receiving orders.</p>
+          <h2 className="font-black text-xl mb-2">Set up your shop</h2>
+          <p className="mb-6 text-sm" style={{ color: 'var(--text-2)' }}>Create your shop profile to start receiving orders from customers nearby.</p>
           <button onClick={() => window.location.href = '/shop/setup'} className="btn-primary w-full py-3" style={{ borderRadius: '100px' }}>
             Set up my shop →
           </button>
@@ -129,10 +131,10 @@ export default function BusinessDashboard() {
   }
 
   return (
-    <div className="min-h-screen" style={{ background: 'var(--paper)' }}>
+    <div className="min-h-screen" style={{ background: 'var(--bg)' }}>
 
       {/* Header */}
-      <div className="sticky top-0 z-40 bg-white border-b" style={{ borderColor: 'var(--border)' }}>
+      <div className="sticky top-0 z-40 glass" style={{ borderBottom: '1px solid var(--border)' }}>
         <div className="max-w-4xl mx-auto px-4 py-3">
           <div className="flex items-center justify-between mb-3">
             <div>
@@ -140,10 +142,10 @@ export default function BusinessDashboard() {
                 <div className="w-8 h-8 rounded-xl flex items-center justify-center text-white font-black text-sm"
                   style={{ background: 'linear-gradient(135deg, #ff5722, #e64a19)' }}>W</div>
                 <div>
-                  <h1 className="font-black text-base leading-none" style={{ color: 'var(--ink)', fontFamily: 'Nunito' }}>
-                    {shop?.name || 'My Shop'}
+                  <h1 className="font-black text-base leading-none" style={{ color: 'var(--text)' }}>
+                    {user?.name || shop?.name || '...'}
                   </h1>
-                  <p className="text-xs" style={{ color: 'var(--ink-soft)' }}>{shop?.area}, {shop?.city}</p>
+                  <p className="text-xs" style={{ color: 'var(--text-3)' }}>{shop?.name}{shop?.area ? ` · ${shop.area}` : ''}</p>
                 </div>
               </div>
             </div>
@@ -156,8 +158,8 @@ export default function BusinessDashboard() {
                 }}
                 className="text-xs font-black px-3 py-1.5 rounded-full border-2 transition-all"
                 style={shop?.is_open
-                  ? { background: '#e8f5e9', color: '#2e7d32', borderColor: '#a5d6a7' }
-                  : { background: '#ffebee', color: '#c62828', borderColor: '#ef9a9a' }}>
+                  ? { background: 'var(--green-dim)', color: 'var(--green)', border: '1px solid rgba(0,230,118,0.3)' }
+                  : { background: 'var(--red-dim)', color: 'var(--red)', border: '1px solid rgba(255,23,68,0.3)' }}>
                 {shop?.is_open ? '● Open' : '● Closed'}
               </button>
               <button onClick={async () => { const s = createClient(); await s.auth.signOut(); window.location.href = '/' }}
@@ -168,10 +170,10 @@ export default function BusinessDashboard() {
           {/* Stats row */}
           <div className="grid grid-cols-4 gap-2">
             {[
-              { label: 'New', value: newOrders.length, color: '#1565c0', bg: '#e3f2fd' },
-              { label: 'Active', value: activeOrders.length, color: '#e65100', bg: '#fff8e1' },
-              { label: 'Done', value: deliveredOrders.length, color: '#2e7d32', bg: '#e8f5e9' },
-              { label: 'Earned', value: `₹${netEarnings}`, color: '#ff5722', bg: '#fff3ef' },
+              { label: 'New', value: newOrders.length, color: 'var(--blue)', bg: 'var(--blue-dim)' },
+              { label: 'Active', value: activeOrders.length, color: 'var(--amber)', bg: 'var(--amber-dim)' },
+              { label: 'Done', value: deliveredOrders.length, color: 'var(--green)', bg: 'var(--green-dim)' },
+              { label: 'Earned', value: `₹${netEarnings}`, color: 'var(--brand)', bg: 'var(--brand-muted)' },
             ].map(s => (
               <div key={s.label} className="rounded-2xl p-3 text-center" style={{ background: s.bg }}>
                 <div className="font-black text-lg leading-none" style={{ color: s.color, fontFamily: 'Nunito' }}>{s.value}</div>
@@ -188,7 +190,7 @@ export default function BusinessDashboard() {
               className="px-5 py-3 text-sm font-black capitalize border-b-2 transition-all relative"
               style={tab === t
                 ? { borderColor: 'var(--brand)', color: 'var(--brand)' }
-                : { borderColor: 'transparent', color: 'var(--ink-soft)' }}>
+                : { borderColor: 'transparent', color: 'var(--text-3)' }}>
               {t}
               {t === 'orders' && newOrders.length > 0 && (
                 <span className="ml-1.5 text-white text-xs rounded-full px-1.5 py-0.5 font-black"
@@ -339,38 +341,54 @@ export default function BusinessDashboard() {
         {tab === 'products' && (
           <div>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="font-black" style={{ fontFamily: 'Nunito' }}>Products ({products.length})</h2>
-              <button onClick={() => setShowAddProduct(true)} className="btn-primary text-sm py-2 px-5" style={{ borderRadius: '100px' }}>
+              <div>
+                <h2 className="font-black" style={{ color: 'var(--text)' }}>Products ({products.length})</h2>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>Toggle to show/hide from customers</p>
+              </div>
+              <button onClick={() => setShowAddProduct(true)} className="btn-primary text-sm py-2 px-5 rounded-2xl">
                 + Add Product
               </button>
             </div>
             {products.length === 0 ? (
               <div className="card p-10 text-center">
                 <div className="text-5xl mb-3">📦</div>
-                <p className="font-black mb-1" style={{ fontFamily: 'Nunito' }}>No products yet</p>
-                <p className="text-sm mb-4" style={{ color: 'var(--ink-soft)' }}>Add products so customers can order from you</p>
-                <button onClick={() => setShowAddProduct(true)} className="btn-primary px-6" style={{ borderRadius: '100px' }}>Add first product</button>
+                <p className="font-black mb-1">No products yet</p>
+                <p className="text-sm mb-4" style={{ color: 'var(--text-3)' }}>Add products so customers can order from you</p>
+                <button onClick={() => setShowAddProduct(true)} className="btn-primary px-6 rounded-2xl">Add first product</button>
               </div>
             ) : (
               <div className="space-y-2">
                 {products.map(p => (
-                  <div key={p.id} className="card px-4 py-3 flex items-center gap-3">
-                    <div className="flex-1 min-w-0">
-                      <p className="font-bold text-sm truncate">{p.name}</p>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className="font-black text-sm" style={{ color: 'var(--brand)' }}>₹{p.price}</span>
-                        {p.original_price && p.original_price > p.price && (
-                          <span className="text-xs line-through" style={{ color: 'var(--ink-soft)' }}>₹{p.original_price}</span>
-                        )}
-                        {p.category && <span className="text-xs" style={{ color: 'var(--ink-soft)' }}>· {p.category}</span>}
-                      </div>
+                  <div key={p.id} className="card px-3 py-3 flex items-center gap-3 transition-all"
+                    style={{ opacity: p.is_available ? 1 : 0.5 }}>
+                    {/* Product image */}
+                    <div className="w-14 h-14 rounded-xl overflow-hidden flex-shrink-0 flex items-center justify-center"
+                      style={{ background: 'var(--bg-3)' }}>
+                      {p.image_url
+                        ? <img src={p.image_url} alt={p.name} className="w-full h-full object-cover" />
+                        : <span className="text-2xl">🍽️</span>
+                      }
                     </div>
-                    <button onClick={() => toggleProduct(p.id, !p.is_available)}
-                      className="relative w-11 h-6 rounded-full transition-all flex-shrink-0"
-                      style={{ background: p.is_available ? 'var(--green)' : '#ddd' }}>
-                      <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${p.is_available ? 'translate-x-5' : ''}`} />
-                    </button>
-                    <button onClick={() => deleteProduct(p.id)} className="text-gray-300 hover:text-red-400 text-sm px-1 transition-colors">✕</button>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-black text-sm truncate" style={{ color: 'var(--text)' }}>{p.name}</p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="font-black text-sm gradient-text">₹{p.price}</span>
+                        {p.original_price && p.original_price > p.price && (
+                          <span className="text-xs line-through" style={{ color: 'var(--text-3)' }}>₹{p.original_price}</span>
+                        )}
+                      </div>
+                      {p.category && <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>{p.category}</p>}
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <button onClick={() => toggleProduct(p.id, !p.is_available)}
+                        className="relative w-11 h-6 rounded-full transition-all"
+                        style={{ background: p.is_available ? 'var(--green)' : 'var(--bg-4)' }}>
+                        <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${p.is_available ? 'translate-x-5' : ''}`} />
+                      </button>
+                      <button onClick={() => deleteProduct(p.id)}
+                        className="w-7 h-7 flex items-center justify-center rounded-lg text-xs transition-all"
+                        style={{ background: 'var(--red-dim)', color: 'var(--red)' }}>✕</button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -388,25 +406,25 @@ export default function BusinessDashboard() {
           <div className="space-y-4">
             <div className="grid sm:grid-cols-3 gap-4">
               {[
-                { label: 'Total Orders', value: deliveredOrders.length, icon: '📦', color: '#1565c0', bg: '#e3f2fd' },
-                { label: 'Gross Revenue', value: `₹${totalRevenue}`, icon: '💰', color: '#2e7d32', bg: '#e8f5e9' },
-                { label: 'Your Earnings', value: `₹${netEarnings}`, icon: '🏦', color: '#ff5722', bg: '#fff3ef' },
+                { label: 'Total Orders', value: deliveredOrders.length, icon: '📦', color: 'var(--blue)', bg: 'var(--blue-dim)' },
+                { label: 'Gross Revenue', value: `₹${totalRevenue}`, icon: '💰', color: 'var(--green)', bg: 'var(--green-dim)' },
+                { label: 'Your Earnings', value: `₹${netEarnings}`, icon: '🏦', color: 'var(--brand)', bg: 'var(--brand-muted)' },
               ].map(s => (
-                <div key={s.label} className="card p-5" style={{ borderLeft: `4px solid ${s.color}` }}>
+                <div key={s.label} className="card p-5">
                   <div className="text-2xl mb-2">{s.icon}</div>
-                  <div className="font-black text-2xl" style={{ color: s.color, fontFamily: 'Nunito' }}>{s.value}</div>
-                  <div className="text-sm mt-0.5" style={{ color: 'var(--ink-soft)' }}>{s.label}</div>
+                  <div className="font-black text-2xl" style={{ color: s.color }}>{s.value}</div>
+                  <div className="text-sm mt-0.5" style={{ color: 'var(--text-3)' }}>{s.label}</div>
                 </div>
               ))}
             </div>
             <div className="card p-5">
-              <h3 className="font-black mb-4" style={{ fontFamily: 'Nunito' }}>Revenue Breakdown</h3>
+              <h3 className="font-black mb-4" style={{ color: 'var(--text)' }}>Revenue Breakdown</h3>
               <div className="space-y-3 text-sm">
-                <div className="flex justify-between"><span style={{ color: 'var(--ink-soft)' }}>Gross Revenue</span><span className="font-bold">₹{totalRevenue}</span></div>
-                <div className="flex justify-between"><span style={{ color: '#c62828' }}>Platform commission ({shop?.commission_percent || 15}%)</span><span className="font-bold" style={{ color: '#c62828' }}>-₹{commission}</span></div>
-                <div className="flex justify-between pt-2 border-t" style={{ borderColor: 'var(--border)' }}>
-                  <span className="font-black" style={{ color: '#2e7d32' }}>Your earnings</span>
-                  <span className="font-black" style={{ color: '#2e7d32' }}>₹{netEarnings}</span>
+                <div className="flex justify-between"><span style={{ color: 'var(--text-3)' }}>Gross Revenue</span><span className="font-bold" style={{ color: 'var(--text)' }}>₹{totalRevenue}</span></div>
+                <div className="flex justify-between"><span style={{ color: 'var(--red)' }}>Commission ({shop?.commission_percent || 15}%)</span><span className="font-bold" style={{ color: 'var(--red)' }}>-₹{commission}</span></div>
+                <div className="flex justify-between pt-3" style={{ borderTop: '1px solid var(--border)' }}>
+                  <span className="font-black" style={{ color: 'var(--green)' }}>Your earnings</span>
+                  <span className="font-black text-lg" style={{ color: 'var(--green)' }}>₹{netEarnings}</span>
                 </div>
               </div>
             </div>
@@ -423,20 +441,52 @@ export default function BusinessDashboard() {
 
 function AddProductModal({ shopId, onClose, onSuccess }: { shopId: string; onClose: () => void; onSuccess: () => void }) {
   const [form, setForm] = useState({ name: '', description: '', price: '', original_price: '', category: '', is_veg: '', is_available: true })
+  const [imageFile, setImageFile] = useState<File | null>(null)
+  const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [uploading, setUploading] = useState(false)
   const [error, setError] = useState('')
   function update(field: string, value: string | boolean) { setForm(p => ({ ...p, [field]: value })) }
 
+  function handleImage(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (file.size > 3 * 1024 * 1024) { setError('Image must be under 3MB'); return }
+    setImageFile(file)
+    const reader = new FileReader()
+    reader.onload = () => setImagePreview(reader.result as string)
+    reader.readAsDataURL(file)
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!form.name.trim()) { setError('Name required'); return }
+    if (!form.name.trim()) { setError('Product name is required'); return }
     if (!form.price || isNaN(Number(form.price))) { setError('Valid price required'); return }
     setLoading(true); setError('')
     const supabase = createClient()
+
+    // Upload image first
+    let image_url = null
+    if (imageFile) {
+      setUploading(true)
+      const ext = imageFile.name.split('.').pop() || 'jpg'
+      const path = `products/${shopId}/${Date.now()}.${ext}`
+      const { error: uploadErr } = await supabase.storage.from('product-images').upload(path, imageFile, { upsert: true })
+      if (!uploadErr) {
+        const { data } = supabase.storage.from('product-images').getPublicUrl(path)
+        image_url = data.publicUrl
+      }
+      setUploading(false)
+    }
+
     const { error: err } = await supabase.from('products').insert({
-      shop_id: shopId, name: form.name.trim(), description: form.description.trim() || null,
-      price: parseInt(form.price), original_price: form.original_price ? parseInt(form.original_price) : null,
+      shop_id: shopId,
+      name: form.name.trim(),
+      description: form.description.trim() || null,
+      price: parseInt(form.price),
+      original_price: form.original_price ? parseInt(form.original_price) : null,
       category: form.category.trim() || null,
+      image_url,
       is_veg: form.is_veg === 'veg' ? true : form.is_veg === 'nonveg' ? false : null,
       is_available: form.is_available,
     })
@@ -445,51 +495,122 @@ function AddProductModal({ shopId, onClose, onSuccess }: { shopId: string; onClo
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center" style={{ background: 'rgba(0,0,0,0.6)' }}>
-      <div className="bg-white w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl max-h-[90vh] overflow-y-auto">
-        <div className="flex justify-center pt-3 pb-1 sm:hidden"><div className="w-10 h-1 bg-gray-200 rounded-full" /></div>
-        <div className="px-5 py-4 border-b flex items-center justify-between" style={{ borderColor: 'var(--border)' }}>
-          <h2 className="font-black text-lg" style={{ fontFamily: 'Nunito' }}>Add Product</h2>
-          <button onClick={onClose} className="text-gray-400 text-xl w-8 h-8 flex items-center justify-center rounded-xl hover:bg-gray-100">✕</button>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center" style={{ background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(4px)' }}>
+      <div className="w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl max-h-[92vh] overflow-y-auto no-scrollbar"
+        style={{ background: 'var(--bg-1)', border: '1px solid var(--border-2)' }}>
+        {/* Drag handle */}
+        <div className="flex justify-center pt-3 pb-1 sm:hidden">
+          <div className="w-10 h-1 rounded-full" style={{ background: 'var(--bg-4)' }} />
         </div>
+        {/* Header */}
+        <div className="px-5 py-4 flex items-center justify-between sticky top-0"
+          style={{ borderBottom: '1px solid var(--border)', background: 'var(--bg-1)' }}>
+          <h2 className="font-black text-lg" style={{ color: 'var(--text)' }}>Add Product</h2>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-xl text-sm transition-all"
+            style={{ background: 'var(--bg-3)', color: 'var(--text-2)' }}>✕</button>
+        </div>
+
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
-          <div><label className="block text-sm font-bold mb-1.5" style={{ color: 'var(--ink)' }}>Product name *</label>
-            <input type="text" value={form.name} onChange={e => update('name', e.target.value)} className="input-field" placeholder="Butter Chicken, Amul Milk..." required /></div>
-          <div><label className="block text-sm font-bold mb-1.5" style={{ color: 'var(--ink)' }}>Description</label>
-            <textarea value={form.description} onChange={e => update('description', e.target.value)} className="input-field resize-none" rows={2} placeholder="Short description..." /></div>
-          <div className="grid grid-cols-2 gap-3">
-            <div><label className="block text-sm font-bold mb-1.5" style={{ color: 'var(--ink)' }}>Selling Price (₹) *</label>
-              <input type="number" value={form.price} onChange={e => update('price', e.target.value)} className="input-field" placeholder="199" min="0" required /></div>
-            <div><label className="block text-sm font-bold mb-1.5" style={{ color: 'var(--ink)' }}>Original Price (₹)</label>
-              <input type="number" value={form.original_price} onChange={e => update('original_price', e.target.value)} className="input-field" placeholder="249" min="0" /></div>
-          </div>
-          <div><label className="block text-sm font-bold mb-1.5" style={{ color: 'var(--ink)' }}>Category</label>
-            <input type="text" value={form.category} onChange={e => update('category', e.target.value)} className="input-field" placeholder="Main Course, Dairy, Medicines..." /></div>
+
+          {/* ── IMAGE UPLOAD ── */}
           <div>
-            <label className="block text-sm font-bold mb-2" style={{ color: 'var(--ink)' }}>Type</label>
+            <label className="block text-sm font-black mb-2" style={{ color: 'var(--text-2)' }}>Product Photo</label>
+            <label className="block cursor-pointer">
+              <input type="file" accept="image/*" onChange={handleImage} className="hidden" />
+              {imagePreview ? (
+                <div className="relative rounded-2xl overflow-hidden h-40 group">
+                  <img src={imagePreview} alt="preview" className="w-full h-full object-cover" />
+                  <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                    style={{ background: 'rgba(0,0,0,0.5)' }}>
+                    <span className="text-white font-bold text-sm">📷 Change photo</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="h-40 rounded-2xl flex flex-col items-center justify-center gap-2 transition-all"
+                  style={{ background: 'var(--bg-3)', border: '2px dashed var(--border-2)' }}>
+                  <span className="text-3xl">📷</span>
+                  <span className="text-sm font-bold" style={{ color: 'var(--text-3)' }}>Tap to add product photo</span>
+                  <span className="text-xs" style={{ color: 'var(--text-3)' }}>JPG, PNG up to 3MB</span>
+                </div>
+              )}
+            </label>
+          </div>
+
+          {/* ── NAME ── */}
+          <div>
+            <label className="block text-sm font-black mb-1.5" style={{ color: 'var(--text-2)' }}>Product name *</label>
+            <input type="text" value={form.name} onChange={e => update('name', e.target.value)}
+              className="input-field" placeholder="Butter Chicken, Amul Milk 500ml..." required />
+          </div>
+
+          {/* ── DESCRIPTION ── */}
+          <div>
+            <label className="block text-sm font-black mb-1.5" style={{ color: 'var(--text-2)' }}>Description</label>
+            <textarea value={form.description} onChange={e => update('description', e.target.value)}
+              className="input-field resize-none" rows={2} placeholder="What makes this special..." />
+          </div>
+
+          {/* ── PRICES ── */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-black mb-1.5" style={{ color: 'var(--text-2)' }}>Selling Price (₹) *</label>
+              <input type="number" value={form.price} onChange={e => update('price', e.target.value)}
+                className="input-field" placeholder="199" min="0" required />
+            </div>
+            <div>
+              <label className="block text-sm font-black mb-1.5" style={{ color: 'var(--text-2)' }}>
+                Original Price (₹)
+                <span className="text-xs font-normal ml-1" style={{ color: 'var(--text-3)' }}>for strike-through</span>
+              </label>
+              <input type="number" value={form.original_price} onChange={e => update('original_price', e.target.value)}
+                className="input-field" placeholder="249" min="0" />
+            </div>
+          </div>
+
+          {/* ── CATEGORY ── */}
+          <div>
+            <label className="block text-sm font-black mb-1.5" style={{ color: 'var(--text-2)' }}>Category</label>
+            <input type="text" value={form.category} onChange={e => update('category', e.target.value)}
+              className="input-field" placeholder="Main Course, Dairy, Snacks..." />
+          </div>
+
+          {/* ── VEG/NON-VEG ── */}
+          <div>
+            <label className="block text-sm font-black mb-2" style={{ color: 'var(--text-2)' }}>Type</label>
             <div className="flex gap-2">
               {[{ val: 'veg', label: '🟢 Veg' }, { val: 'nonveg', label: '🔴 Non-Veg' }, { val: '', label: 'N/A' }].map(o => (
                 <button key={o.val} type="button" onClick={() => update('is_veg', o.val)}
-                  className="flex-1 py-2.5 rounded-2xl border-2 text-sm font-bold transition-all"
-                  style={form.is_veg === o.val ? { borderColor: 'var(--brand)', background: 'var(--brand-pale)', color: 'var(--brand)' } : { borderColor: 'var(--border)', color: 'var(--ink-soft)' }}>
+                  className="flex-1 py-2.5 rounded-2xl text-sm font-bold transition-all"
+                  style={form.is_veg === o.val
+                    ? { background: 'var(--brand-muted)', color: 'var(--brand)', border: '1px solid rgba(255,69,0,0.4)' }
+                    : { background: 'var(--bg-3)', color: 'var(--text-3)', border: '1px solid var(--border)' }}>
                   {o.label}
                 </button>
               ))}
             </div>
           </div>
-          <div className="flex items-center justify-between p-3 rounded-2xl" style={{ background: 'var(--surface)' }}>
-            <div><p className="font-bold text-sm">Available to order</p><p className="text-xs" style={{ color: 'var(--ink-soft)' }}>Customers can add this to cart</p></div>
+
+          {/* ── AVAILABILITY TOGGLE ── */}
+          <div className="flex items-center justify-between p-4 rounded-2xl" style={{ background: 'var(--bg-3)' }}>
+            <div>
+              <p className="font-black text-sm" style={{ color: 'var(--text)' }}>Available to order</p>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>Customers can add this to cart</p>
+            </div>
             <button type="button" onClick={() => update('is_available', !form.is_available)}
-              className="relative w-12 h-6 rounded-full transition-all"
-              style={{ background: form.is_available ? 'var(--green)' : '#ddd' }}>
-              <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${form.is_available ? 'translate-x-6' : ''}`} />
+              className="relative w-12 h-6 rounded-full transition-all flex-shrink-0"
+              style={{ background: form.is_available ? 'var(--green)' : 'var(--bg-4)' }}>
+              <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${form.is_available ? 'translate-x-6' : ''}`} />
             </button>
           </div>
-          {error && <div className="p-3 rounded-2xl text-sm font-semibold" style={{ background: 'var(--red-bg)', color: '#c62828' }}>{error}</div>}
+
+          {error && (
+            <div className="p-3 rounded-2xl text-sm font-bold" style={{ background: 'var(--red-dim)', color: 'var(--red)' }}>{error}</div>
+          )}
+
           <div className="flex gap-3 pb-2">
-            <button type="button" onClick={onClose} className="btn-secondary flex-1 py-3" style={{ borderRadius: '100px' }}>Cancel</button>
-            <button type="submit" disabled={loading} className="btn-primary flex-1 py-3" style={{ borderRadius: '100px' }}>
-              {loading ? 'Adding...' : 'Add product'}
+            <button type="button" onClick={onClose} className="btn-secondary flex-1 py-3 rounded-2xl">Cancel</button>
+            <button type="submit" disabled={loading || uploading} className="btn-primary flex-1 py-3 rounded-2xl">
+              {uploading ? '📤 Uploading...' : loading ? 'Adding...' : '✓ Add product'}
             </button>
           </div>
         </form>

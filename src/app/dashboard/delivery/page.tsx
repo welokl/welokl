@@ -83,6 +83,8 @@ export default function DeliveryDashboard() {
   }, [])
 
   useEffect(() => {
+    // Prevent back button going to wrong dashboard
+    window.history.replaceState(null, '', '/dashboard/delivery')
     const supabase = createClient()
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_OUT') { window.location.href = '/auth/login'; return }
@@ -173,7 +175,7 @@ export default function DeliveryDashboard() {
       await supabase.from('wallets').update({ balance: wallet.balance + payout, total_earned: wallet.total_earned + payout }).eq('user_id', userId)
       await supabase.from('transactions').insert({ wallet_id: wallet.id, order_id: activeOrder.id, amount: payout, type: 'credit', description: 'Delivery earnings' })
     }
-    await supabase.rpc('increment_deliveries', { partner_user_id: userId }).catch(() => {})
+    try { await supabase.rpc('increment_deliveries', { partner_user_id: userId }) } catch(_) {}
 
     // Notify customer
     fetch('/api/notifications/send', {

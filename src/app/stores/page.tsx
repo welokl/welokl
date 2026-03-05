@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import type { Shop, Category } from '@/types'
@@ -29,28 +29,58 @@ export default function StoresPage() {
   const [loading, setLoading] = useState(true)
   const [userLat, setUserLat] = useState<number | null>(null)
   const [userLng, setUserLng] = useState<number | null>(null)
-  const [locationStatus, setLocationStatus] = useState<'idle'|'asking'|'granted'|'denied'>('idle')
-  const [radius, setRadius] = useState(10)
+  const [locationName, setLocationName] = useState<string>('')
+  const [locationStatus, setLocationStatus] = useState<'idle' | 'asking' | 'granted' | 'denied'>('idle')
+  const [radius, setRadius] = useState(5) // FIX: default 5km, not 10km
+
+  // FIX: Save location to localStorage whenever it changes
+  const saveLocation = useCallback((lat: number, lng: number, name?: string) => {
+    setUserLat(lat)
+    setUserLng(lng)
+    setLocationStatus('granted')
+    if (name) setLocationName(name)
+    try {
+      localStorage.setItem('welokl_location', JSON.stringify({ lat, lng, name: name || '' }))
+    } catch { }
+  }, [])
+
+  const askLocation = useCallback(() => {
+    if (!navigator.geolocation) { setLocationStatus('denied'); return }
+    setLocationStatus('asking')
+    navigator.geolocation.getCurrentPosition(
+      async pos => {
+        const { latitude, longitude } = pos.coords
+        // Reverse geocode to get area name
+        let name = ''
+        try {
+          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`)
+          const data = await res.json()
+          name = data.address?.suburb || data.address?.neighbourhood || data.address?.town || data.address?.city || ''
+        } catch { }
+        saveLocation(latitude, longitude, name)
+      },
+      () => setLocationStatus('denied'),
+      { timeout: 8000, enableHighAccuracy: true }
+    )
+  }, [saveLocation])
 
   useEffect(() => {
     loadData()
-    // Load saved location
+    // FIX: Load saved location from localStorage first
     try {
       const saved = JSON.parse(localStorage.getItem('welokl_location') || 'null')
-      if (saved?.lat) { setUserLat(saved.lat); setUserLng(saved.lng); setLocationStatus('granted') }
-      else askLocation()
-    } catch { askLocation() }
-  }, [])
-
-  function askLocation() {
-    if (!navigator.geolocation) return
-    setLocationStatus('asking')
-    navigator.geolocation.getCurrentPosition(
-      pos => { setUserLat(pos.coords.latitude); setUserLng(pos.coords.longitude); setLocationStatus('granted') },
-      () => setLocationStatus('denied'),
-      { timeout: 6000, enableHighAccuracy: false }
-    )
-  }
+      if (saved?.lat && saved?.lng) {
+        setUserLat(saved.lat)
+        setUserLng(saved.lng)
+        setLocationName(saved.name || '')
+        setLocationStatus('granted')
+      } else {
+        askLocation()
+      }
+    } catch {
+      askLocation()
+    }
+  }, []) // eslint-disable-line
 
   async function loadData() {
     const supabase = createClient()
@@ -63,21 +93,34 @@ export default function StoresPage() {
     setLoading(false)
   }
 
+  // FIX: Only compute distance when we have actual coordinates
   const shopsWithDist = shops.map(s => ({
     ...s,
-    distance: (userLat && userLng && s.latitude && s.longitude)
+    distance: (userLat !== null && userLng !== null && s.latitude && s.longitude)
       ? haversine(userLat, userLng, Number(s.latitude), Number(s.longitude))
       : null
   }))
 
+  // FIX: Strict radius filtering — when location is known, ONLY show shops within radius
   const filtered = shopsWithDist
     .filter(s => {
       const matchCat = activeCategory === 'all' || s.category_name?.toLowerCase().includes(activeCategory.toLowerCase())
       const matchSearch = !search || s.name.toLowerCase().includes(search.toLowerCase()) || s.area?.toLowerCase().includes(search.toLowerCase())
-      const inRadius = !userLat || s.distance === null || s.distance <= radius
+      // FIX: If we have location + distance, strictly enforce radius. Don't show shops with null distance when location is granted.
+      const inRadius = locationStatus !== 'granted'
+        ? true
+        : (s.distance !== null && s.distance <= radius) || radius === 999
       return matchCat && matchSearch && inRadius
     })
-    .sort((a, b) => (a.distance !== null && b.distance !== null) ? a.distance - b.distance : 0)
+    .sort((a, b) => {
+      if (a.distance !== null && b.distance !== null) return a.distance - b.distance
+      if (a.distance !== null) return -1
+      if (b.distance !== null) return 1
+      return 0
+    })
+
+  const openCount = filtered.filter(s => s.is_open).length
+  const closedCount = filtered.filter(s => !s.is_open).length
 
   return (
     <div className="min-h-screen pb-24" style={{ background: '#f8f7f4' }}>
@@ -93,41 +136,52 @@ export default function StoresPage() {
             </Link>
 
             {/* Location bar */}
-            <Link href="/location?return=/stores" className="flex-1 flex items-center gap-2 bg-white border-2 rounded-xl px-3 py-1.5 hover:border-brand-500 transition-colors" style={{ borderColor: '#e5e7eb' }}>
+            <button
+              onClick={askLocation}
+              className="flex-1 flex items-center gap-2 bg-white border-2 rounded-xl px-3 py-1.5 hover:border-orange-400 transition-colors text-left"
+              style={{ borderColor: locationStatus === 'granted' ? '#ff5a1f' : '#e5e7eb' }}
+            >
               <span className="text-sm" style={{ color: '#ff5a1f' }}>📍</span>
               <div className="flex-1 min-w-0">
-                {locationStatus === 'granted' ? (
-                  <p className="text-xs font-bold text-gray-800 truncate">Delivery here</p>
+                {locationStatus === 'granted' && locationName ? (
+                  <p className="text-xs font-black text-gray-800 truncate">{locationName}</p>
+                ) : locationStatus === 'granted' ? (
+                  <p className="text-xs font-bold text-gray-800 truncate">Location set ✓</p>
+                ) : locationStatus === 'asking' ? (
+                  <p className="text-xs text-amber-500 font-semibold animate-pulse">Detecting location…</p>
                 ) : (
-                  <p className="text-xs text-gray-400 font-medium">Set your location</p>
+                  <p className="text-xs text-gray-400 font-medium">Tap to set location</p>
                 )}
               </div>
               <span className="text-gray-400 text-xs">▼</span>
-            </Link>
+            </button>
 
-            {/* Search */}
-            <Link href="/search" className="w-9 h-9 bg-white border-2 rounded-xl flex items-center justify-center text-gray-500 hover:border-brand-500 transition-colors flex-shrink-0" style={{ borderColor: '#e5e7eb' }}>
-              🔍
-            </Link>
-
-            <Link href="/auth/login" className="flex-shrink-0 text-xs font-bold px-3 py-1.5 rounded-xl" style={{ background: '#fff3ef', color: '#ff5a1f' }}>
-              Login
-            </Link>
+            {/* Search input inline */}
+            <div className="flex-1 relative">
+              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm">🔍</span>
+              <input
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search shops..."
+                className="w-full bg-white border-2 rounded-xl pl-8 pr-3 py-1.5 text-xs font-semibold outline-none focus:border-orange-400 transition-colors"
+                style={{ borderColor: '#e5e7eb' }}
+              />
+            </div>
           </div>
 
-          {/* Radius selector when location granted */}
+          {/* Radius selector */}
           {locationStatus === 'granted' && (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-400 font-medium">Within:</span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-gray-500 font-bold">Within:</span>
               {[1, 2, 5, 10, 25].map(r => (
                 <button key={r} onClick={() => setRadius(r)}
-                  className={`text-xs font-bold px-2.5 py-1 rounded-full transition-all ${radius === r ? 'text-white' : 'text-gray-500 bg-gray-100'}`}
+                  className={`text-xs font-black px-2.5 py-1 rounded-full transition-all ${radius === r ? 'text-white shadow-sm' : 'text-gray-500 bg-gray-100 hover:bg-gray-200'}`}
                   style={radius === r ? { background: '#ff5a1f' } : {}}>
                   {r}km
                 </button>
               ))}
               <button onClick={() => setRadius(999)}
-                className={`text-xs font-bold px-2.5 py-1 rounded-full transition-all ${radius === 999 ? 'text-white' : 'text-gray-500 bg-gray-100'}`}
+                className={`text-xs font-black px-2.5 py-1 rounded-full transition-all ${radius === 999 ? 'text-white shadow-sm' : 'text-gray-500 bg-gray-100 hover:bg-gray-200'}`}
                 style={radius === 999 ? { background: '#ff5a1f' } : {}}>
                 All
               </button>
@@ -135,22 +189,22 @@ export default function StoresPage() {
           )}
 
           {locationStatus === 'denied' && (
-            <button onClick={askLocation} className="text-xs font-semibold px-3 py-1.5 rounded-full" style={{ background: '#fff3ef', color: '#ff5a1f' }}>
-              📍 Allow location for nearby shops
+            <button onClick={askLocation} className="w-full text-xs font-bold px-3 py-2 rounded-xl text-center" style={{ background: '#fff3ef', color: '#ff5a1f' }}>
+              📍 Allow location to see nearby shops
             </button>
           )}
 
           {/* Category pills */}
           <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
             <button onClick={() => setActiveCategory('all')}
-              className="flex-shrink-0 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all"
-              style={activeCategory === 'all' ? { background: '#ff5a1f', color: 'white' } : { background: '#f3f4f6', color: '#6b7280' }}>
+              className="flex-shrink-0 px-3.5 py-1.5 rounded-full text-xs font-black transition-all"
+              style={activeCategory === 'all' ? { background: '#ff5a1f', color: 'white' } : { background: '#f3f4f6', color: '#374151' }}>
               All
             </button>
             {categories.map(cat => (
               <button key={cat.id} onClick={() => setActiveCategory(cat.name)}
-                className="flex-shrink-0 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1"
-                style={activeCategory === cat.name ? { background: '#ff5a1f', color: 'white' } : { background: '#f3f4f6', color: '#6b7280' }}>
+                className="flex-shrink-0 px-3.5 py-1.5 rounded-full text-xs font-black transition-all flex items-center gap-1"
+                style={activeCategory === cat.name ? { background: '#ff5a1f', color: 'white' } : { background: '#f3f4f6', color: '#374151' }}>
                 {cat.icon} {cat.name.split(' ')[0]}
               </button>
             ))}
@@ -161,56 +215,84 @@ export default function StoresPage() {
       {/* Content */}
       <div className="max-w-6xl mx-auto px-3 py-4">
         <div className="flex items-center justify-between mb-3">
-          <p className="text-sm font-bold text-gray-600">
-            {filtered.length} shops {locationStatus === 'granted' && radius !== 999 ? `within ${radius}km` : 'available'}
-          </p>
+          <div>
+            <p className="text-sm font-black text-gray-800">
+              {filtered.length} shops {locationStatus === 'granted' && radius !== 999 ? `within ${radius}km` : 'available'}
+            </p>
+            {filtered.length > 0 && (
+              <p className="text-xs text-gray-400 mt-0.5">
+                {openCount} open now · {closedCount} closed
+              </p>
+            )}
+          </div>
           {locationStatus === 'asking' && (
-            <p className="text-xs text-amber-600 font-semibold animate-pulse">📍 Detecting location...</p>
+            <p className="text-xs text-amber-600 font-semibold animate-pulse">📍 Detecting…</p>
           )}
         </div>
 
         {loading ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-            {Array.from({length:8}).map((_,i) => <div key={i} className="h-48 shimmer" />)}
+            {Array.from({ length: 8 }).map((_, i) => <div key={i} className="h-48 rounded-2xl shimmer" />)}
           </div>
         ) : filtered.length === 0 ? (
           <div className="text-center py-20">
             <div className="text-6xl mb-4">🏪</div>
-            <p className="font-bold text-xl mb-1">No shops found</p>
-            <p className="text-gray-400 text-sm mb-5">{userLat ? `Try increasing radius or browse all shops` : 'Try a different search'}</p>
-            {userLat && <button onClick={() => setRadius(999)} className="btn-primary">Show all shops</button>}
+            <p className="font-black text-xl mb-1 text-gray-800">No shops found</p>
+            <p className="text-gray-400 text-sm mb-5">
+              {locationStatus === 'granted' ? `No shops within ${radius}km. Try a larger radius.` : 'Allow location or try searching.'}
+            </p>
+            {locationStatus === 'granted' && radius !== 999 && (
+              <button onClick={() => setRadius(999)}
+                className="px-5 py-2.5 rounded-xl text-sm font-black text-white"
+                style={{ background: '#ff5a1f' }}>
+                Show all shops
+              </button>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
             {filtered.map(shop => {
               const catKey = Object.keys(CAT_ICONS).find(k => shop.category_name?.toLowerCase().includes(k)) || 'food'
               const bg = CAT_COLORS[catKey] || CAT_COLORS.default
+              const dist = (shop as any).distance
               return (
                 <Link key={shop.id} href={`/stores/${shop.id}`}>
-                  <div className="card-hover overflow-hidden cursor-pointer">
+                  <div className="card-hover overflow-hidden cursor-pointer rounded-2xl bg-white shadow-sm hover:shadow-md transition-all">
                     <div className="h-28 sm:h-32 flex items-center justify-center relative" style={{ background: bg }}>
-                      <div className="text-4xl">{CAT_ICONS[catKey]}</div>
+                      {/* Shop image or emoji */}
+                      {(shop as any).image_url ? (
+                        <img src={(shop as any).image_url} alt={shop.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="text-4xl">{CAT_ICONS[catKey]}</div>
+                      )}
                       <div className="absolute top-2 left-2">
                         {shop.is_open
-                          ? <span className="badge-green text-xs">Open</span>
-                          : <span className="badge-gray text-xs">Closed</span>}
+                          ? <span className="badge-green text-xs px-2 py-0.5 rounded-full font-bold" style={{ background: '#dcfce7', color: '#16a34a' }}>● Open</span>
+                          : <span className="text-xs px-2 py-0.5 rounded-full font-bold" style={{ background: '#f1f5f9', color: '#64748b' }}>● Closed</span>}
                       </div>
-                      <div className="absolute top-2 right-2 bg-white rounded-lg px-1.5 py-0.5 text-xs font-black" style={{ color: '#d97706' }}>
+                      <div className="absolute top-2 right-2 bg-white rounded-lg px-1.5 py-0.5 text-xs font-black shadow-sm" style={{ color: '#d97706' }}>
                         ★ {shop.rating}
                       </div>
-                      {(shop as any).distance !== null && (shop as any).distance !== undefined && (
-                        <div className="absolute bottom-2 right-2 bg-white/90 rounded-lg px-1.5 py-0.5 text-xs font-semibold text-gray-600">
-                          {(shop as any).distance < 1 ? `${Math.round((shop as any).distance * 1000)}m` : `${(shop as any).distance.toFixed(1)}km`}
+                      {dist !== null && dist !== undefined && (
+                        <div className="absolute bottom-2 right-2 bg-white/95 rounded-lg px-1.5 py-0.5 text-xs font-bold text-gray-700 shadow-sm">
+                          📍 {dist < 1 ? `${Math.round(dist * 1000)}m` : `${dist.toFixed(1)}km`}
                         </div>
                       )}
                     </div>
                     <div className="p-3">
-                      <p className="font-black text-sm leading-tight line-clamp-1" style={{ fontFamily: 'Plus Jakarta Sans, sans-serif' }}>{shop.name}</p>
-                      <p className="text-xs text-gray-400 mt-0.5 line-clamp-1">{shop.category_name?.split(' ')[0]} · {shop.area}</p>
+                      <p className="font-black text-sm leading-tight line-clamp-1 text-gray-900">{shop.name}</p>
+                      <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">{shop.category_name?.split(' ')[0]} · {shop.area}</p>
                       <div className="flex items-center gap-2 mt-2 pt-2" style={{ borderTop: '1px solid #f3f4f6' }}>
-                        {shop.delivery_enabled && <span className="text-xs text-gray-500">🛵 {shop.avg_delivery_time}m</span>}
-                        {shop.pickup_enabled && <span className="text-xs text-gray-500">🏃</span>}
-                        <span className="ml-auto text-xs text-gray-400">{shop.min_order_amount ? `₹${shop.min_order_amount}+` : 'No min'}</span>
+                        {shop.delivery_enabled && (
+                          <span className="text-xs text-gray-600 font-semibold">🛵 {shop.avg_delivery_time}m</span>
+                        )}
+                        {shop.pickup_enabled && <span className="text-xs text-gray-500">🏃 Pickup</span>}
+                        {(shop as any).free_delivery && (
+                          <span className="text-xs font-bold" style={{ color: '#16a34a' }}>Free delivery</span>
+                        )}
+                        <span className="ml-auto text-xs font-bold text-gray-500">
+                          {shop.min_order_amount ? `₹${shop.min_order_amount}+` : 'No min'}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -232,9 +314,9 @@ export default function StoresPage() {
           ].map(item => (
             <Link key={item.label} href={item.href}
               className="flex flex-col items-center gap-0.5 px-4 py-1.5 rounded-xl transition-all"
-              style={{ color: item.active ? '#ff5a1f' : '#9ca3af' }}>
+              style={{ color: item.active ? '#ff5a1f' : '#6b7280' }}>
               <span className="text-xl">{item.icon}</span>
-              <span className="text-xs font-bold">{item.label}</span>
+              <span className="text-xs font-black">{item.label}</span>
             </Link>
           ))}
         </div>

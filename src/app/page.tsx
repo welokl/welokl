@@ -1,330 +1,560 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
+import ThemeToggle from '@/components/ThemeToggle'
 
 interface Shop {
-  id: string; name: string; description: string | null; category_name: string
-  is_open: boolean; rating: number; avg_delivery_time: number
-  delivery_enabled: boolean; min_order_amount: number; area: string; image_url: string | null
+  id: string
+  name: string
+  description: string | null
+  category_name: string
+  is_open: boolean
+  rating: number
+  avg_delivery_time: number
+  delivery_enabled: boolean
+  pickup_enabled: boolean
+  min_order_amount: number
+  area: string
+  image_url: string | null
+  latitude: number | null
+  longitude: number | null
 }
+
 interface Product {
-  id: string; name: string; price: number; original_price: number | null
-  image_url: string | null; shop_id: string; shop_name?: string; shop_area?: string
+  id: string
+  name: string
+  price: number
+  original_price: number | null
+  image_url: string | null
+  shop_id: string
+  shop_name?: string
+}
+
+// ── haversine distance in km ──
+function dist(lat1: number, lng1: number, lat2: number, lng2: number) {
+  const R = 6371
+  const dLat = (lat2 - lat1) * Math.PI / 180
+  const dLng = (lng2 - lng1) * Math.PI / 180
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }
 
 const CATEGORIES = [
-  { icon: '🍔', name: 'Food', color: '#ff4500' },
-  { icon: '🛒', name: 'Grocery', color: '#00e676' },
-  { icon: '💊', name: 'Pharmacy', color: '#448aff' },
-  { icon: '📱', name: 'Electronics', color: '#aa00ff' },
-  { icon: '💇', name: 'Salon', color: '#ff4081' },
-  { icon: '🌸', name: 'Gifts', color: '#ffab00' },
-  { icon: '🔧', name: 'Hardware', color: '#78716c' },
-  { icon: '🐾', name: 'Pets', color: '#fb923c' },
+  { icon: '🍔', name: 'Food', q: 'food' },
+  { icon: '🛒', name: 'Grocery', q: 'grocery' },
+  { icon: '💊', name: 'Pharmacy', q: 'pharmacy' },
+  { icon: '📱', name: 'Electronics', q: 'electronics' },
+  { icon: '💇', name: 'Salon', q: 'salon' },
+  { icon: '🌸', name: 'Gifts', q: 'gifts' },
+  { icon: '🔧', name: 'Hardware', q: 'hardware' },
+  { icon: '🐾', name: 'Pets', q: 'pet' },
 ]
 
 const TICKER = [
-  '🍕 Pizza delivered in 18 min nearby',
-  '🥛 Milk at your door in 9 min',
-  '💊 Medicine at midnight — we deliver',
-  '🌹 Flowers for her anniversary',
-  '🍦 Ice cream at 2am — yes really',
-  '📱 Charger before the meeting',
+  '🍕 Pizza — 18 min',
+  '🥛 Milk — 9 min',
+  '💊 Pharmacy — midnight',
+  '🌹 Flowers — now',
+  '🍦 Ice cream — 2am',
 ]
 
+const CAT_COLOR: Record<string, string> = {
+  food: '#FF3008', grocery: '#00A878', pharmacy: '#0066FF',
+  electronics: '#7B2FFF', salon: '#FF2D78', default: '#FF5A1F',
+}
+const CAT_ICON: Record<string, string> = {
+  food: '🍔', grocery: '🛒', pharmacy: '💊', electronics: '📱',
+  salon: '💇', hardware: '🔧', pet: '🐾', flower: '🌸', default: '🏪',
+}
+
 export default function HomePage() {
-  const [user, setUser] = useState<any>(null)
+  const [user, setUser] = useState<any>(undefined)
   const [allShops, setAllShops] = useState<Shop[]>([])
   const [products, setProducts] = useState<Product[]>([])
-  const [tickerIdx, setTickerIdx] = useState(0)
-  const [search, setSearch] = useState('')
-  const [activeCategory, setActiveCategory] = useState<string | null>(null)
+  const [displayShops, setDisplayShops] = useState<(Shop & { km: number | null })[]>([])
   const [loaded, setLoaded] = useState(false)
+  const [locStatus, setLocStatus] = useState<'idle' | 'detecting' | 'granted' | 'denied'>('idle')
+  const [userLat, setUserLat] = useState<number | null>(null)
+  const [userLng, setUserLng] = useState<number | null>(null)
+  const [areaName, setAreaName] = useState('')
+  const [radius, setRadius] = useState(10)
+  const [activeCategory, setActiveCategory] = useState<string | null>(null)
+  const [tickerIdx, setTickerIdx] = useState(0)
+  const [searchVal, setSearchVal] = useState('')
+  const searchRef = useRef<HTMLInputElement>(null)
 
+  // ticker
   useEffect(() => {
-    createClient().auth.getSession().then(({ data: { session } }) => setUser(session?.user))
-
-    createClient().from('shops')
-      .select('*').eq('is_active', true)
-      .order('is_open', { ascending: false })
-      .order('rating', { ascending: false })
-      .limit(20)
-      .then(({ data }) => { setAllShops(data || []); setLoaded(true) })
-
-    createClient().from('products')
-      .select('id,name,price,original_price,image_url,shop_id,shops(name,area)')
-      .eq('is_available', true).limit(20)
-      .then(({ data }) => setProducts((data || []).map((p: any) => ({
-        ...p, shop_name: p.shops?.name, shop_area: p.shops?.area
-      }))))
-
-    const t = setInterval(() => setTickerIdx(i => (i + 1) % TICKER.length), 3200)
+    const t = setInterval(() => setTickerIdx(i => (i + 1) % TICKER.length), 2800)
     return () => clearInterval(t)
   }, [])
 
-  const openShops = allShops.filter(s => s.is_open)
-  const closedShops = allShops.filter(s => !s.is_open)
+  // auth
+  useEffect(() => {
+    createClient().auth.getSession().then(({ data: { session } }) => setUser(session?.user ?? null))
+    const { data: { subscription } } = createClient().auth.onAuthStateChange((_, session) => setUser(session?.user ?? null))
+    return () => subscription.unsubscribe()
+  }, [])
 
-  const filteredShops = activeCategory
-    ? allShops.filter(s => s.category_name?.toLowerCase().includes(activeCategory.toLowerCase()))
-    : allShops
+  // location init
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('welokl_location') || 'null')
+      if (saved?.lat && saved?.lng) {
+        setUserLat(saved.lat)
+        setUserLng(saved.lng)
+        setAreaName(saved.name || '')
+        setLocStatus('granted')
+        return
+      }
+    } catch {}
+    detectLocation()
+  }, [])
 
-  const featuredShops = filteredShops.slice(0, 8)
-  const moreByCategory = activeCategory ? [] : [
-    { label: 'Food & Restaurants', icon: '🍔', color: '#ff4500', shops: allShops.filter(s => s.category_name?.toLowerCase().includes('food')).slice(0, 4) },
-    { label: 'Grocery & Essentials', icon: '🛒', color: '#00e676', shops: allShops.filter(s => s.category_name?.toLowerCase().includes('grocer')).slice(0, 4) },
-    { label: 'Health & Pharmacy', icon: '💊', color: '#448aff', shops: allShops.filter(s => s.category_name?.toLowerCase().includes('pharma')).slice(0, 4) },
-  ].filter(c => c.shops.length > 0)
+  function detectLocation() {
+    if (!navigator.geolocation) { setLocStatus('denied'); return }
+    setLocStatus('detecting')
+    navigator.geolocation.getCurrentPosition(
+      async pos => {
+        const { latitude, longitude } = pos.coords
+        setUserLat(latitude)
+        setUserLng(longitude)
+        setLocStatus('granted')
+        try {
+          const r = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`, { headers: { 'Accept-Language': 'en' } })
+          const d = await r.json()
+          const name = d.address?.suburb || d.address?.neighbourhood || d.address?.town || d.address?.city || 'Your area'
+          setAreaName(name)
+          localStorage.setItem('welokl_location', JSON.stringify({ lat: latitude, lng: longitude, name }))
+        } catch {
+          localStorage.setItem('welokl_location', JSON.stringify({ lat: latitude, lng: longitude, name: '' }))
+        }
+      },
+      () => setLocStatus('denied'),
+      { timeout: 8000, enableHighAccuracy: false }
+    )
+  }
+
+  // load shops
+  const loadShops = useCallback(async () => {
+    const supabase = createClient()
+    const { data } = await supabase.from('shops').select('*').eq('is_active', true).order('rating', { ascending: false })
+    setAllShops(data || [])
+    const { data: prods } = await supabase.from('products')
+      .select('id,name,price,original_price,image_url,shop_id,shops(name)')
+      .eq('is_available', true).limit(16)
+    setProducts((prods || []).map((p: any) => ({ ...p, shop_name: p.shops?.name })))
+    setLoaded(true)
+  }, [])
+
+  useEffect(() => { loadShops() }, [loadShops])
+
+  // filter + sort shops whenever deps change
+  useEffect(() => {
+    let shops = allShops.map(s => ({
+      ...s,
+      km: (userLat && userLng && s.latitude && s.longitude)
+        ? dist(userLat, userLng, Number(s.latitude), Number(s.longitude))
+        : null
+    }))
+
+    // STRICT location filter — if we have coords, only show within radius
+    if (userLat && userLng) {
+      shops = shops.filter(s => {
+        if (s.km === null) return false   // shop has no coords → exclude
+        return s.km <= radius
+      })
+    }
+
+    // category filter
+    if (activeCategory) {
+      shops = shops.filter(s => s.category_name?.toLowerCase().includes(activeCategory.toLowerCase()))
+    }
+
+    // search filter
+    if (searchVal.trim()) {
+      const q = searchVal.toLowerCase()
+      shops = shops.filter(s => s.name.toLowerCase().includes(q) || s.area?.toLowerCase().includes(q) || s.category_name?.toLowerCase().includes(q))
+    }
+
+    // sort: open first, then by distance, then rating
+    shops.sort((a, b) => {
+      if (a.is_open !== b.is_open) return a.is_open ? -1 : 1
+      if (a.km !== null && b.km !== null) return a.km - b.km
+      return b.rating - a.rating
+    })
+
+    setDisplayShops(shops)
+  }, [allShops, userLat, userLng, radius, activeCategory, searchVal])
+
+  const openShops = displayShops.filter(s => s.is_open)
+  const closedShops = displayShops.filter(s => !s.is_open)
 
   return (
-    <div className="min-h-screen" style={{ background: 'var(--bg)', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+    <div style={{ minHeight: '100vh', background: 'var(--bg)', fontFamily: "'DM Sans', 'Inter', sans-serif" }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;0,9..40,900;1,9..40,400&display=swap');
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+        .shimmer { background: linear-gradient(90deg, #F0F0F0 25%, #E0E0E0 50%, #F0F0F0 75%); background-size: 200% 100%; animation: shimmer 1.4s infinite; border-radius: 16px; }
+        @keyframes fadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+        .fade-in { animation: fadeUp 0.4s ease forwards; }
+        .shop-card { transition: transform 0.15s ease, box-shadow 0.15s ease; }
+        .shop-card:hover { transform: translateY(-3px); box-shadow: 0 12px 40px rgba(0,0,0,0.12); }
+        .pill-btn { border: none; cursor: pointer; transition: all 0.15s; font-family: inherit; }
+        .pill-btn:hover { opacity: 0.85; }
+        input { font-family: inherit; }
+      `}</style>
 
-      {/* ─── STICKY NAV ─── */}
-      <nav className="sticky top-0 z-50 glass" style={{ borderBottom: '1px solid var(--border)' }}>
-        <div className="max-w-6xl mx-auto px-4 h-14 flex items-center gap-3">
-          <Link href="/" className="flex items-center gap-2 flex-shrink-0">
-            <div className="w-8 h-8 rounded-xl flex items-center justify-center font-black text-sm text-white"
-              style={{ background: 'var(--brand)', boxShadow: '0 0 14px var(--brand-glow)' }}>W</div>
-            <span className="font-black text-lg hidden sm:block" style={{ color: 'var(--text)', letterSpacing: '-0.03em' }}>welokl</span>
+      {/* ── TOP NAV ── */}
+      <nav style={{
+        position: 'sticky', top: 0, zIndex: 50,
+        background: 'var(--glass-bg)',
+        backdropFilter: 'blur(12px)',
+        borderBottom: '1px solid var(--border)',
+        padding: '0 16px',
+      }}>
+        <div style={{ maxWidth: 1120, margin: '0 auto', height: 60, display: 'flex', alignItems: 'center', gap: 12 }}>
+          {/* Logo */}
+          <Link href="/" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+            <div style={{ width: 34, height: 34, borderRadius: 10, background: '#FF3008', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 900, fontSize: 16 }}>W</div>
+            <span style={{ fontWeight: 800, fontSize: 18, color: 'var(--text)', letterSpacing: '-0.03em' }}>welokl</span>
           </Link>
 
-          {/* ── SECTION 1: SEARCH ── */}
-          <div className="flex-1 relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm pointer-events-none" style={{ color: 'var(--text-3)' }}>🔍</span>
-            <input value={search} onChange={e => setSearch(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && search && (window.location.href = `/search?q=${encodeURIComponent(search)}`)}
-              placeholder="Search shops, dishes, products..."
-              className="input-field pl-9 py-2 text-sm w-full" style={{ borderRadius: 12 }} />
-            {search && (
-              <button onClick={() => setSearch('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-sm" style={{ color: 'var(--text-3)' }}>✕</button>
+          {/* Location pill */}
+          <button
+            onClick={detectLocation}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              background: 'var(--bg-3)', border: '1px solid var(--border-2)', borderRadius: 10,
+              padding: '7px 12px', cursor: 'pointer', flexShrink: 0,
+              fontSize: 13, fontWeight: 600, color: 'var(--text)',
+              fontFamily: 'inherit',
+            }}
+          >
+            <span style={{ fontSize: 14 }}>📍</span>
+            <span style={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {locStatus === 'detecting' ? 'Detecting…' : areaName || 'Set location'}
+            </span>
+            <span style={{ color: 'var(--text-3)', fontSize: 10 }}>▼</span>
+          </button>
+
+          {/* Search */}
+          <div style={{ flex: 1, position: 'relative', maxWidth: 440 }}>
+            <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 15, color: 'var(--text-3)', pointerEvents: 'none' }}>🔍</span>
+            <input
+              ref={searchRef}
+              value={searchVal}
+              onChange={e => setSearchVal(e.target.value)}
+              onKeyDown={e => e.key === 'Escape' && setSearchVal('')}
+              placeholder="Search shops, dishes, products…"
+              style={{
+                width: '100%', padding: '9px 12px 9px 38px',
+                background: 'var(--input-bg)', border: '2px solid transparent',
+                borderRadius: 12, fontSize: 14, fontWeight: 500, color: 'var(--text)',
+                outline: 'none', transition: 'border-color 0.15s',
+              }}
+              onFocus={e => e.target.style.borderColor = '#FF3008'}
+              onBlur={e => e.target.style.borderColor = 'transparent'}
+            />
+            {searchVal && (
+              <button onClick={() => setSearchVal('')} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', fontSize: 14, color: 'var(--text-3)', cursor: 'pointer' }}>✕</button>
             )}
           </div>
 
-          <div className="flex items-center gap-2 flex-shrink-0">
-            {user ? (
-              <Link href="/dashboard/customer" className="text-sm font-bold px-3 py-1.5 rounded-xl"
-                style={{ background: 'var(--brand-muted)', color: 'var(--brand)' }}>My Orders</Link>
+          {/* Auth + Theme Toggle */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto', flexShrink: 0 }}>
+            {user === undefined ? (
+              <div style={{ width: 80, height: 34, borderRadius: 10 }} className="shimmer" />
+            ) : user ? (
+              <>
+                <Link href="/dashboard/customer" style={{
+                  textDecoration: 'none', fontSize: 13, fontWeight: 700,
+                  padding: '7px 14px', borderRadius: 10,
+                  background: 'var(--brand-muted)', color: 'var(--brand)',
+                }}>My Orders</Link>
+                <button onClick={async () => { await createClient().auth.signOut(); setUser(null) }}
+                  style={{ background: 'var(--bg-3)', border: '1px solid var(--border-2)', borderRadius: 10, padding: '7px 12px', fontSize: 13, fontWeight: 600, color: 'var(--text-3)', cursor: 'pointer', fontFamily: 'inherit' }}>
+                  Logout
+                </button>
+              </>
             ) : (
               <>
-                <Link href="/auth/login" className="text-sm font-semibold hidden sm:block" style={{ color: 'var(--text-2)' }}>Login</Link>
-                <Link href="/auth/signup" className="btn-primary text-sm py-1.5 px-4">Sign up</Link>
+                <Link href="/auth/login" style={{ textDecoration: 'none', fontSize: 13, fontWeight: 600, color: 'var(--text-2)', padding: '7px 12px' }}>Log in</Link>
+                <Link href="/auth/signup" style={{
+                  textDecoration: 'none', fontSize: 13, fontWeight: 700,
+                  padding: '8px 16px', borderRadius: 10,
+                  background: 'var(--brand)', color: 'white',
+                }}>Sign up</Link>
               </>
             )}
+            <ThemeToggle />
           </div>
         </div>
       </nav>
 
-      {/* ─── HERO BANNER ─── */}
-      <section style={{ background: 'var(--bg-1)', borderBottom: '1px solid var(--border)', position: 'relative', overflow: 'hidden' }}>
-        <div style={{ position: 'absolute', top: -80, right: -80, width: 500, height: 500, background: 'var(--brand)', borderRadius: '50%', opacity: 0.05, filter: 'blur(100px)', pointerEvents: 'none' }} />
-        <div style={{ position: 'absolute', bottom: -40, left: '20%', width: 300, height: 300, background: '#ff8c00', borderRadius: '50%', opacity: 0.04, filter: 'blur(70px)', pointerEvents: 'none' }} />
+      {/* ── HERO ── */}
+      <section style={{ background: '#1A1A1A', position: 'relative', overflow: 'hidden', padding: '48px 16px 56px' }}>
+        {/* subtle grid */}
+        <div style={{
+          position: 'absolute', inset: 0, opacity: 0.06,
+          backgroundImage: 'linear-gradient(rgba(255,255,255,0.3) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.3) 1px, transparent 1px)',
+          backgroundSize: '40px 40px', pointerEvents: 'none',
+        }} />
+        {/* glow */}
+        <div style={{ position: 'absolute', top: -100, right: -100, width: 500, height: 500, background: '#FF3008', borderRadius: '50%', opacity: 0.08, filter: 'blur(120px)', pointerEvents: 'none' }} />
 
-        <div className="max-w-6xl mx-auto px-4 py-10 lg:py-14 relative">
-          {/* Live ticker pill */}
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full mb-5"
-            style={{ background: 'var(--bg-3)', border: '1px solid var(--border-2)' }}>
-            <span className="w-2 h-2 rounded-full inline-block" style={{ background: 'var(--green)', boxShadow: '0 0 6px #00e676', animation: 'pulse 2s infinite' }} />
-            <span className="text-xs font-semibold" style={{ color: 'var(--text-2)' }}>{TICKER[tickerIdx]}</span>
+        <div style={{ maxWidth: 1120, margin: '0 auto', position: 'relative' }}>
+          {/* Ticker */}
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 999, padding: '6px 14px', marginBottom: 24, fontSize: 13, color: 'rgba(255,255,255,0.7)' }}>
+            <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22C55E', boxShadow: '0 0 8px #22C55E', display: 'inline-block', animation: 'pulse 2s infinite' }} />
+            <span style={{ color: 'rgba(255,255,255,0.45)', marginRight: 2 }}>Near you:</span>
+            <span style={{ fontWeight: 600, color: 'white' }}>{TICKER[tickerIdx]}</span>
           </div>
 
-          <div className="grid lg:grid-cols-2 gap-8 items-center">
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 40, alignItems: 'center' }}>
             <div>
-              <h1 className="fade-up" style={{
-                fontSize: 'clamp(2rem, 4.5vw, 3.8rem)', fontWeight: 900,
-                lineHeight: 1.08, letterSpacing: '-0.04em', marginBottom: '1rem'
-              }}>
-                Your neighbourhood,<br />
-                <span className="gradient-text">at your fingertips.</span>
+              <h1 style={{ fontSize: 'clamp(2rem, 4vw, 3.6rem)', fontWeight: 900, color: 'white', lineHeight: 1.05, letterSpacing: '-0.04em', marginBottom: 16 }}>
+                Anything from your<br />
+                <span style={{ color: '#FF3008' }}>neighbourhood</span>, delivered.
               </h1>
-              <p className="fade-up-1 text-base mb-7" style={{ color: 'var(--text-2)', lineHeight: 1.75, maxWidth: 420 }}>
-                Every real shop near you — food, grocery, pharmacy, salon — on one app. Real riders. Real fast.
+              <p style={{ fontSize: 16, color: 'rgba(255,255,255,0.5)', lineHeight: 1.75, maxWidth: 440, marginBottom: 28 }}>
+                Food, grocery, pharmacy, salon — real local shops near you. Real riders. Under 30 minutes.
               </p>
-              <div className="fade-up-2 flex gap-3 flex-wrap">
-                <Link href="/stores" className="btn-primary text-sm px-6 py-3">Order now →</Link>
-                <Link href="/location?return=/stores" className="btn-secondary text-sm px-5 py-3 flex items-center gap-2">
-                  <span>📍</span> Set my location
-                </Link>
+
+              {/* Location status & radius */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                {locStatus === 'denied' && (
+                  <button onClick={detectLocation} style={{
+                    background: '#FF3008', border: 'none', borderRadius: 12,
+                    padding: '10px 20px', fontSize: 14, fontWeight: 700, color: 'white', cursor: 'pointer', fontFamily: 'inherit'
+                  }}>📍 Allow location to see nearby shops</button>
+                )}
+                {locStatus === 'detecting' && (
+                  <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span className="shimmer" style={{ width: 8, height: 8, borderRadius: '50%', display: 'inline-block' }} /> Detecting your location…
+                  </div>
+                )}
+                {locStatus === 'granted' && areaName && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 10, padding: '8px 14px' }}>
+                    <span style={{ color: '#22C55E', fontSize: 13 }}>📍</span>
+                    <span style={{ color: '#22C55E', fontWeight: 700, fontSize: 13 }}>{areaName}</span>
+                    <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: 12 }}>·</span>
+                    <span style={{ color: 'rgba(255,255,255,0.45)', fontSize: 12 }}>within {radius}km</span>
+                  </div>
+                )}
+
+                {/* Radius chips */}
+                {locStatus === 'granted' && (
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    {[2, 5, 10, 20].map(r => (
+                      <button key={r} onClick={() => setRadius(r)}
+                        className="pill-btn"
+                        style={{
+                          padding: '6px 12px', borderRadius: 999, fontSize: 12, fontWeight: 700,
+                          background: radius === r ? '#FF3008' : 'rgba(255,255,255,0.1)',
+                          color: radius === r ? 'white' : 'rgba(255,255,255,0.5)',
+                          border: radius === r ? 'none' : '1px solid rgba(255,255,255,0.15)',
+                        }}>{r}km</button>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Quick stats */}
-            <div className="grid grid-cols-3 gap-3">
+            {/* Stats card */}
+            <div style={{ display: 'grid', gap: 8, minWidth: 200 }}>
               {[
-                { icon: '🏪', value: loaded ? allShops.length : '—', label: 'Local shops' },
-                { icon: '🟢', value: loaded ? openShops.length : '—', label: 'Open now' },
-                { icon: '⚡', value: '< 30', label: 'Min delivery' },
+                { icon: '🏪', val: loaded ? displayShops.length : '…', label: locStatus === 'granted' ? `shops within ${radius}km` : 'shops nearby' },
+                { icon: '🟢', val: loaded ? openShops.length : '…', label: 'open right now' },
+                { icon: '⚡', val: '< 30', label: 'min avg delivery' },
               ].map(s => (
-                <div key={s.label} className="card p-4 text-center">
-                  <div className="text-2xl mb-1">{s.icon}</div>
-                  <div className="font-black text-2xl gradient-text leading-none">{s.value}</div>
-                  <div className="text-xs mt-1" style={{ color: 'var(--text-3)' }}>{s.label}</div>
+                <div key={s.label} style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 14, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <span style={{ fontSize: 22 }}>{s.icon}</span>
+                  <div>
+                    <div style={{ fontWeight: 900, fontSize: 22, color: 'white', lineHeight: 1 }}>{s.val}</div>
+                    <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', fontWeight: 500, marginTop: 2 }}>{s.label}</div>
+                  </div>
                 </div>
               ))}
-              <div className="card p-4 col-span-3 flex items-center justify-between">
-                <div>
-                  <p className="font-black text-sm">Partner with Welokl</p>
-                  <p className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>Shop owner or delivery rider?</p>
-                </div>
-                <div className="flex gap-2">
-                  <Link href="/auth/signup?role=business" className="text-xs font-bold px-3 py-1.5 rounded-xl"
-                    style={{ background: 'var(--brand-muted)', color: 'var(--brand)' }}>🏪 List shop</Link>
-                  <Link href="/auth/signup?role=delivery" className="text-xs font-bold px-3 py-1.5 rounded-xl"
-                    style={{ background: 'var(--bg-4)', color: 'var(--text-2)' }}>🛵 Ride</Link>
-                </div>
-              </div>
             </div>
           </div>
         </div>
       </section>
 
-      <div className="max-w-6xl mx-auto px-4">
-
-        {/* ─── SECTION 1: CATEGORY PILLS ─── */}
-        <section className="py-6">
-          <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
-            <button onClick={() => setActiveCategory(null)}
-              className="flex-shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-2xl text-sm font-bold transition-all"
-              style={!activeCategory
-                ? { background: 'var(--brand)', color: 'white', boxShadow: '0 0 16px var(--brand-glow)' }
-                : { background: 'var(--bg-2)', color: 'var(--text-2)', border: '1px solid var(--border)' }}>
-              ✦ All
-            </button>
+      {/* ── CATEGORY PILLS ── */}
+      <div style={{ borderBottom: '1px solid var(--border)', background: 'var(--card-bg)', position: 'sticky', top: 60, zIndex: 40 }}>
+        <div style={{ maxWidth: 1120, margin: '0 auto', padding: '12px 16px' }}>
+          <div className="no-scrollbar" style={{ display: 'flex', gap: 8, overflowX: 'auto' }}>
+            <button
+              onClick={() => setActiveCategory(null)}
+              className="pill-btn"
+              style={{
+                flexShrink: 0, padding: '8px 18px', borderRadius: 999, fontSize: 13, fontWeight: 700,
+                background: !activeCategory ? 'var(--brand)' : 'var(--bg-3)',
+                color: !activeCategory ? 'white' : 'var(--text-2)',
+                border: 'none',
+              }}
+            >All</button>
             {CATEGORIES.map(cat => (
-              <button key={cat.name} onClick={() => setActiveCategory(activeCategory === cat.name ? null : cat.name)}
-                className="flex-shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-2xl text-sm font-bold transition-all whitespace-nowrap"
-                style={activeCategory === cat.name
-                  ? { background: cat.color + '20', color: cat.color, border: `1px solid ${cat.color}50`, boxShadow: `0 0 12px ${cat.color}30` }
-                  : { background: 'var(--bg-2)', color: 'var(--text-2)', border: '1px solid var(--border)' }}>
-                {cat.icon} {cat.name}
+              <button key={cat.name}
+                onClick={() => setActiveCategory(activeCategory === cat.q ? null : cat.q)}
+                className="pill-btn"
+                style={{
+                  flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6,
+                  padding: '8px 16px', borderRadius: 999, fontSize: 13, fontWeight: 700,
+                  background: activeCategory === cat.q ? '#FF3008' : '#F5F5F5',
+                  color: activeCategory === cat.q ? 'white' : 'var(--text-2)',
+                  border: 'none', whiteSpace: 'nowrap',
+                }}>
+                <span>{cat.icon}</span>{cat.name}
               </button>
             ))}
           </div>
-        </section>
-
-        {/* ─── SECTION 2: FEATURED OPEN SHOPS ─── */}
-        <section className="pb-10">
-          <div className="flex items-center justify-between mb-5">
-            <div>
-              <h2 className="font-black text-xl" style={{ letterSpacing: '-0.03em' }}>
-                {activeCategory ? `${activeCategory} shops` : '🟢 Open now'}
-              </h2>
-              <p className="text-sm mt-0.5" style={{ color: 'var(--text-3)' }}>
-                {filteredShops.filter(s => s.is_open).length} shops open · tap to order
-              </p>
-            </div>
-            <Link href="/stores" className="text-sm font-bold" style={{ color: 'var(--brand)' }}>See all →</Link>
-          </div>
-
-          {!loaded ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-              {Array.from({ length: 8 }).map((_, i) => <div key={i} className="h-52 shimmer" />)}
-            </div>
-          ) : featuredShops.length === 0 ? (
-            <div className="card p-12 text-center">
-              <div className="text-5xl mb-3">🏪</div>
-              <p className="font-bold" style={{ color: 'var(--text-2)' }}>No shops in this category yet</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-              {featuredShops.map((shop, i) => <ShopCard key={shop.id} shop={shop} delay={i * 40} />)}
-            </div>
-          )}
-        </section>
-
-        {/* ─── SECTION 3: TRENDING PRODUCTS ─── */}
-        {products.length > 0 && (
-          <section className="pb-10" style={{ borderTop: '1px solid var(--border)', paddingTop: '2.5rem' }}>
-            <div className="flex items-center justify-between mb-5">
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <h2 className="font-black text-xl" style={{ letterSpacing: '-0.03em' }}>Trending right now</h2>
-                  <span className="badge badge-brand">🔥 Hot picks</span>
-                </div>
-                <p className="text-sm" style={{ color: 'var(--text-3)' }}>Products people are ordering this moment</p>
-              </div>
-            </div>
-            <div className="flex gap-3 overflow-x-auto no-scrollbar pb-3">
-              {products.map((p, i) => <ProductCard key={p.id} product={p} delay={i * 25} />)}
-            </div>
-          </section>
-        )}
-
-        {/* ─── SECTION 4: MORE SHOPS BY CATEGORY ─── */}
-        {!activeCategory && moreByCategory.map(cat => cat.shops.length > 0 && (
-          <section key={cat.label} className="pb-10" style={{ borderTop: '1px solid var(--border)', paddingTop: '2.5rem' }}>
-            <div className="flex items-center justify-between mb-5">
-              <div className="flex items-center gap-2">
-                <span className="text-2xl">{cat.icon}</span>
-                <div>
-                  <h2 className="font-black text-lg" style={{ letterSpacing: '-0.02em' }}>{cat.label}</h2>
-                  <p className="text-xs" style={{ color: 'var(--text-3)' }}>{cat.shops.length} shops nearby</p>
-                </div>
-              </div>
-              <button onClick={() => setActiveCategory(cat.label.split(' ')[0])}
-                className="text-sm font-bold" style={{ color: cat.color }}>See all →</button>
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {cat.shops.map((shop, i) => <ShopCard key={shop.id} shop={shop} delay={i * 50} />)}
-            </div>
-          </section>
-        ))}
-
+        </div>
       </div>
 
-      {/* ─── BOTTOM CTA ─── */}
-      <section style={{ background: 'var(--bg-1)', borderTop: '1px solid var(--border)' }} className="py-14">
-        <div className="max-w-5xl mx-auto px-4">
-          <h2 className="font-black text-2xl text-center mb-2" style={{ letterSpacing: '-0.03em' }}>
-            Why <span className="gradient-text">welokl</span>?
-          </h2>
-          <p className="text-center text-sm mb-10" style={{ color: 'var(--text-3)' }}>Built for your neighbourhood. Not a warehouse.</p>
-          <div className="grid sm:grid-cols-3 gap-4">
-            {[
-              { icon: '⚡', title: 'Under 30 minutes', desc: 'Real riders who know your streets. Most orders arrive before you\'re even hungry.' },
-              { icon: '🏪', title: 'Real local shops', desc: 'Not a dark kitchen. Your actual neighbourhood shop — supporting real people.' },
-              { icon: '💰', title: 'No hidden fees', desc: 'What you see is what you pay. UPI or cash. No surprises at checkout.' },
-            ].map(f => (
-              <div key={f.title} className="card p-6 relative overflow-hidden">
-                <div style={{ position: 'absolute', top: -20, right: -20, fontSize: 80, opacity: 0.04, lineHeight: 1 }}>{f.icon}</div>
-                <div className="text-3xl mb-4">{f.icon}</div>
-                <h3 className="font-black text-base mb-2">{f.title}</h3>
-                <p className="text-sm leading-relaxed" style={{ color: 'var(--text-2)' }}>{f.desc}</p>
-              </div>
+      {/* ── MAIN CONTENT ── */}
+      <div style={{ maxWidth: 1120, margin: '0 auto', padding: '28px 16px 80px' }}>
+
+        {/* Location required state */}
+        {locStatus === 'denied' && (
+          <div style={{ textAlign: 'center', padding: '60px 20px', background: 'var(--card-bg)', borderRadius: 20, border: '1px solid var(--border)', marginBottom: 24 }}>
+            <div style={{ fontSize: 56, marginBottom: 16 }}>📍</div>
+            <h2 style={{ fontWeight: 900, fontSize: 22, color: 'var(--text)', marginBottom: 8 }}>Share your location</h2>
+            <p style={{ color: 'var(--text-3)', fontSize: 15, marginBottom: 24, maxWidth: 360, margin: '0 auto 24px' }}>
+              We only show shops near you. Enable location to see what's available right now.
+            </p>
+            <button onClick={detectLocation} style={{
+              background: '#FF3008', border: 'none', borderRadius: 12,
+              padding: '12px 28px', fontSize: 15, fontWeight: 700, color: 'white', cursor: 'pointer', fontFamily: 'inherit',
+            }}>Enable location</button>
+          </div>
+        )}
+
+        {/* Section header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+          <div>
+            <h2 style={{ fontWeight: 900, fontSize: 22, color: 'var(--text)', letterSpacing: '-0.02em' }}>
+              {activeCategory
+                ? `${CATEGORIES.find(c => c.q === activeCategory)?.name} near you`
+                : searchVal
+                  ? `Results for "${searchVal}"`
+                  : locStatus === 'granted' ? `Shops within ${radius}km` : 'Shops near you'}
+            </h2>
+            <p style={{ fontSize: 13, color: 'var(--text-3)', marginTop: 3 }}>
+              {loaded
+                ? `${openShops.length} open · ${closedShops.length} closed`
+                : 'Loading…'}
+              {locStatus === 'detecting' && ' · Detecting location…'}
+            </p>
+          </div>
+          <Link href="/stores" style={{ textDecoration: 'none', fontSize: 13, fontWeight: 700, color: 'var(--brand)' }}>See all →</Link>
+        </div>
+
+        {/* Shop grid */}
+        {!loaded ? (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 16 }}>
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div key={i} style={{ height: 240 }} className="shimmer" />
             ))}
           </div>
-
-          <div className="grid sm:grid-cols-2 gap-4 mt-6">
-            <Link href="/auth/signup?role=business" className="card p-6 block group hover:border-orange-500/30 transition-all" style={{ background: 'var(--bg-2)' }}>
-              <div className="text-3xl mb-3">🏪</div>
-              <h3 className="font-black text-lg mb-1">Own a shop?</h3>
-              <p className="text-sm mb-4" style={{ color: 'var(--text-2)' }}>List free. We bring customers, you serve them.</p>
-              <span className="text-sm font-black" style={{ color: 'var(--brand)' }}>Register your shop →</span>
-            </Link>
-            <Link href="/auth/signup?role=delivery" className="card p-6 block group hover:border-orange-500/30 transition-all relative overflow-hidden" style={{ background: 'var(--bg-2)' }}>
-              <div style={{ position: 'absolute', top: -30, right: -30, width: 160, height: 160, background: 'var(--brand)', borderRadius: '50%', opacity: 0.06, filter: 'blur(40px)' }} />
-              <div className="text-3xl mb-3">🛵</div>
-              <h3 className="font-black text-lg mb-1">Earn with your bike</h3>
-              <p className="text-sm mb-4" style={{ color: 'var(--text-2)' }}>₹20 per delivery. Accept orders on your terms.</p>
-              <span className="text-sm font-black" style={{ color: 'var(--brand)' }}>Become a rider →</span>
-            </Link>
+        ) : displayShops.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '64px 20px', background: 'var(--card-bg)', borderRadius: 20, border: '1px solid var(--border)' }}>
+            <div style={{ fontSize: 56, marginBottom: 16 }}>🏪</div>
+            <h3 style={{ fontWeight: 900, fontSize: 20, color: 'var(--text)', marginBottom: 8 }}>No shops found nearby</h3>
+            <p style={{ color: 'var(--text-3)', fontSize: 14, marginBottom: 20 }}>
+              {locStatus === 'granted' ? `No shops within ${radius}km. Try increasing your radius.` : 'Set your location to see nearby shops.'}
+            </p>
+            {locStatus === 'granted' && (
+              <button onClick={() => setRadius(50)} style={{
+                background: '#FF3008', border: 'none', borderRadius: 12,
+                padding: '10px 24px', fontSize: 14, fontWeight: 700, color: 'white', cursor: 'pointer', fontFamily: 'inherit',
+              }}>Expand to 50km</button>
+            )}
           </div>
+        ) : (
+          <>
+            {/* Open shops */}
+            {openShops.length > 0 && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 16, marginBottom: 32 }}>
+                {openShops.map((shop, i) => (
+                  <ShopCard key={shop.id} shop={shop} index={i} />
+                ))}
+              </div>
+            )}
+
+            {/* Closed shops */}
+            {closedShops.length > 0 && (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+                  <span style={{ fontWeight: 800, fontSize: 16, color: 'var(--text-3)' }}>Closed now</span>
+                  <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 16, marginBottom: 40 }}>
+                  {closedShops.map((shop, i) => (
+                    <ShopCard key={shop.id} shop={shop} index={i} closed />
+                  ))}
+                </div>
+              </>
+            )}
+          </>
+        )}
+
+        {/* Trending products */}
+        {products.length > 0 && (
+          <div style={{ marginTop: 16, borderTop: '1px solid var(--border)', paddingTop: 40 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+              <div>
+                <h2 style={{ fontWeight: 900, fontSize: 22, color: 'var(--text)', letterSpacing: '-0.02em' }}>🔥 Trending products</h2>
+                <p style={{ fontSize: 13, color: 'var(--text-3)', marginTop: 3 }}>Ordered the most today</p>
+              </div>
+            </div>
+            <div className="no-scrollbar" style={{ display: 'flex', gap: 14, overflowX: 'auto', paddingBottom: 4 }}>
+              {products.map(p => <ProductCard key={p.id} product={p} />)}
+            </div>
+          </div>
+        )}
+
+        {/* Partner CTA */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 56, borderTop: '1px solid var(--border)', paddingTop: 40 }}>
+          <Link href="/auth/signup?role=business" style={{ textDecoration: 'none' }}>
+            <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 20, padding: 28, cursor: 'pointer', transition: 'box-shadow 0.15s' }}
+              onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 8px 32px rgba(0,0,0,0.1)')}
+              onMouseLeave={e => (e.currentTarget.style.boxShadow = 'none')}>
+              <div style={{ fontSize: 40, marginBottom: 14 }}>🏪</div>
+              <h3 style={{ fontWeight: 900, fontSize: 18, color: 'var(--text)', marginBottom: 6 }}>Own a shop?</h3>
+              <p style={{ fontSize: 14, color: 'var(--text-3)', lineHeight: 1.6, marginBottom: 16 }}>List free. 15% only on sales. We bring customers to you.</p>
+              <span style={{ fontSize: 14, fontWeight: 700, color: '#FF3008' }}>Register your shop →</span>
+            </div>
+          </Link>
+          <Link href="/auth/signup?role=delivery" style={{ textDecoration: 'none' }}>
+            <div style={{ background: '#1A1A1A', borderRadius: 20, padding: 28, cursor: 'pointer', transition: 'box-shadow 0.15s' }}
+              onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 8px 32px rgba(255,48,8,0.25)')}
+              onMouseLeave={e => (e.currentTarget.style.boxShadow = 'none')}>
+              <div style={{ fontSize: 40, marginBottom: 14 }}>🛵</div>
+              <h3 style={{ fontWeight: 900, fontSize: 18, color: 'white', marginBottom: 6 }}>Earn with Welokl</h3>
+              <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.5)', lineHeight: 1.6, marginBottom: 16 }}>₹20 per delivery, instant wallet credit. Work when you want.</p>
+              <span style={{ fontSize: 14, fontWeight: 700, color: '#FF3008' }}>Become a rider →</span>
+            </div>
+          </Link>
         </div>
-      </section>
+      </div>
 
-      {/* ─── FOOTER ─── */}
-      <footer style={{ borderTop: '1px solid var(--border)', background: 'var(--bg)' }} className="py-8">
-        <div className="max-w-6xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg flex items-center justify-center text-white font-black text-xs"
-              style={{ background: 'var(--brand)' }}>W</div>
-            <span className="font-black" style={{ letterSpacing: '-0.02em' }}>welokl</span>
+      {/* ── FOOTER ── */}
+      <footer style={{ borderTop: '1px solid var(--border)', background: 'var(--card-bg)', padding: '28px 16px' }}>
+        <div style={{ maxWidth: 1120, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ width: 28, height: 28, borderRadius: 8, background: '#FF3008', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 900, fontSize: 13 }}>W</div>
+            <span style={{ fontWeight: 800, fontSize: 16, color: 'var(--text)', letterSpacing: '-0.02em' }}>welokl</span>
           </div>
-          <p className="text-xs" style={{ color: 'var(--text-3)' }}>Your neighbourhood on your phone. © {new Date().getFullYear()}</p>
-          <div className="flex gap-5 text-xs" style={{ color: 'var(--text-3)' }}>
-            <a href="#" className="hover:text-white transition-colors">Privacy</a>
-            <a href="#" className="hover:text-white transition-colors">Terms</a>
+          <p style={{ fontSize: 12, color: 'var(--text-3)' }}>Your neighbourhood, on your phone · © {new Date().getFullYear()} Welokl</p>
+          <div style={{ display: 'flex', gap: 20, fontSize: 12, color: 'var(--text-3)' }}>
+            <a href="#" style={{ textDecoration: 'none', color: 'inherit' }}>Privacy</a>
+            <a href="#" style={{ textDecoration: 'none', color: 'inherit' }}>Terms</a>
           </div>
         </div>
       </footer>
@@ -333,50 +563,72 @@ export default function HomePage() {
 }
 
 // ── SHOP CARD ──
-function ShopCard({ shop, delay }: { shop: Shop; delay: number }) {
-  const catIcon: Record<string, string> = {
-    food: '🍔', grocery: '🛒', pharmacy: '💊', electronics: '📱',
-    salon: '💇', hardware: '🔧', pet: '🐾', flower: '🌸', default: '🏪'
+function ShopCard({ shop, index, closed }: { shop: Shop & { km: number | null }; index: number; closed?: boolean }) {
+  const catKey = Object.keys(CAT_ICON).find(k => shop.category_name?.toLowerCase().includes(k)) || 'default'
+  const accentColor = CAT_COLOR[catKey] || CAT_COLOR.default
+  const catBg: Record<string, string> = {
+    food: 'rgba(255,48,8,0.06)', grocery: 'rgba(0,168,120,0.07)', pharmacy: 'rgba(0,102,255,0.07)',
+    electronics: 'rgba(123,47,255,0.07)', salon: 'rgba(255,45,120,0.07)', hardware: 'rgba(120,113,108,0.07)',
+    pet: 'rgba(251,146,60,0.07)', default: 'rgba(255,90,31,0.06)'
   }
-  const key = Object.keys(catIcon).find(k => shop.category_name?.toLowerCase().includes(k)) || 'default'
+  const bg = catBg[catKey] || catBg.default
 
   return (
-    <Link href={`/stores/${shop.id}`}>
-      <div className="card-hover cursor-pointer overflow-hidden fade-up" style={{ animationDelay: `${delay}ms`, opacity: 0 }}>
-        {/* Image */}
-        <div className="h-28 relative flex items-center justify-center overflow-hidden" style={{ background: 'var(--bg-3)' }}>
-          {shop.image_url
-            ? <img src={shop.image_url} alt={shop.name} className="w-full h-full object-cover" />
-            : <span className="text-4xl" style={{ opacity: 0.4 }}>{catIcon[key]}</span>
-          }
-          {/* Gradient overlay on image */}
-          {shop.image_url && <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.5) 0%, transparent 60%)' }} />}
+    <Link href={`/stores/${shop.id}`} style={{ textDecoration: 'none' }}>
+      <div
+        className="shop-card fade-in"
+        style={{
+          background: 'var(--card-bg)', borderRadius: 16, overflow: 'hidden',
+          border: '1px solid var(--border)', opacity: closed ? 0.65 : 1,
+          animationDelay: `${index * 30}ms`, animationFillMode: 'both',
+        }}
+      >
+        {/* Image / placeholder */}
+        <div style={{ height: 140, position: 'relative', overflow: 'hidden', background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {shop.image_url ? (
+            <img src={shop.image_url} alt={shop.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          ) : (
+            <span style={{ fontSize: 52, opacity: 0.35 }}>{CAT_ICON[catKey]}</span>
+          )}
+          {shop.image_url && (
+            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.45) 0%, transparent 55%)' }} />
+          )}
 
-          <div className="absolute top-2 left-2">
-            <span className={`badge text-xs ${shop.is_open ? 'badge-green' : ''}`}
-              style={!shop.is_open ? { background: 'rgba(0,0,0,0.5)', color: 'var(--text-3)', border: '1px solid var(--border)' } : {}}>
-              {shop.is_open ? '● Open' : '● Closed'}
-            </span>
+          {/* Open/closed badge */}
+          <div style={{ position: 'absolute', top: 10, left: 10 }}>
+            {shop.is_open ? (
+              <span style={{ background: 'rgba(22,197,94,0.95)', color: 'white', fontWeight: 700, fontSize: 11, padding: '3px 8px', borderRadius: 999, backdropFilter: 'blur(4px)' }}>● Open</span>
+            ) : (
+              <span style={{ background: 'rgba(0,0,0,0.55)', color: 'rgba(255,255,255,0.7)', fontWeight: 600, fontSize: 11, padding: '3px 8px', borderRadius: 999, backdropFilter: 'blur(4px)' }}>Closed</span>
+            )}
           </div>
-          <div className="absolute top-2 right-2 text-xs font-black px-2 py-0.5 rounded-lg"
-            style={{ background: 'rgba(0,0,0,0.65)', color: '#ffab00', backdropFilter: 'blur(4px)' }}>
-            ★ {shop.rating}
+
+          {/* Rating */}
+          <div style={{ position: 'absolute', top: 10, right: 10, background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)', borderRadius: 8, padding: '3px 8px', fontSize: 12, fontWeight: 800, color: '#FFB800', display: 'flex', alignItems: 'center', gap: 3 }}>
+            ★ {shop.rating?.toFixed(1)}
           </div>
+
+          {/* Distance */}
+          {shop.km !== null && (
+            <div style={{ position: 'absolute', bottom: 10, right: 10, background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)', borderRadius: 8, padding: '3px 8px', fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.9)' }}>
+              📍 {shop.km < 1 ? `${Math.round(shop.km * 1000)}m` : `${shop.km.toFixed(1)}km`}
+            </div>
+          )}
         </div>
 
         {/* Info */}
-        <div className="p-3">
-          <p className="font-black text-sm leading-tight line-clamp-1" style={{ letterSpacing: '-0.01em' }}>{shop.name}</p>
-          {shop.description
-            ? <p className="text-xs mt-0.5 line-clamp-1" style={{ color: 'var(--text-3)' }}>{shop.description}</p>
-            : <p className="text-xs mt-0.5 line-clamp-1" style={{ color: 'var(--text-3)' }}>{shop.category_name} · {shop.area}</p>
-          }
-          <div className="flex items-center justify-between mt-2 pt-2" style={{ borderTop: '1px solid var(--border)' }}>
-            <span className="text-xs" style={{ color: 'var(--text-3)' }}>🛵 {shop.avg_delivery_time} min</span>
-            {shop.min_order_amount > 0
-              ? <span className="text-xs" style={{ color: 'var(--text-3)' }}>₹{shop.min_order_amount} min</span>
-              : <span className="text-xs badge-green badge">Free delivery</span>
-            }
+        <div style={{ padding: '14px 14px 12px' }}>
+          <p style={{ fontWeight: 800, fontSize: 15, color: 'var(--text)', marginBottom: 4, letterSpacing: '-0.01em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{shop.name}</p>
+          <p style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 10, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {shop.description || `${shop.category_name?.split(' ')[0]} · ${shop.area}`}
+          </p>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 10, borderTop: '1px solid var(--border)' }}>
+            <span style={{ fontSize: 12, color: 'var(--text-3)', fontWeight: 600 }}>
+              {shop.delivery_enabled ? `🛵 ${shop.avg_delivery_time} min` : '🏃 Pickup only'}
+            </span>
+            <span style={{ fontSize: 12, color: 'var(--text-3)', fontWeight: 500 }}>
+              {shop.min_order_amount > 0 ? `₹${shop.min_order_amount}+ min` : 'No minimum'}
+            </span>
           </div>
         </div>
       </div>
@@ -385,33 +637,30 @@ function ShopCard({ shop, delay }: { shop: Shop; delay: number }) {
 }
 
 // ── PRODUCT CARD ──
-function ProductCard({ product, delay }: { product: Product; delay: number }) {
+function ProductCard({ product }: { product: Product }) {
   const disc = product.original_price && product.original_price > product.price
-    ? Math.round(((product.original_price - product.price) / product.original_price) * 100) : null
+    ? Math.round(((product.original_price - product.price) / product.original_price) * 100)
+    : null
 
   return (
-    <Link href={`/stores/${product.shop_id}`}>
-      <div className="flex-shrink-0 w-40 card-hover cursor-pointer overflow-hidden fade-up" style={{ animationDelay: `${delay}ms`, opacity: 0 }}>
-        <div className="h-28 flex items-center justify-center relative overflow-hidden" style={{ background: 'var(--bg-3)' }}>
-          {product.image_url
-            ? <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" />
-            : <span className="text-4xl" style={{ opacity: 0.3 }}>🍽️</span>
-          }
+    <Link href={`/stores/${product.shop_id}`} style={{ textDecoration: 'none' }}>
+      <div className="shop-card" style={{ flexShrink: 0, width: 160, background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden' }}>
+        <div style={{ height: 110, background: 'var(--bg-3)', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {product.image_url ? (
+            <img src={product.image_url} alt={product.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          ) : (
+            <span style={{ fontSize: 36, opacity: 0.25 }}>🍽️</span>
+          )}
           {disc && (
-            <div className="absolute top-2 left-2 text-xs font-black px-1.5 py-0.5 rounded-lg"
-              style={{ background: 'var(--green)', color: '#000' }}>{disc}% off</div>
+            <div style={{ position: 'absolute', top: 8, left: 8, background: '#22C55E', color: 'white', fontSize: 11, fontWeight: 800, padding: '2px 7px', borderRadius: 999 }}>-{disc}%</div>
           )}
         </div>
-        <div className="p-3">
-          <p className="text-xs font-black line-clamp-1">{product.name}</p>
-          <p className="text-xs line-clamp-1 mt-0.5" style={{ color: 'var(--text-3)' }}>
-            {product.shop_name} {product.shop_area ? `· ${product.shop_area}` : ''}
-          </p>
-          <div className="flex items-center gap-1.5 mt-2">
-            <span className="font-black text-sm gradient-text">₹{product.price}</span>
-            {product.original_price && (
-              <span className="text-xs line-through" style={{ color: 'var(--text-3)' }}>₹{product.original_price}</span>
-            )}
+        <div style={{ padding: '10px 12px 12px' }}>
+          <p style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{product.name}</p>
+          {product.shop_name && <p style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{product.shop_name}</p>}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
+            <span style={{ fontWeight: 800, fontSize: 15, color: '#FF3008' }}>₹{product.price}</span>
+            {product.original_price && <span style={{ fontSize: 12, color: 'var(--text-4)', textDecoration: 'line-through' }}>₹{product.original_price}</span>}
           </div>
         </div>
       </div>
