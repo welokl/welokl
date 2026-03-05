@@ -9,10 +9,25 @@ export async function proxy(request: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        getAll() { return request.cookies.getAll() },
-        setAll(cookiesToSet: { name: string; value: string; options?: any }[]) {
-          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
+        getAll() {
+          return request.cookies.getAll()
+        },
+        setAll(
+          cookiesToSet: {
+            name: string
+            value: string
+            options?: Parameters<typeof supabaseResponse.cookies.set>[2]
+          }[]
+        ) {
+          // Set cookies on request
+          cookiesToSet.forEach(({ name, value }) =>
+            request.cookies.set(name, value)
+          )
+
+          // Create fresh response
           supabaseResponse = NextResponse.next({ request })
+
+          // Set cookies on response
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options)
           )
@@ -21,31 +36,34 @@ export async function proxy(request: NextRequest) {
     }
   )
 
-  // IMPORTANT: do NOT use getUser() here — use getSession() to avoid redirect loops
-  // getUser() makes a network call and can fail/timeout causing false logouts
-  const { data: { session } } = await supabase.auth.getSession()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
   const { pathname } = request.nextUrl
 
+  // Protected routes
   const protectedRoutes = ['/dashboard', '/checkout', '/orders']
-  const isProtected = protectedRoutes.some(r => pathname.startsWith(r))
+  const isProtected = protectedRoutes.some((route) =>
+    pathname.startsWith(route)
+  )
 
-  // Only redirect if truly no session
-  if (isProtected && !session) {
-    const url = new URL('/auth/login', request.url)
-    url.searchParams.set('next', pathname)
-    return NextResponse.redirect(url)
+  if (isProtected && !user) {
+    return NextResponse.redirect(new URL('/auth/login', request.url))
   }
 
-  // Role-based redirect only for /dashboard root
-  if (pathname === '/dashboard' && session) {
+  // Role-based dashboard redirect
+  if (pathname === '/dashboard' && user) {
     const { data: profile } = await supabase
       .from('users')
       .select('role')
-      .eq('id', session.user.id)
+      .eq('id', user.id)
       .single()
 
     if (profile?.role) {
-      return NextResponse.redirect(new URL(`/dashboard/${profile.role}`, request.url))
+      return NextResponse.redirect(
+        new URL(`/dashboard/${profile.role}`, request.url)
+      )
     }
   }
 
@@ -53,5 +71,7 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)'],
+  matcher: [
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+  ],
 }

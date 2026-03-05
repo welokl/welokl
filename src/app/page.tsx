@@ -192,22 +192,7 @@ export default function HomePage() {
   const closedShops = displayShops.filter(s => !s.is_open)
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg)', fontFamily: "'DM Sans', 'Inter', sans-serif" }}>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;0,9..40,900;1,9..40,400&display=swap');
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
-        .shimmer { background: linear-gradient(90deg, #F0F0F0 25%, #E0E0E0 50%, #F0F0F0 75%); background-size: 200% 100%; animation: shimmer 1.4s infinite; border-radius: 16px; }
-        @keyframes fadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
-        .fade-in { animation: fadeUp 0.4s ease forwards; }
-        .shop-card { transition: transform 0.15s ease, box-shadow 0.15s ease; }
-        .shop-card:hover { transform: translateY(-3px); box-shadow: 0 12px 40px rgba(0,0,0,0.12); }
-        .pill-btn { border: none; cursor: pointer; transition: all 0.15s; font-family: inherit; }
-        .pill-btn:hover { opacity: 0.85; }
-        input { font-family: inherit; }
-      `}</style>
+    <div style={{ minHeight: '100vh', background: 'var(--bg)', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
 
       {/* ── TOP NAV ── */}
       <nav style={{
@@ -217,7 +202,7 @@ export default function HomePage() {
         borderBottom: '1px solid var(--border)',
         padding: '0 16px',
       }}>
-        <div style={{ maxWidth: 1120, margin: '0 auto', height: 60, display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ maxWidth: 1120, margin: '0 auto', height: 60, display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
           {/* Logo */}
           <Link href="/" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
             <div style={{ width: 34, height: 34, borderRadius: 10, background: '#FF3008', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 900, fontSize: 16 }}>W</div>
@@ -243,7 +228,7 @@ export default function HomePage() {
           </button>
 
           {/* Search */}
-          <div style={{ flex: 1, position: 'relative', maxWidth: 440 }}>
+          <div style={{ flex: 1, minWidth: 0, position: 'relative', maxWidth: 440 }}>
             <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 15, color: 'var(--text-3)', pointerEvents: 'none' }}>🔍</span>
             <input
               ref={searchRef}
@@ -297,7 +282,7 @@ export default function HomePage() {
       </nav>
 
       {/* ── HERO ── */}
-      <section style={{ background: '#1A1A1A', position: 'relative', overflow: 'hidden', padding: '48px 16px 56px' }}>
+      <section style={{ background: '#1A1A1A', position: 'relative', overflow: 'hidden', padding: 'clamp(28px, 6vw, 56px) 16px' }}>
         {/* subtle grid */}
         <div style={{
           position: 'absolute', inset: 0, opacity: 0.06,
@@ -315,7 +300,7 @@ export default function HomePage() {
             <span style={{ fontWeight: 600, color: 'white' }}>{TICKER[tickerIdx]}</span>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 40, alignItems: 'center' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 32, alignItems: 'center' }}>
             <div>
               <h1 style={{ fontSize: 'clamp(2rem, 4vw, 3.6rem)', fontWeight: 900, color: 'white', lineHeight: 1.05, letterSpacing: '-0.04em', marginBottom: 16 }}>
                 Anything from your<br />
@@ -354,7 +339,7 @@ export default function HomePage() {
                       <button key={r} onClick={() => setRadius(r)}
                         className="pill-btn"
                         style={{
-                          padding: '6px 12px', borderRadius: 999, fontSize: 12, fontWeight: 700,
+                          padding: '5px 10px', borderRadius: 999, fontSize: 11, fontWeight: 700,
                           background: radius === r ? '#FF3008' : 'rgba(255,255,255,0.1)',
                           color: radius === r ? 'white' : 'rgba(255,255,255,0.5)',
                           border: radius === r ? 'none' : '1px solid rgba(255,255,255,0.15)',
@@ -366,7 +351,7 @@ export default function HomePage() {
             </div>
 
             {/* Stats card */}
-            <div style={{ display: 'grid', gap: 8, minWidth: 200 }}>
+            <div style={{ display: 'grid', gap: 8 }}>
               {[
                 { icon: '🏪', val: loaded ? displayShops.length : '…', label: locStatus === 'granted' ? `shops within ${radius}km` : 'shops nearby' },
                 { icon: '🟢', val: loaded ? openShops.length : '…', label: 'open right now' },
@@ -457,7 +442,7 @@ export default function HomePage() {
 
         {/* Shop grid */}
         {!loaded ? (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(240px, 100%), 1fr))', gap: 16 }}>
             {Array.from({ length: 8 }).map((_, i) => (
               <div key={i} style={{ height: 240 }} className="shimmer" />
             ))}
@@ -480,7 +465,7 @@ export default function HomePage() {
           <>
             {/* Open shops */}
             {openShops.length > 0 && (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 16, marginBottom: 32 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12, marginBottom: 24 }}>
                 {openShops.map((shop, i) => (
                   <ShopCard key={shop.id} shop={shop} index={i} />
                 ))}
@@ -494,7 +479,7 @@ export default function HomePage() {
                   <span style={{ fontWeight: 800, fontSize: 16, color: 'var(--text-3)' }}>Closed now</span>
                   <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 16, marginBottom: 40 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12, marginBottom: 32 }}>
                   {closedShops.map((shop, i) => (
                     <ShopCard key={shop.id} shop={shop} index={i} closed />
                   ))}
@@ -520,7 +505,7 @@ export default function HomePage() {
         )}
 
         {/* Partner CTA */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 56, borderTop: '1px solid var(--border)', paddingTop: 40 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16, marginTop: 56, borderTop: '1px solid var(--border)', paddingTop: 40 }}>
           <Link href="/auth/signup?role=business" style={{ textDecoration: 'none' }}>
             <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 20, padding: 28, cursor: 'pointer', transition: 'box-shadow 0.15s' }}
               onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 8px 32px rgba(0,0,0,0.1)')}
