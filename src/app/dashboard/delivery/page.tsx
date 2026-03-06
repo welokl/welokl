@@ -197,16 +197,26 @@ export default function DeliveryDashboard() {
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
-                <div style={{ background: 'rgba(34,197,94,0.10)', border: '1px solid rgba(34,197,94,0.2)', borderRadius: 12, padding: '10px 14px' }}>
-                  <p style={{ fontSize: 11, fontWeight: 800, color: '#16a34a', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.06em' }}>📦 Pickup from</p>
-                  <p style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)' }}>{activeOrder.shop?.address}</p>
-                  {activeOrder.shop?.phone && <a href={`tel:${activeOrder.shop.phone}`} style={{ fontSize: 12, color: '#16a34a', fontWeight: 700, textDecoration: 'none' }}>📞 Call shop</a>}
+                <div style={{ background: 'rgba(34,197,94,0.12)', border: '2px solid rgba(34,197,94,0.35)', borderRadius: 12, padding: '12px 14px' }}>
+                  <p style={{ fontSize: 11, fontWeight: 800, color: '#16a34a', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.07em' }}>📦 Pickup from</p>
+                  <p style={{ fontWeight: 800, fontSize: 15, color: 'var(--text)', lineHeight: 1.4 }}>{activeOrder.shop?.address}</p>
+                  {activeOrder.shop?.phone && (
+                    <a href={`tel:${activeOrder.shop.phone}`}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginTop: 8, fontSize: 13, fontWeight: 800, color: '#fff', background: '#16a34a', padding: '5px 12px', borderRadius: 8, textDecoration: 'none' }}>
+                      📞 Call shop
+                    </a>
+                  )}
                 </div>
                 {activeOrder.delivery_address && (
-                  <div style={{ background: 'var(--brand-muted)', border: '1px solid rgba(255,90,31,0.2)', borderRadius: 12, padding: '10px 14px' }}>
-                    <p style={{ fontSize: 11, fontWeight: 800, color: 'var(--brand)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.06em' }}>📍 Deliver to</p>
-                    <p style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)' }}>{activeOrder.delivery_address}</p>
-                    {activeOrder.customer?.phone && <a href={`tel:${activeOrder.customer.phone}`} style={{ fontSize: 12, color: 'var(--brand)', fontWeight: 700, textDecoration: 'none' }}>📞 Call customer</a>}
+                  <div style={{ background: 'rgba(255,80,10,0.12)', border: '2px solid rgba(255,80,10,0.35)', borderRadius: 12, padding: '12px 14px' }}>
+                    <p style={{ fontSize: 11, fontWeight: 800, color: '#ff5a1f', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.07em' }}>📍 Drop location</p>
+                    <p style={{ fontWeight: 800, fontSize: 15, color: 'var(--text)', lineHeight: 1.4 }}>{activeOrder.delivery_address}</p>
+                    {activeOrder.customer?.phone && (
+                      <a href={`tel:${activeOrder.customer.phone}`}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginTop: 8, fontSize: 13, fontWeight: 800, color: '#fff', background: '#ff5a1f', padding: '5px 12px', borderRadius: 8, textDecoration: 'none' }}>
+                        📞 Call customer
+                      </a>
+                    )}
                   </div>
                 )}
               </div>

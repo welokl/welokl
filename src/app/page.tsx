@@ -202,33 +202,34 @@ export default function HomePage() {
         borderBottom: '1px solid var(--border)',
         padding: '0 16px',
       }}>
-        <div style={{ maxWidth: 1120, margin: '0 auto', height: 60, display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-          {/* Logo */}
-          <Link href="/" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-            <div style={{ width: 34, height: 34, borderRadius: 10, background: '#FF3008', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 900, fontSize: 16 }}>W</div>
-            <span style={{ fontWeight: 800, fontSize: 18, color: 'var(--text)', letterSpacing: '-0.03em' }}>welokl</span>
+        <div style={{ maxWidth: 1120, margin: '0 auto', height: 56, display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+
+          {/* Logo — always visible */}
+          <Link href="/" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+            <div style={{ width: 32, height: 32, borderRadius: 9, background: '#FF3008', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 900, fontSize: 15 }}>W</div>
+            <span style={{ fontWeight: 800, fontSize: 17, color: 'var(--text)', letterSpacing: '-0.03em' }}>welokl</span>
           </Link>
 
-          {/* Location pill */}
+          {/* Location pill — hidden on mobile */}
           <button
+            className="nav-location"
             onClick={detectLocation}
             style={{
               display: 'flex', alignItems: 'center', gap: 6,
               background: 'var(--bg-3)', border: '1px solid var(--border-2)', borderRadius: 10,
               padding: '7px 12px', cursor: 'pointer', flexShrink: 0,
-              fontSize: 13, fontWeight: 600, color: 'var(--text)',
-              fontFamily: 'inherit',
+              fontSize: 13, fontWeight: 600, color: 'var(--text)', fontFamily: 'inherit',
             }}
           >
             <span style={{ fontSize: 14 }}>📍</span>
-            <span style={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <span style={{ maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {locStatus === 'detecting' ? 'Detecting…' : areaName || 'Set location'}
             </span>
             <span style={{ color: 'var(--text-3)', fontSize: 10 }}>▼</span>
           </button>
 
-          {/* Search */}
-          <div style={{ flex: 1, minWidth: 0, position: 'relative', maxWidth: 440 }}>
+          {/* Search — hidden on mobile */}
+          <div className="nav-search" style={{ flex: 1, minWidth: 0, position: 'relative', maxWidth: 440 }}>
             <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 15, color: 'var(--text-3)', pointerEvents: 'none' }}>🔍</span>
             <input
               ref={searchRef}
@@ -250,8 +251,11 @@ export default function HomePage() {
             )}
           </div>
 
-          {/* Auth + Theme Toggle */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto', flexShrink: 0 }}>
+          {/* Spacer pushes auth to right on mobile */}
+          <div style={{ flex: 1 }} />
+
+          {/* Desktop auth — hidden on mobile */}
+          <div className="nav-desktop-auth" style={{ alignItems: 'center', gap: 8, flexShrink: 0 }}>
             {user === undefined ? (
               <div style={{ width: 80, height: 34, borderRadius: 10 }} className="shimmer" />
             ) : user ? (
@@ -278,6 +282,36 @@ export default function HomePage() {
             )}
             <ThemeToggle />
           </div>
+
+          {/* Mobile icons — shown only on mobile */}
+          <div className="nav-mobile-icons" style={{ alignItems: 'center', gap: 6, flexShrink: 0 }}>
+            {/* Search icon */}
+            <button
+              onClick={() => { searchRef.current?.focus(); searchRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }) }}
+              style={{ background: 'var(--bg-3)', border: '1px solid var(--border-2)', borderRadius: 9, width: 34, height: 34, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: 15 }}>
+              🔍
+            </button>
+            {/* Location icon */}
+            <button
+              onClick={detectLocation}
+              style={{ background: 'var(--bg-3)', border: '1px solid var(--border-2)', borderRadius: 9, width: 34, height: 34, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: 15 }}>
+              📍
+            </button>
+            {/* Auth icon */}
+            {user === undefined ? null : user ? (
+              <Link href="/dashboard/customer"
+                style={{ background: 'var(--brand-muted)', border: 'none', borderRadius: 9, width: 34, height: 34, display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none', fontSize: 15 }}>
+                📦
+              </Link>
+            ) : (
+              <Link href="/auth/login"
+                style={{ background: 'var(--brand)', border: 'none', borderRadius: 9, padding: '6px 12px', display: 'flex', alignItems: 'center', textDecoration: 'none', fontSize: 12, fontWeight: 800, color: 'white', whiteSpace: 'nowrap' }}>
+                Log in
+              </Link>
+            )}
+            <ThemeToggle />
+          </div>
+
         </div>
       </nav>
 
@@ -370,8 +404,34 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* ── MOBILE SEARCH BAR — only visible on mobile ── */}
+      <div style={{ background: 'var(--card-bg)', borderBottom: '1px solid var(--border)', padding: '10px 16px' }}
+        className="mobile-search-bar">
+        <div style={{ position: 'relative', maxWidth: 600, margin: '0 auto' }}>
+          <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 15, color: 'var(--text-3)', pointerEvents: 'none' }}>🔍</span>
+          <input
+            ref={searchRef}
+            value={searchVal}
+            onChange={e => setSearchVal(e.target.value)}
+            onKeyDown={e => e.key === 'Escape' && setSearchVal('')}
+            placeholder="Search shops, dishes…"
+            style={{
+              width: '100%', padding: '10px 36px 10px 38px',
+              background: 'var(--input-bg)', border: '2px solid transparent',
+              borderRadius: 12, fontSize: 14, fontWeight: 500, color: 'var(--text)',
+              outline: 'none', transition: 'border-color 0.15s', boxSizing: 'border-box',
+            }}
+            onFocus={e => e.target.style.borderColor = '#FF3008'}
+            onBlur={e => e.target.style.borderColor = 'transparent'}
+          />
+          {searchVal && (
+            <button onClick={() => setSearchVal('')} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', fontSize: 14, color: 'var(--text-3)', cursor: 'pointer' }}>✕</button>
+          )}
+        </div>
+      </div>
+
       {/* ── CATEGORY PILLS ── */}
-      <div style={{ borderBottom: '1px solid var(--border)', background: 'var(--card-bg)', position: 'sticky', top: 60, zIndex: 40 }}>
+      <div style={{ borderBottom: '1px solid var(--border)', background: 'var(--card-bg)', position: 'sticky', top: 56, zIndex: 40 }}>
         <div style={{ maxWidth: 1120, margin: '0 auto', padding: '12px 16px' }}>
           <div className="no-scrollbar" style={{ display: 'flex', gap: 8, overflowX: 'auto' }}>
             <button
