@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import type { Shop, Category } from '@/types'
@@ -8,204 +8,111 @@ function haversine(lat1: number, lng1: number, lat2: number, lng2: number) {
   const R = 6371
   const dLat = (lat2 - lat1) * Math.PI / 180
   const dLng = (lng2 - lng1) * Math.PI / 180
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
 }
-
-const CAT_ICONS: Record<string, string> = {
-  food: '🍔', grocery: '🛒', pharmacy: '💊', electronics: '📱',
-  salon: '💇', fashion: '👗', stationery: '📚', hardware: '🔧', pet: '🐾', flower: '🌸'
-}
-const CAT_COLORS: Record<string, string> = {
-  food: '#fff1f0', grocery: '#f0fdf4', pharmacy: '#eff6ff', electronics: '#f5f3ff',
-  salon: '#fdf2f8', fashion: '#fdf2f8', stationery: '#fffbeb', hardware: '#fafaf9', default: '#fff3ef'
-}
+const CAT_ICONS: Record<string,string> = { food:'🍔', grocery:'🛒', pharmacy:'💊', electronics:'📱', salon:'💇', fashion:'👗', stationery:'📚', hardware:'🔧', pet:'🐾', flower:'🌸' }
 
 export default function StoresPage() {
-  const [shops, setShops] = useState<Shop[]>([])
-  const [categories, setCategories] = useState<Category[]>([])
-  const [activeCategory, setActiveCategory] = useState('all')
-  const [search, setSearch] = useState('')
-  const [loading, setLoading] = useState(true)
-  const [userLat, setUserLat] = useState<number | null>(null)
-  const [userLng, setUserLng] = useState<number | null>(null)
-  const [locationName, setLocationName] = useState<string>('')
-  const [locationStatus, setLocationStatus] = useState<'idle' | 'asking' | 'granted' | 'denied'>('idle')
-  const [radius, setRadius] = useState(5) // FIX: default 5km, not 10km
-
-  // FIX: Save location to localStorage whenever it changes
-  const saveLocation = useCallback((lat: number, lng: number, name?: string) => {
-    setUserLat(lat)
-    setUserLng(lng)
-    setLocationStatus('granted')
-    if (name) setLocationName(name)
-    try {
-      localStorage.setItem('welokl_location', JSON.stringify({ lat, lng, name: name || '' }))
-    } catch { }
-  }, [])
-
-  const askLocation = useCallback(() => {
-    if (!navigator.geolocation) { setLocationStatus('denied'); return }
-    setLocationStatus('asking')
-    navigator.geolocation.getCurrentPosition(
-      async pos => {
-        const { latitude, longitude } = pos.coords
-        // Reverse geocode to get area name
-        let name = ''
-        try {
-          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`)
-          const data = await res.json()
-          name = data.address?.suburb || data.address?.neighbourhood || data.address?.town || data.address?.city || ''
-        } catch { }
-        saveLocation(latitude, longitude, name)
-      },
-      () => setLocationStatus('denied'),
-      { timeout: 8000, enableHighAccuracy: true }
-    )
-  }, [saveLocation])
+  const [shops, setShops]             = useState<Shop[]>([])
+  const [categories, setCategories]   = useState<Category[]>([])
+  const [activeCategory, setActiveCat] = useState('all')
+  const [search, setSearch]           = useState('')
+  const [loading, setLoading]         = useState(true)
+  const [userLat, setUserLat]         = useState<number|null>(null)
+  const [userLng, setUserLng]         = useState<number|null>(null)
+  const [locStatus, setLocStatus]     = useState<'idle'|'asking'|'granted'|'denied'>('idle')
+  const [radius, setRadius]           = useState(10)
 
   useEffect(() => {
     loadData()
-    // FIX: Load saved location from localStorage first
     try {
       const saved = JSON.parse(localStorage.getItem('welokl_location') || 'null')
-      if (saved?.lat && saved?.lng) {
-        setUserLat(saved.lat)
-        setUserLng(saved.lng)
-        setLocationName(saved.name || '')
-        setLocationStatus('granted')
-      } else {
-        askLocation()
-      }
-    } catch {
-      askLocation()
-    }
-  }, []) // eslint-disable-line
+      if (saved?.lat) { setUserLat(saved.lat); setUserLng(saved.lng); setLocStatus('granted') }
+      else askLocation()
+    } catch { askLocation() }
+  }, [])
+
+  function askLocation() {
+    if (!navigator.geolocation) return
+    setLocStatus('asking')
+    navigator.geolocation.getCurrentPosition(
+      pos => { setUserLat(pos.coords.latitude); setUserLng(pos.coords.longitude); setLocStatus('granted') },
+      () => setLocStatus('denied'),
+      { timeout: 6000, enableHighAccuracy: false }
+    )
+  }
 
   async function loadData() {
     const supabase = createClient()
-    const [{ data: shopData }, { data: catData }] = await Promise.all([
+    const [{ data: sd }, { data: cd }] = await Promise.all([
       supabase.from('shops').select('*').eq('is_active', true).order('rating', { ascending: false }),
       supabase.from('categories').select('*').order('sort_order'),
     ])
-    setShops(shopData || [])
-    setCategories(catData || [])
-    setLoading(false)
+    setShops(sd || []); setCategories(cd || []); setLoading(false)
   }
 
-  // FIX: Only compute distance when we have actual coordinates
-  const shopsWithDist = shops.map(s => ({
-    ...s,
-    distance: (userLat !== null && userLng !== null && s.latitude && s.longitude)
-      ? haversine(userLat, userLng, Number(s.latitude), Number(s.longitude))
-      : null
+  const shopsWithDist = shops.map(s => ({ ...s,
+    distance: (userLat && userLng && s.latitude && s.longitude) ? haversine(userLat, userLng, Number(s.latitude), Number(s.longitude)) : null
   }))
-
-  // FIX: Strict radius filtering — when location is known, ONLY show shops within radius
   const filtered = shopsWithDist
     .filter(s => {
-      const matchCat = activeCategory === 'all' || s.category_name?.toLowerCase().includes(activeCategory.toLowerCase())
-      const matchSearch = !search || s.name.toLowerCase().includes(search.toLowerCase()) || s.area?.toLowerCase().includes(search.toLowerCase())
-      // FIX: If we have location + distance, strictly enforce radius. Don't show shops with null distance when location is granted.
-      const inRadius = locationStatus !== 'granted'
-        ? true
-        : (s.distance !== null && s.distance <= radius) || radius === 999
-      return matchCat && matchSearch && inRadius
+      const mc = activeCategory === 'all' || s.category_name?.toLowerCase().includes(activeCategory.toLowerCase())
+      const ms = !search || s.name.toLowerCase().includes(search.toLowerCase()) || s.area?.toLowerCase().includes(search.toLowerCase())
+      const mr = !userLat || s.distance === null || s.distance <= radius
+      return mc && ms && mr
     })
-    .sort((a, b) => {
-      if (a.distance !== null && b.distance !== null) return a.distance - b.distance
-      if (a.distance !== null) return -1
-      if (b.distance !== null) return 1
-      return 0
-    })
-
-  const openCount = filtered.filter(s => s.is_open).length
-  const closedCount = filtered.filter(s => !s.is_open).length
+    .sort((a,b) => (a.distance !== null && b.distance !== null) ? a.distance - b.distance : 0)
 
   return (
-    <div className="min-h-screen pb-24" style={{ background: '#f8f7f4' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--bg)', fontFamily: "'Plus Jakarta Sans', sans-serif", paddingBottom: 80 }}>
 
       {/* Sticky header */}
-      <div className="sticky top-0 z-40 glass border-b border-gray-100">
-        <div className="max-w-6xl mx-auto px-3 py-2.5 space-y-2">
+      <div style={{ position: 'sticky', top: 0, zIndex: 40, background: 'var(--glass-bg)', backdropFilter: 'blur(12px)', borderBottom: '1px solid var(--border)', WebkitBackdropFilter: 'blur(12px)' }}>
+        <div style={{ maxWidth: 960, margin: '0 auto', padding: '10px 14px' }}>
 
           {/* Top row */}
-          <div className="flex items-center gap-2">
-            <Link href="/" className="flex-shrink-0 flex items-center gap-1.5">
-              <div className="w-8 h-8 rounded-xl flex items-center justify-center text-white font-black text-sm" style={{ background: '#ff5a1f' }}>W</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <Link href="/" style={{ textDecoration: 'none', flexShrink: 0 }}>
+              <div style={{ width: 32, height: 32, background: '#ff3008', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 900, fontSize: 16 }}>W</div>
             </Link>
-
-            {/* Location bar */}
-            <button
-              onClick={askLocation}
-              className="flex-1 flex items-center gap-2 bg-white border-2 rounded-xl px-3 py-1.5 hover:border-orange-400 transition-colors text-left"
-              style={{ borderColor: locationStatus === 'granted' ? '#ff5a1f' : '#e5e7eb' }}
-            >
-              <span className="text-sm" style={{ color: '#ff5a1f' }}>📍</span>
-              <div className="flex-1 min-w-0">
-                {locationStatus === 'granted' && locationName ? (
-                  <p className="text-xs font-black text-gray-800 truncate">{locationName}</p>
-                ) : locationStatus === 'granted' ? (
-                  <p className="text-xs font-bold text-gray-800 truncate">Location set ✓</p>
-                ) : locationStatus === 'asking' ? (
-                  <p className="text-xs text-amber-500 font-semibold animate-pulse">Detecting location…</p>
-                ) : (
-                  <p className="text-xs text-gray-400 font-medium">Tap to set location</p>
-                )}
-              </div>
-              <span className="text-gray-400 text-xs">▼</span>
-            </button>
-
-            {/* Search input inline */}
-            <div className="flex-1 relative">
-              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm">🔍</span>
-              <input
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                placeholder="Search shops..."
-                className="w-full bg-white border-2 rounded-xl pl-8 pr-3 py-1.5 text-xs font-semibold outline-none focus:border-orange-400 transition-colors"
-                style={{ borderColor: '#e5e7eb' }}
-              />
-            </div>
+            <Link href="/location?return=/stores" style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, background: 'var(--card-bg)', border: '1.5px solid var(--border-2)', borderRadius: 12, padding: '8px 12px', textDecoration: 'none' }}>
+              <span style={{ color: '#ff3008', fontSize: 14 }}>📍</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: locStatus === 'granted' ? 'var(--text)' : 'var(--text-3)', flex: 1 }}>
+                {locStatus === 'granted' ? 'Delivery here' : 'Set your location'}
+              </span>
+              <span style={{ color: 'var(--text-3)', fontSize: 11 }}>▼</span>
+            </Link>
+            <Link href="/search" style={{ width: 38, height: 38, background: 'var(--card-bg)', border: '1.5px solid var(--border-2)', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, textDecoration: 'none', flexShrink: 0 }}>🔍</Link>
+            <Link href="/auth/login" style={{ padding: '7px 14px', borderRadius: 12, background: 'var(--brand-muted)', color: '#ff3008', fontSize: 12, fontWeight: 800, textDecoration: 'none', flexShrink: 0 }}>Login</Link>
           </div>
 
-          {/* Radius selector */}
-          {locationStatus === 'granted' && (
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs text-gray-500 font-bold">Within:</span>
-              {[1, 2, 5, 10, 25].map(r => (
+          {/* Radius pills */}
+          {locStatus === 'granted' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+              <span style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 600 }}>Within:</span>
+              {[1,2,5,10,25,999].map(r => (
                 <button key={r} onClick={() => setRadius(r)}
-                  className={`text-xs font-black px-2.5 py-1 rounded-full transition-all ${radius === r ? 'text-white shadow-sm' : 'text-gray-500 bg-gray-100 hover:bg-gray-200'}`}
-                  style={radius === r ? { background: '#ff5a1f' } : {}}>
-                  {r}km
+                  style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 999, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: radius === r ? '#ff3008' : 'var(--bg-3)', color: radius === r ? '#fff' : 'var(--text-3)', transition: 'all 0.15s' }}>
+                  {r === 999 ? 'All' : `${r}km`}
                 </button>
               ))}
-              <button onClick={() => setRadius(999)}
-                className={`text-xs font-black px-2.5 py-1 rounded-full transition-all ${radius === 999 ? 'text-white shadow-sm' : 'text-gray-500 bg-gray-100 hover:bg-gray-200'}`}
-                style={radius === 999 ? { background: '#ff5a1f' } : {}}>
-                All
-              </button>
             </div>
           )}
 
-          {locationStatus === 'denied' && (
-            <button onClick={askLocation} className="w-full text-xs font-bold px-3 py-2 rounded-xl text-center" style={{ background: '#fff3ef', color: '#ff5a1f' }}>
-              📍 Allow location to see nearby shops
+          {locStatus === 'denied' && (
+            <button onClick={askLocation} style={{ marginBottom: 8, fontSize: 12, fontWeight: 700, padding: '6px 14px', borderRadius: 999, background: 'var(--brand-muted)', color: '#ff3008', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+              📍 Allow location for nearby shops
             </button>
           )}
 
           {/* Category pills */}
-          <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
-            <button onClick={() => setActiveCategory('all')}
-              className="flex-shrink-0 px-3.5 py-1.5 rounded-full text-xs font-black transition-all"
-              style={activeCategory === 'all' ? { background: '#ff5a1f', color: 'white' } : { background: '#f3f4f6', color: '#374151' }}>
-              All
-            </button>
-            {categories.map(cat => (
-              <button key={cat.id} onClick={() => setActiveCategory(cat.name)}
-                className="flex-shrink-0 px-3.5 py-1.5 rounded-full text-xs font-black transition-all flex items-center gap-1"
-                style={activeCategory === cat.name ? { background: '#ff5a1f', color: 'white' } : { background: '#f3f4f6', color: '#374151' }}>
-                {cat.icon} {cat.name.split(' ')[0]}
+          <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 2 }}>
+            {[{ id: 'all', name: 'All', icon: '🏪' }, ...categories.map(c => ({ id: c.name, name: c.name.split(' ')[0], icon: c.icon }))].map(cat => (
+              <button key={cat.id} onClick={() => setActiveCat(cat.id)}
+                style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4, padding: '5px 12px', borderRadius: 999, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 700,
+                  background: activeCategory === cat.id ? '#ff3008' : 'var(--bg-3)', color: activeCategory === cat.id ? '#fff' : 'var(--text-3)', transition: 'all 0.15s' }}>
+                {cat.icon} {cat.name}
               </button>
             ))}
           </div>
@@ -213,86 +120,57 @@ export default function StoresPage() {
       </div>
 
       {/* Content */}
-      <div className="max-w-6xl mx-auto px-3 py-4">
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <p className="text-sm font-black text-gray-800">
-              {filtered.length} shops {locationStatus === 'granted' && radius !== 999 ? `within ${radius}km` : 'available'}
-            </p>
-            {filtered.length > 0 && (
-              <p className="text-xs text-gray-400 mt-0.5">
-                {openCount} open now · {closedCount} closed
-              </p>
-            )}
-          </div>
-          {locationStatus === 'asking' && (
-            <p className="text-xs text-amber-600 font-semibold animate-pulse">📍 Detecting…</p>
-          )}
+      <div style={{ maxWidth: 960, margin: '0 auto', padding: '16px 14px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+          <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-2)' }}>
+            {filtered.length} shops {locStatus === 'granted' && radius !== 999 ? `within ${radius}km` : 'available'}
+          </p>
+          {locStatus === 'asking' && <p style={{ fontSize: 12, color: '#d97706', fontWeight: 700 }}>📍 Detecting location…</p>}
         </div>
 
         {loading ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-            {Array.from({ length: 8 }).map((_, i) => <div key={i} className="h-48 rounded-2xl shimmer" />)}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(160px,1fr))', gap: 12 }}>
+            {[1,2,3,4,5,6,7,8].map(i => <div key={i} className="shimmer" style={{ height: 190 }} />)}
           </div>
         ) : filtered.length === 0 ? (
-          <div className="text-center py-20">
-            <div className="text-6xl mb-4">🏪</div>
-            <p className="font-black text-xl mb-1 text-gray-800">No shops found</p>
-            <p className="text-gray-400 text-sm mb-5">
-              {locationStatus === 'granted' ? `No shops within ${radius}km. Try a larger radius.` : 'Allow location or try searching.'}
-            </p>
-            {locationStatus === 'granted' && radius !== 999 && (
-              <button onClick={() => setRadius(999)}
-                className="px-5 py-2.5 rounded-xl text-sm font-black text-white"
-                style={{ background: '#ff5a1f' }}>
-                Show all shops
-              </button>
-            )}
+          <div style={{ textAlign: 'center', paddingTop: 60 }}>
+            <div style={{ fontSize: 56, marginBottom: 14 }}>🏪</div>
+            <p style={{ fontWeight: 900, fontSize: 20, color: 'var(--text)', marginBottom: 8 }}>No shops found</p>
+            <p style={{ fontSize: 14, color: 'var(--text-3)', marginBottom: 20 }}>{userLat ? 'Try increasing radius or browse all shops' : 'Try a different search'}</p>
+            {userLat && <button onClick={() => setRadius(999)} style={{ padding: '11px 28px', borderRadius: 12, background: '#ff3008', color: '#fff', fontWeight: 800, fontSize: 14, border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>Show all shops</button>}
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(160px,1fr))', gap: 12 }}>
             {filtered.map(shop => {
               const catKey = Object.keys(CAT_ICONS).find(k => shop.category_name?.toLowerCase().includes(k)) || 'food'
-              const bg = CAT_COLORS[catKey] || CAT_COLORS.default
-              const dist = (shop as any).distance
               return (
-                <Link key={shop.id} href={`/stores/${shop.id}`}>
-                  <div className="card-hover overflow-hidden cursor-pointer rounded-2xl bg-white shadow-sm hover:shadow-md transition-all">
-                    <div className="h-28 sm:h-32 flex items-center justify-center relative" style={{ background: bg }}>
-                      {/* Shop image or emoji */}
-                      {(shop as any).image_url ? (
-                        <img src={(shop as any).image_url} alt={shop.name} className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="text-4xl">{CAT_ICONS[catKey]}</div>
-                      )}
-                      <div className="absolute top-2 left-2">
-                        {shop.is_open
-                          ? <span className="badge-green text-xs px-2 py-0.5 rounded-full font-bold" style={{ background: '#dcfce7', color: '#16a34a' }}>● Open</span>
-                          : <span className="text-xs px-2 py-0.5 rounded-full font-bold" style={{ background: '#f1f5f9', color: '#64748b' }}>● Closed</span>}
+                <Link key={shop.id} href={`/stores/${shop.id}`} style={{ textDecoration: 'none' }}>
+                  <div style={{ background: 'var(--card-bg)', borderRadius: 18, border: '1px solid var(--border)', overflow: 'hidden', boxShadow: 'var(--card-shadow)', transition: 'all 0.15s', cursor: 'pointer' }}
+                    className="shop-card">
+                    {/* Image area */}
+                    <div style={{ height: 110, background: 'var(--bg-1)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+                      <span style={{ fontSize: 40 }}>{CAT_ICONS[catKey]}</span>
+                      <div style={{ position: 'absolute', top: 8, left: 8 }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: shop.is_open ? 'rgba(34,197,94,0.15)' : 'var(--bg-3)', color: shop.is_open ? '#16a34a' : 'var(--text-3)' }}>
+                          {shop.is_open ? 'Open' : 'Closed'}
+                        </span>
                       </div>
-                      <div className="absolute top-2 right-2 bg-white rounded-lg px-1.5 py-0.5 text-xs font-black shadow-sm" style={{ color: '#d97706' }}>
+                      <div style={{ position: 'absolute', top: 8, right: 8, background: 'var(--card-bg)', borderRadius: 8, padding: '2px 6px', fontSize: 11, fontWeight: 900, color: '#d97706' }}>
                         ★ {shop.rating}
                       </div>
-                      {dist !== null && dist !== undefined && (
-                        <div className="absolute bottom-2 right-2 bg-white/95 rounded-lg px-1.5 py-0.5 text-xs font-bold text-gray-700 shadow-sm">
-                          📍 {dist < 1 ? `${Math.round(dist * 1000)}m` : `${dist.toFixed(1)}km`}
+                      {(shop as any).distance !== null && (shop as any).distance !== undefined && (
+                        <div style={{ position: 'absolute', bottom: 8, right: 8, background: 'var(--card-bg)', borderRadius: 8, padding: '2px 7px', fontSize: 11, fontWeight: 700, color: 'var(--text-2)' }}>
+                          {(shop as any).distance < 1 ? `${Math.round((shop as any).distance*1000)}m` : `${(shop as any).distance.toFixed(1)}km`}
                         </div>
                       )}
                     </div>
-                    <div className="p-3">
-                      <p className="font-black text-sm leading-tight line-clamp-1 text-gray-900">{shop.name}</p>
-                      <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">{shop.category_name?.split(' ')[0]} · {shop.area}</p>
-                      <div className="flex items-center gap-2 mt-2 pt-2" style={{ borderTop: '1px solid #f3f4f6' }}>
-                        {shop.delivery_enabled && (
-                          <span className="text-xs text-gray-600 font-semibold">🛵 {shop.avg_delivery_time}m</span>
-                        )}
-                        {shop.pickup_enabled && <span className="text-xs text-gray-500">🏃 Pickup</span>}
-                        {(shop as any).free_delivery && (
-                          <span className="text-xs font-bold" style={{ color: '#16a34a' }}>Free delivery</span>
-                        )}
-                        <span className="ml-auto text-xs font-bold text-gray-500">
-                          {shop.min_order_amount ? `₹${shop.min_order_amount}+` : 'No min'}
-                        </span>
+                    {/* Info */}
+                    <div style={{ padding: '12px 12px 10px' }}>
+                      <p style={{ fontWeight: 900, fontSize: 13, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 3 }}>{shop.name}</p>
+                      <p style={{ fontSize: 11, color: 'var(--text-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{shop.category_name?.split(' ')[0]} · {shop.area}</p>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--border)' }}>
+                        {shop.delivery_enabled && <span style={{ fontSize: 11, color: 'var(--text-3)' }}>🛵 {shop.avg_delivery_time}m</span>}
+                        <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text-3)' }}>{shop.min_order_amount ? `₹${shop.min_order_amount}+` : 'No min'}</span>
                       </div>
                     </div>
                   </div>
@@ -304,19 +182,17 @@ export default function StoresPage() {
       </div>
 
       {/* Bottom nav */}
-      <div className="fixed bottom-0 left-0 right-0 glass border-t border-gray-200 z-50">
-        <div className="flex items-center justify-around py-2 max-w-lg mx-auto">
+      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: 'var(--glass-bg)', backdropFilter: 'blur(12px)', borderTop: '1px solid var(--border)', zIndex: 50, WebkitBackdropFilter: 'blur(12px)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-around', padding: '8px 0', maxWidth: 480, margin: '0 auto' }}>
           {[
             { icon: '🏠', label: 'Home', href: '/' },
             { icon: '🛍️', label: 'Shops', href: '/stores', active: true },
             { icon: '🛒', label: 'Cart', href: '/cart' },
             { icon: '📦', label: 'Orders', href: '/dashboard/customer' },
           ].map(item => (
-            <Link key={item.label} href={item.href}
-              className="flex flex-col items-center gap-0.5 px-4 py-1.5 rounded-xl transition-all"
-              style={{ color: item.active ? '#ff5a1f' : '#6b7280' }}>
-              <span className="text-xl">{item.icon}</span>
-              <span className="text-xs font-black">{item.label}</span>
+            <Link key={item.label} href={item.href} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: '6px 16px', borderRadius: 12, textDecoration: 'none', color: item.active ? '#ff3008' : 'var(--text-3)' }}>
+              <span style={{ fontSize: 20 }}>{item.icon}</span>
+              <span style={{ fontSize: 10, fontWeight: 700 }}>{item.label}</span>
             </Link>
           ))}
         </div>

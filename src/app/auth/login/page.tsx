@@ -4,118 +4,102 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
+  const [email, setEmail]     = useState('')
+  const [password, setPwd]    = useState('')
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+  const [error, setError]     = useState('')
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
-    setLoading(true)
-    setError('')
-
+    setLoading(true); setError('')
     const supabase = createClient()
     const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password })
-
-    if (authError || !data.user) {
-      setError('Invalid email or password.')
-      setLoading(false)
-      return
-    }
-
-    // Fetch role from DB with retries — ensure session is fully persisted
+    if (authError || !data.user) { setError('Invalid email or password.'); setLoading(false); return }
     let role = data.user.user_metadata?.role
-
     if (!role) {
-      for (let i = 0; i < 5; i++) {
-        await new Promise(r => setTimeout(r, 300))
-        const { data: profile } = await supabase
-          .from('users')
-          .select('role')
-          .eq('id', data.user.id)
-          .single()
-        if (profile?.role) { role = profile.role; break }
-      }
+      const { data: profile } = await supabase.from('users').select('role').eq('id', data.user.id).single()
+      role = profile?.role || 'customer'
     }
-
-    role = role || 'customer'
-
-    // Force a fresh session check before navigating
-    await supabase.auth.getSession()
-    await new Promise(r => setTimeout(r, 400))
+    await new Promise(r => setTimeout(r, 300))
     window.location.replace(`/dashboard/${role}`)
   }
 
+  const inputStyle = {
+    width: '100%', padding: '12px 14px', borderRadius: 12, border: '1.5px solid var(--border-2)',
+    background: 'var(--input-bg)', color: 'var(--text)', fontSize: 15, fontFamily: 'inherit', outline: 'none',
+  }
+
   return (
-    <div className="min-h-screen bg-[#fafaf7] flex">
+    <div style={{ minHeight: '100vh', display: 'flex', background: 'var(--bg)', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
       {/* Left panel */}
-      <div className="hidden lg:flex w-1/2 bg-[#0a0a0a] flex-col justify-between p-12 relative overflow-hidden">
-        <div className="absolute inset-0 opacity-[0.04]" style={{
-          backgroundImage: 'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)',
-          backgroundSize: '50px 50px'
-        }} />
-        <div className="absolute top-1/3 -right-20 w-80 h-80 bg-brand-500 rounded-full opacity-20 blur-3xl" />
-        <Link href="/" className="relative flex items-center gap-2.5">
-          <div className="w-9 h-9 bg-brand-500 rounded-xl flex items-center justify-center text-white font-black">W</div>
-          <span className="font-display font-bold text-2xl text-white">welokl</span>
+      <div style={{ display: 'none', width: '50%', background: '#0a0a0a', flexDirection: 'column', justifyContent: 'space-between', padding: '48px 52px', position: 'relative', overflow: 'hidden' }}
+        className="auth-left-panel">
+        <div style={{ position: 'absolute', inset: 0, opacity: 0.04,
+          backgroundImage: 'linear-gradient(#fff 1px,transparent 1px),linear-gradient(90deg,#fff 1px,transparent 1px)', backgroundSize: '48px 48px' }} />
+        <div style={{ position: 'absolute', top: '30%', right: -60, width: 300, height: 300, borderRadius: '50%', background: '#ff3008', opacity: 0.15, filter: 'blur(70px)' }} />
+        <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none', position: 'relative' }}>
+          <div style={{ width: 36, height: 36, borderRadius: 10, background: '#ff3008', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 900, fontSize: 18 }}>W</div>
+          <span style={{ color: '#fff', fontWeight: 800, fontSize: 22 }}>welokl</span>
         </Link>
-        <div className="relative">
-          <p className="text-white/30 text-sm font-semibold tracking-widest uppercase mb-4">Welcome back</p>
-          <h2 className="font-display text-4xl font-bold text-white leading-tight mb-6">
-            Your neighbourhood<br />is waiting.
-          </h2>
-          <div className="space-y-3">
+        <div style={{ position: 'relative' }}>
+          <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 16 }}>Welcome back</p>
+          <h2 style={{ color: '#fff', fontWeight: 900, fontSize: 36, lineHeight: 1.15, marginBottom: 24 }}>Your neighbourhood<br />is waiting.</h2>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {['500+ local shops near you', 'UPI & Cash on delivery', 'Live order tracking'].map(f => (
-              <div key={f} className="flex items-center gap-3 text-white/50 text-sm">
-                <span className="text-brand-500">→</span> {f}
+              <div key={f} style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'rgba(255,255,255,0.45)', fontSize: 14 }}>
+                <span style={{ color: '#ff3008', fontWeight: 900 }}>→</span> {f}
               </div>
             ))}
           </div>
         </div>
-        <p className="relative text-white/20 text-xs">Hyperlocal. Honest. Yours.</p>
+        <p style={{ color: 'rgba(255,255,255,0.18)', fontSize: 11, position: 'relative' }}>Hyperlocal. Honest. Yours.</p>
       </div>
 
       {/* Right form */}
-      <div className="flex-1 flex items-center justify-center p-6">
-        <div className="w-full max-w-sm">
-          <div className="lg:hidden flex items-center gap-2 mb-8">
-            <div className="w-8 h-8 bg-brand-500 rounded-lg flex items-center justify-center text-white font-black text-sm">W</div>
-            <span className="font-display font-bold text-xl">welokl</span>
-          </div>
-          <h1 className="font-display text-3xl font-bold mb-1">Sign in</h1>
-          <p className="text-gray-400 text-sm mb-8">Enter your credentials to continue</p>
-          <form onSubmit={handleLogin} className="space-y-4">
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '32px 20px' }}>
+        <div style={{ width: '100%', maxWidth: 380 }}>
+          <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: 8, textDecoration: 'none', marginBottom: 36 }}>
+            <div style={{ width: 32, height: 32, borderRadius: 9, background: '#ff3008', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 900, fontSize: 15 }}>W</div>
+            <span style={{ fontWeight: 800, fontSize: 18, color: 'var(--text)' }}>welokl</span>
+          </Link>
+          <h1 style={{ fontWeight: 900, fontSize: 28, color: 'var(--text)', marginBottom: 4 }}>Sign in</h1>
+          <p style={{ color: 'var(--text-3)', fontSize: 14, marginBottom: 28 }}>Enter your credentials to continue</p>
+
+          <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1.5">Email address</label>
-              <input type="email" value={email} onChange={e => setEmail(e.target.value)}
-                className="input-field" placeholder="you@example.com"
-                required autoComplete="email" />
+              <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: 'var(--text-2)', marginBottom: 6 }}>Email address</label>
+              <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com"
+                required autoComplete="email" style={inputStyle}
+                onFocus={e => (e.target as HTMLInputElement).style.borderColor = '#ff3008'}
+                onBlur={e => (e.target as HTMLInputElement).style.borderColor = 'var(--border-2)'} />
             </div>
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1.5">Password</label>
-              <input type="password" value={password} onChange={e => setPassword(e.target.value)}
-                className="input-field" placeholder="••••••••"
-                required autoComplete="current-password" />
+              <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: 'var(--text-2)', marginBottom: 6 }}>Password</label>
+              <input type="password" value={password} onChange={e => setPwd(e.target.value)} placeholder="••••••••"
+                required autoComplete="current-password" style={inputStyle}
+                onFocus={e => (e.target as HTMLInputElement).style.borderColor = '#ff3008'}
+                onBlur={e => (e.target as HTMLInputElement).style.borderColor = 'var(--border-2)'} />
             </div>
+
             {error && (
-              <div className="bg-red-50 border border-red-200 text-red-600 text-sm rounded-xl px-4 py-3">
+              <div style={{ background: 'var(--red-bg)', border: '1px solid rgba(239,68,68,0.25)', color: '#ef4444', fontSize: 13, borderRadius: 10, padding: '10px 14px' }}>
                 {error}
               </div>
             )}
-            <button type="submit" disabled={loading} className="btn-primary w-full py-3 text-base">
+
+            <button type="submit" disabled={loading}
+              style={{ width: '100%', padding: '13px', borderRadius: 13, fontWeight: 900, fontSize: 15, border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                background: '#ff3008', color: '#fff', boxShadow: '0 4px 16px rgba(255,48,8,0.3)', opacity: loading ? 0.7 : 1, transition: 'opacity 0.15s',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
               {loading ? (
-                <span className="flex items-center justify-center gap-2">
-                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Signing in...
-                </span>
+                <><span style={{ width: 16, height: 16, border: '2px solid rgba(255,255,255,0.35)', borderTopColor: '#fff', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.7s linear infinite' }} />Signing in…</>
               ) : 'Sign in →'}
             </button>
           </form>
-          <p className="text-center text-sm text-gray-500 mt-6">
+
+          <p style={{ textAlign: 'center', fontSize: 14, color: 'var(--text-3)', marginTop: 20 }}>
             Don't have an account?{' '}
-            <Link href="/auth/signup" className="text-brand-500 font-semibold hover:text-brand-600">
-              Create one free
-            </Link>
+            <Link href="/auth/signup" style={{ color: '#ff3008', fontWeight: 700, textDecoration: 'none' }}>Create one free</Link>
           </p>
         </div>
       </div>

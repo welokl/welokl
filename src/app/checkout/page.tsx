@@ -7,30 +7,28 @@ import { calculateFees } from '@/types'
 
 type OrderType = 'delivery' | 'pickup'
 type PaymentMethod = 'cod' | 'upi'
+interface SavedAddress { label: string; address: string; area: string; city: string; lat?: number; lng?: number }
 
-interface SavedAddress {
-  label: string
-  address: string
-  area: string
-  city: string
-  lat?: number
-  lng?: number
-}
+const s = (extra?: React.CSSProperties): React.CSSProperties => ({
+  width: '100%', padding: '11px 14px', borderRadius: 12, border: '1.5px solid var(--border-2)',
+  background: 'var(--input-bg)', color: 'var(--text)', fontSize: 14, fontFamily: 'inherit', outline: 'none', ...extra,
+})
 
 export default function CheckoutPage() {
   const cart = useCart()
-  const [user, setUser] = useState<any>(null)
-  const [orderType, setOrderType] = useState<OrderType>('delivery')
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cod')
-  const [address, setAddress] = useState('')
-  const [instructions, setInstructions] = useState('')
-  const [upiId, setUpiId] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [detecting, setDetecting] = useState(false)
-  const [error, setError] = useState('')
-  const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([])
-  const [selectedLat, setSelectedLat] = useState<number | null>(null)
-  const [selectedLng, setSelectedLng] = useState<number | null>(null)
+  const [user, setUser]             = useState<any>(null)
+  const [orderType, setOrderType]   = useState<OrderType>('delivery')
+  const [payMethod, setPayMethod]   = useState<PaymentMethod>('cod')
+  const [address, setAddress]       = useState('')
+  const [instructions, setInstr]    = useState('')
+  const [upiId, setUpiId]           = useState('')
+  const [loading, setLoading]       = useState(false)
+  const [detecting, setDetecting]   = useState(false)
+  const [error, setError]           = useState('')
+  const [savedAddresses, setSaved]  = useState<SavedAddress[]>([])
+  const [selLat, setSelLat]         = useState<number | null>(null)
+  const [selLng, setSelLng]         = useState<number | null>(null)
+  const [copied, setCopied]         = useState(false)
 
   const subtotal = cart.subtotal()
   const fees = calculateFees(subtotal, 15, orderType)
@@ -42,145 +40,95 @@ export default function CheckoutPage() {
       if (!authUser) { window.location.href = '/auth/login'; return }
       const { data: profile } = await supabase.from('users').select('*').eq('id', authUser.id).single()
       setUser(profile)
-
-      // Load saved addresses
       try {
         const saved = JSON.parse(localStorage.getItem('welokl_addresses') || '[]')
-        setSavedAddresses(saved)
-        // Auto-fill from saved location
+        setSaved(saved)
         const current = JSON.parse(localStorage.getItem('welokl_location') || 'null')
         if (current) {
-          const full = [current.address, current.area, current.city].filter(Boolean).join(', ')
-          setAddress(full)
-          setSelectedLat(current.lat)
-          setSelectedLng(current.lng)
+          setAddress([current.address, current.area, current.city].filter(Boolean).join(', '))
+          setSelLat(current.lat); setSelLng(current.lng)
         }
       } catch {}
     }
     init()
   }, [])
 
-  // Detect GPS and reverse geocode
   async function detectLocation() {
-    if (!navigator.geolocation) { setError('Location not supported on this browser'); return }
+    if (!navigator.geolocation) { setError('Location not supported'); return }
     setDetecting(true)
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        const { latitude: lat, longitude: lng } = pos.coords
-        setSelectedLat(lat)
-        setSelectedLng(lng)
-        try {
-          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1`, {
-            headers: { 'Accept-Language': 'en' }
-          })
-          const data = await res.json()
-          const a = data.address || {}
-          const parts = [
-            a.house_number, a.building, a.road,
-            a.suburb || a.neighbourhood || a.quarter,
-            a.city || a.town || a.village,
-          ].filter(Boolean)
-          setAddress(parts.join(', ') || data.display_name?.split(',').slice(0,4).join(',') || '')
-        } catch {
-          setAddress(`${lat.toFixed(5)}, ${lng.toFixed(5)}`)
-        }
-        setDetecting(false)
-      },
-      () => { setError('Could not detect location. Please type your address.'); setDetecting(false) },
-      { timeout: 10000, enableHighAccuracy: true }
-    )
+    navigator.geolocation.getCurrentPosition(async (pos) => {
+      const { latitude: lat, longitude: lng } = pos.coords
+      setSelLat(lat); setSelLng(lng)
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1`, { headers: { 'Accept-Language': 'en' } })
+        const data = await res.json()
+        const a = data.address || {}
+        const parts = [a.house_number, a.building, a.road, a.suburb || a.neighbourhood, a.city || a.town || a.village].filter(Boolean)
+        setAddress(parts.join(', ') || data.display_name?.split(',').slice(0,4).join(',') || '')
+      } catch { setAddress(`${lat.toFixed(5)}, ${lng.toFixed(5)}`) }
+      setDetecting(false)
+    }, () => { setError('Could not detect location. Please type your address.'); setDetecting(false) }, { timeout: 10000, enableHighAccuracy: true })
   }
 
   async function placeOrder() {
     if (orderType === 'delivery' && !address.trim()) { setError('Please enter or detect your delivery address'); return }
-    if (paymentMethod === 'upi' && !upiId.trim()) { setError('Please enter your UPI transaction ID after paying'); return }
+    if (payMethod === 'upi' && !upiId.trim()) { setError('Please enter your UPI transaction ID after paying'); return }
     if (cart.items.length === 0) { window.location.href = '/stores'; return }
-
-    setLoading(true)
-    setError('')
-
+    setLoading(true); setError('')
     const supabase = createClient()
-    const { data: shop } = await supabase.from('shops')
-      .select('id, commission_percent, latitude, longitude')
-      .eq('id', cart.shop_id!).single()
+    const { data: shop } = await supabase.from('shops').select('id,commission_percent').eq('id', cart.shop_id!).single()
     const fee = calculateFees(subtotal, shop?.commission_percent || 15, orderType)
-
     const { data: order, error: orderError } = await supabase.from('orders').insert({
-      customer_id: user.id,
-      shop_id: cart.shop_id,
-      status: 'placed',
-      type: orderType,
-      subtotal: fee.subtotal,
-      delivery_fee: fee.delivery_fee,
-      platform_fee: fee.platform_fee,
-      discount: 0,
-      total_amount: fee.total_amount,
-      payment_method: paymentMethod,
-      payment_status: 'pending',
-      upi_transaction_id: upiId || null,
+      customer_id: user.id, shop_id: cart.shop_id, status: 'placed', type: orderType,
+      subtotal: fee.subtotal, delivery_fee: fee.delivery_fee, platform_fee: fee.platform_fee,
+      discount: 0, total_amount: fee.total_amount, payment_method: payMethod,
+      payment_status: 'pending', upi_transaction_id: upiId || null,
       delivery_address: orderType === 'delivery' ? address.trim() : null,
-      delivery_lat: selectedLat,
-      delivery_lng: selectedLng,
-      delivery_instructions: instructions.trim() || null,
-      estimated_delivery: 30,
+      delivery_lat: selLat, delivery_lng: selLng,
+      delivery_instructions: instructions.trim() || null, estimated_delivery: 30,
     }).select().single()
-
-    if (orderError || !order) {
-      setError('Could not place order. Please try again.')
-      setLoading(false)
-      return
-    }
-
-    await supabase.from('order_items').insert(
-      cart.items.map(i => ({
-        order_id: order.id,
-        product_id: i.product.id,
-        product_name: i.product.name,
-        quantity: i.quantity,
-        price: i.product.price,
-      }))
-    )
-
-    await supabase.from('order_status_log').insert({
-      order_id: order.id,
-      status: 'placed',
-      message: `Order placed via ${paymentMethod === 'cod' ? 'Cash on Delivery' : 'UPI'}`,
-      created_by: user.id,
-    })
-
+    if (orderError || !order) { setError('Could not place order. Please try again.'); setLoading(false); return }
+    await supabase.from('order_items').insert(cart.items.map(i => ({ order_id: order.id, product_id: i.product.id, product_name: i.product.name, quantity: i.quantity, price: i.product.price })))
+    await supabase.from('order_status_log').insert({ order_id: order.id, status: 'placed', message: `Order placed via ${payMethod === 'cod' ? 'Cash on Delivery' : 'UPI'}`, created_by: user.id })
     cart.clear()
     window.location.href = `/orders/${order.id}`
   }
 
   if (!user) return (
-    <div className="min-h-screen bg-[#fafaf7] flex items-center justify-center">
-      <div className="text-center"><div className="w-8 h-8 bg-brand-500 rounded-lg mx-auto mb-3 animate-pulse" /><p className="text-gray-400 text-sm">Loading...</p></div>
+    <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ width: 32, height: 32, background: '#ff3008', borderRadius: 9, margin: '0 auto 12px', opacity: 0.6 }} className="shimmer" />
+        <p style={{ color: 'var(--text-3)', fontSize: 14 }}>Loading…</p>
+      </div>
     </div>
   )
 
+  const card = { background: 'var(--card-bg)', borderRadius: 18, border: '1px solid var(--border)', padding: '18px 16px', marginBottom: 14, boxShadow: 'var(--card-shadow)' } as React.CSSProperties
+
   return (
-    <div className="min-h-screen bg-[#fafaf7] pb-10">
-      <div className="sticky top-0 z-40 bg-white border-b border-gray-100 px-4 py-3 flex items-center gap-3">
-        <button onClick={() => window.history.back()} className="p-2 hover:bg-gray-100 rounded-xl text-lg">←</button>
-        <h1 className="font-bold">Checkout</h1>
-        <span className="ml-auto text-sm text-gray-400 truncate max-w-[140px]">{cart.shop_name}</span>
+    <div style={{ minHeight: '100vh', background: 'var(--bg)', fontFamily: "'Plus Jakarta Sans', sans-serif", paddingBottom: 40 }}>
+      {/* Header */}
+      <div style={{ position: 'sticky', top: 0, zIndex: 40, background: 'var(--card-bg)', borderBottom: '1px solid var(--border)', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+        <button onClick={() => window.history.back()} style={{ padding: '6px 10px', borderRadius: 10, background: 'var(--bg-3)', border: 'none', cursor: 'pointer', fontSize: 18, color: 'var(--text)' }}>←</button>
+        <h1 style={{ fontWeight: 900, fontSize: 16, color: 'var(--text)', flex: 1 }}>Checkout</h1>
+        <span style={{ fontSize: 12, color: 'var(--text-3)', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cart.shop_name}</span>
       </div>
 
-      <div className="max-w-lg mx-auto px-4 py-5 space-y-4">
+      <div style={{ maxWidth: 520, margin: '0 auto', padding: '20px 16px' }}>
 
         {/* Order type */}
-        <div className="card p-5">
-          <h3 className="font-bold text-sm mb-3">How do you want it?</h3>
-          <div className="grid grid-cols-2 gap-3">
+        <div style={card}>
+          <p style={{ fontWeight: 800, fontSize: 14, color: 'var(--text)', marginBottom: 14 }}>How do you want it?</p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             {[
-              { type: 'delivery' as OrderType, icon: '🛵', label: 'Home Delivery', sub: fees.delivery_fee === 0 ? 'Free delivery!' : `₹${fees.delivery_fee} delivery` },
+              { type: 'delivery' as OrderType, icon: '🛵', label: 'Home Delivery', sub: fees.delivery_fee === 0 ? '🎉 Free delivery!' : `₹${fees.delivery_fee} delivery` },
               { type: 'pickup' as OrderType, icon: '🏪', label: 'Self Pickup', sub: 'Pick up from shop, free' },
             ].map(o => (
               <button key={o.type} onClick={() => setOrderType(o.type)}
-                className={`p-4 rounded-xl border-2 text-left transition-all ${orderType === o.type ? 'border-brand-500 bg-brand-50' : 'border-gray-200'}`}>
-                <div className="text-2xl mb-1.5">{o.icon}</div>
-                <div className="font-bold text-sm">{o.label}</div>
-                <div className="text-xs text-gray-500 mt-0.5">{o.sub}</div>
+                style={{ padding: '14px 12px', borderRadius: 14, border: `2px solid ${orderType === o.type ? '#ff3008' : 'var(--border-2)'}`, background: orderType === o.type ? 'var(--brand-muted)' : 'var(--bg-1)', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', transition: 'all 0.15s' }}>
+                <div style={{ fontSize: 24, marginBottom: 6 }}>{o.icon}</div>
+                <div style={{ fontWeight: 800, fontSize: 13, color: 'var(--text)' }}>{o.label}</div>
+                <div style={{ fontSize: 11, color: orderType === o.type ? '#ff3008' : 'var(--text-3)', marginTop: 2 }}>{o.sub}</div>
               </button>
             ))}
           </div>
@@ -188,142 +136,110 @@ export default function CheckoutPage() {
 
         {/* Delivery address */}
         {orderType === 'delivery' && (
-          <div className="card p-5 space-y-3">
-            <h3 className="font-bold text-sm">Delivery Address</h3>
+          <div style={card}>
+            <p style={{ fontWeight: 800, fontSize: 14, color: 'var(--text)', marginBottom: 14 }}>Delivery Address</p>
 
-            {/* Saved addresses */}
             {savedAddresses.length > 0 && (
-              <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+              <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4, marginBottom: 12 }}>
                 {savedAddresses.map((addr, i) => (
-                  <button key={i}
-                    onClick={() => {
-                      const full = [addr.address, addr.area, addr.city].filter(Boolean).join(', ')
-                      setAddress(full)
-                      if (addr.lat) setSelectedLat(addr.lat)
-                      if (addr.lng) setSelectedLng(addr.lng)
-                    }}
-                    className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl border-2 text-xs font-semibold transition-all ${
-                      address.includes(addr.area || addr.city)
-                        ? 'border-brand-500 bg-brand-50 text-brand-600'
-                        : 'border-gray-200 text-gray-600'
-                    }`}>
-                    {addr.label === 'home' ? '🏠' : addr.label === 'work' ? '💼' : '📌'}
-                    {addr.label === 'home' ? 'Home' : addr.label === 'work' ? 'Work' : addr.label}
+                  <button key={i} onClick={() => { setAddress([addr.address, addr.area, addr.city].filter(Boolean).join(', ')); if (addr.lat) setSelLat(addr.lat); if (addr.lng) setSelLng(addr.lng) }}
+                    style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 10, border: `2px solid ${address.includes(addr.area || addr.city) ? '#ff3008' : 'var(--border-2)'}`, background: address.includes(addr.area || addr.city) ? 'var(--brand-muted)' : 'var(--bg-1)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 700, color: address.includes(addr.area || addr.city) ? '#ff3008' : 'var(--text-2)' }}>
+                    {addr.label === 'home' ? '🏠' : addr.label === 'work' ? '💼' : '📌'} {addr.label === 'home' ? 'Home' : addr.label === 'work' ? 'Work' : addr.label}
                   </button>
                 ))}
                 <Link href={`/location?return=${encodeURIComponent('/checkout')}`}
-                  className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl border-2 border-dashed border-gray-300 text-xs font-semibold text-gray-400 hover:border-brand-500 hover:text-brand-500 transition-all">
+                  style={{ flexShrink: 0, display: 'flex', alignItems: 'center', padding: '6px 12px', borderRadius: 10, border: '2px dashed var(--border-2)', fontSize: 12, fontWeight: 700, color: 'var(--text-3)', textDecoration: 'none' }}>
                   + Add new
                 </Link>
               </div>
             )}
 
-            {/* GPS detect button */}
             <button onClick={detectLocation} disabled={detecting}
-              className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 font-semibold text-sm transition-all ${
-                selectedLat ? 'border-green-500 bg-green-50 text-green-700' : 'border-brand-500 bg-brand-50 text-brand-600 hover:bg-brand-100'
-              }`}>
-              {detecting
-                ? <><span className="animate-spin">⏳</span> Detecting location...</>
-                : selectedLat
-                ? <><span>✅</span> Location detected — tap to re-detect</>
-                : <><span>📍</span> Detect my current location</>
-              }
+              style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '11px', borderRadius: 12, border: `2px solid ${selLat ? '#22c55e' : '#ff3008'}`, background: selLat ? 'rgba(34,197,94,0.08)' : 'var(--brand-muted)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, color: selLat ? '#16a34a' : '#ff3008', marginBottom: 12 }}>
+              {detecting ? <><span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>⏳</span> Detecting…</>
+               : selLat ? '✅ Location detected — tap to re-detect'
+               : '📍 Detect my current location'}
             </button>
 
-            {/* Address text */}
-            <div>
-              <textarea
-                value={address}
-                onChange={e => setAddress(e.target.value)}
-                className="input-field resize-none"
-                rows={2}
-                placeholder="Your full address — flat no., building, street, area..."
-              />
-              {!savedAddresses.length && (
-                <Link href={`/location?return=${encodeURIComponent('/checkout')}`}
-                  className="mt-1.5 flex items-center gap-1 text-xs text-brand-500 font-semibold hover:underline">
-                  📍 Or pick location on map →
-                </Link>
-              )}
-            </div>
-
-            <input
-              value={instructions}
-              onChange={e => setInstructions(e.target.value)}
-              className="input-field text-sm"
-              placeholder="Delivery instructions — Ring bell, leave at door, call on arrival..."
-            />
+            <textarea value={address} onChange={e => setAddress(e.target.value)} rows={2} placeholder="Your full address — flat no., building, street, area…"
+              style={{ ...s({ resize: 'none', marginBottom: 10 }), width: '100%' }} />
+            <input value={instructions} onChange={e => setInstr(e.target.value)} placeholder="Delivery instructions — Ring bell, leave at door…"
+              style={{ ...s(), width: '100%' }} />
           </div>
         )}
 
         {/* Payment */}
-        <div className="card p-5">
-          <h3 className="font-bold text-sm mb-3">Payment Method</h3>
-          <div className="space-y-2">
-            <label className={`flex items-center gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${paymentMethod === 'cod' ? 'border-brand-500 bg-brand-50' : 'border-gray-200'}`}>
-              <input type="radio" name="pay" value="cod" checked={paymentMethod === 'cod'} onChange={() => setPaymentMethod('cod')} className="accent-brand-500" />
-              <div className="text-2xl">💵</div>
-              <div><p className="font-bold text-sm">Cash on Delivery</p><p className="text-xs text-gray-400">Pay when your order arrives</p></div>
+        <div style={card}>
+          <p style={{ fontWeight: 800, fontSize: 14, color: 'var(--text)', marginBottom: 14 }}>Payment Method</p>
+          {[
+            { val: 'cod' as PaymentMethod, icon: '💵', label: 'Cash on Delivery', sub: 'Pay when your order arrives' },
+            { val: 'upi' as PaymentMethod, icon: '📲', label: 'UPI Payment', sub: 'GPay, PhonePe, Paytm, any UPI' },
+          ].map(p => (
+            <label key={p.val} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 12px', borderRadius: 14, border: `2px solid ${payMethod === p.val ? '#ff3008' : 'var(--border-2)'}`, background: payMethod === p.val ? 'var(--brand-muted)' : 'var(--bg-1)', cursor: 'pointer', marginBottom: 10 }}>
+              <input type="radio" name="pay" value={p.val} checked={payMethod === p.val} onChange={() => setPayMethod(p.val)} style={{ accentColor: '#ff3008' }} />
+              <span style={{ fontSize: 24 }}>{p.icon}</span>
+              <div>
+                <p style={{ fontWeight: 800, fontSize: 13, color: 'var(--text)' }}>{p.label}</p>
+                <p style={{ fontSize: 11, color: 'var(--text-3)' }}>{p.sub}</p>
+              </div>
             </label>
-            <label className={`flex items-center gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${paymentMethod === 'upi' ? 'border-brand-500 bg-brand-50' : 'border-gray-200'}`}>
-              <input type="radio" name="pay" value="upi" checked={paymentMethod === 'upi'} onChange={() => setPaymentMethod('upi')} className="accent-brand-500" />
-              <div className="text-2xl">📲</div>
-              <div><p className="font-bold text-sm">UPI Payment</p><p className="text-xs text-gray-400">GPay, PhonePe, Paytm, any UPI</p></div>
-            </label>
-          </div>
+          ))}
 
-          {paymentMethod === 'upi' && (
-            <div className="mt-4 p-4 bg-blue-50 rounded-xl border border-blue-100 space-y-3">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-bold text-blue-800">Pay ₹{fees.total_amount} via UPI</p>
-                <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-lg font-semibold">Test mode</span>
+          {payMethod === 'upi' && (
+            <div style={{ background: 'var(--blue-bg)', border: '1px solid rgba(59,130,246,0.2)', borderRadius: 14, padding: '14px 16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <p style={{ fontWeight: 800, fontSize: 14, color: '#1d4ed8' }}>Pay ₹{fees.total_amount} via UPI</p>
+                <span style={{ fontSize: 11, background: 'rgba(59,130,246,0.15)', color: '#2563eb', padding: '3px 8px', borderRadius: 8, fontWeight: 700 }}>Test mode</span>
               </div>
-              <div className="bg-white rounded-xl p-3 flex items-center justify-between">
+              <div style={{ background: 'var(--card-bg)', borderRadius: 12, padding: '12px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                 <div>
-                  <p className="text-xs text-gray-400">UPI ID</p>
-                  <p className="font-bold text-sm font-mono">welokl@upi</p>
+                  <p style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 2 }}>UPI ID</p>
+                  <p style={{ fontWeight: 900, fontSize: 15, fontFamily: 'monospace', color: 'var(--text)' }}>welokl@upi</p>
                 </div>
-                <button onClick={() => { navigator.clipboard.writeText('welokl@upi') }}
-                  className="text-xs bg-brand-50 text-brand-500 px-3 py-1.5 rounded-lg font-semibold">Copy</button>
+                <button onClick={() => { navigator.clipboard.writeText('welokl@upi'); setCopied(true); setTimeout(() => setCopied(false), 2000) }}
+                  style={{ fontSize: 12, fontWeight: 800, padding: '6px 12px', borderRadius: 8, background: copied ? '#22c55e' : 'var(--brand-muted)', color: copied ? '#fff' : '#ff3008', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+                  {copied ? '✓ Copied' : 'Copy'}
+                </button>
               </div>
-              <input
-                value={upiId}
-                onChange={e => setUpiId(e.target.value)}
-                className="input-field text-sm"
-                placeholder="Enter UPI transaction ID after paying"
-              />
-              <p className="text-xs text-blue-600">Pay first using any UPI app, then enter the transaction ID here</p>
+              <input value={upiId} onChange={e => setUpiId(e.target.value)} placeholder="Enter UPI transaction ID after paying" style={{ ...s({ marginBottom: 8 }), width: '100%' }} />
+              <p style={{ fontSize: 12, color: '#2563eb' }}>Pay first using any UPI app, then enter the transaction ID here</p>
             </div>
           )}
         </div>
 
-        {/* Bill summary */}
-        <div className="card p-5">
-          <h3 className="font-bold text-sm mb-3">Bill Summary</h3>
-          <div className="space-y-2 text-sm">
-            {cart.items.map(i => (
-              <div key={i.product.id} className="flex justify-between text-gray-600">
-                <span>{i.product.name} × {i.quantity}</span>
-                <span>₹{i.product.price * i.quantity}</span>
+        {/* Bill */}
+        <div style={card}>
+          <p style={{ fontWeight: 800, fontSize: 14, color: 'var(--text)', marginBottom: 14 }}>Bill Summary</p>
+          {cart.items.map(i => (
+            <div key={i.product.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--text-2)', marginBottom: 6 }}>
+              <span>{i.product.name} × {i.quantity}</span><span>₹{i.product.price * i.quantity}</span>
+            </div>
+          ))}
+          <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10, marginTop: 6 }}>
+            {[
+              { l: 'Item total', v: `₹${subtotal}` },
+              { l: `Delivery${fees.delivery_fee === 0 ? ' 🎉 FREE!' : ''}`, v: fees.delivery_fee === 0 ? '—' : `₹${fees.delivery_fee}`, fade: fees.delivery_fee === 0 },
+              { l: 'Platform fee', v: `₹${fees.platform_fee}` },
+            ].map(r => (
+              <div key={r.l} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: r.fade ? 'var(--text-4)' : 'var(--text-2)', marginBottom: 6 }}>
+                <span>{r.l}</span><span style={{ textDecoration: r.fade ? 'line-through' : 'none' }}>{r.v}</span>
               </div>
             ))}
-            <div className="border-t border-gray-100 pt-2 space-y-1.5">
-              <div className="flex justify-between text-gray-500"><span>Item total</span><span>₹{subtotal}</span></div>
-              <div className="flex justify-between text-gray-500">
-                <span>Delivery{fees.delivery_fee === 0 && <span className="text-green-600 font-semibold ml-1">(FREE!)</span>}</span>
-                <span className={fees.delivery_fee === 0 ? 'line-through text-gray-300' : ''}>₹{fees.delivery_fee === 0 ? '25' : fees.delivery_fee}</span>
-              </div>
-              <div className="flex justify-between text-gray-500"><span>Platform fee</span><span>₹{fees.platform_fee}</span></div>
-              <div className="flex justify-between font-bold text-base pt-1 border-t border-gray-100"><span>Total</span><span>₹{fees.total_amount}</span></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 900, fontSize: 16, color: 'var(--text)', paddingTop: 10, borderTop: '1px solid var(--border)', marginTop: 4 }}>
+              <span>Total</span><span>₹{fees.total_amount}</span>
             </div>
           </div>
         </div>
 
-        {error && <div className="bg-red-50 border border-red-200 text-red-600 text-sm rounded-xl px-4 py-3">{error}</div>}
+        {error && (
+          <div style={{ background: 'var(--red-bg)', border: '1px solid rgba(239,68,68,0.25)', color: '#ef4444', fontSize: 13, borderRadius: 12, padding: '12px 16px', marginBottom: 14 }}>
+            {error}
+          </div>
+        )}
 
-        <button onClick={placeOrder} disabled={loading} className="btn-primary w-full py-4 text-base">
-          {loading ? 'Placing order...' : `Place Order — ₹${fees.total_amount} →`}
+        <button onClick={placeOrder} disabled={loading}
+          style={{ width: '100%', padding: '15px', borderRadius: 14, fontWeight: 900, fontSize: 16, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: '#ff3008', color: '#fff', boxShadow: '0 4px 16px rgba(255,48,8,0.3)', opacity: loading ? 0.7 : 1 }}>
+          {loading ? 'Placing order…' : `Place Order — ₹${fees.total_amount} →`}
         </button>
       </div>
     </div>

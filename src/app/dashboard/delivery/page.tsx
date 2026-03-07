@@ -12,23 +12,27 @@ interface Order {
   items: { product_name: string; quantity: number; price: number }[]
   customer: { name: string; phone: string } | null
 }
-interface Partner { user_id: string; is_online: boolean; rating: number; total_deliveries: number; today_deliveries: number; vehicle_type: string; current_lat: number | null; current_lng: number | null }
+interface Partner {
+  user_id: string; is_online: boolean; rating: number; total_deliveries: number
+  today_deliveries: number; vehicle_type: string; current_lat: number | null
+  current_lng: number | null; verification_status?: string; verification_note?: string
+}
 interface Wallet { balance: number; total_earned: number }
 
 export default function DeliveryDashboard() {
-  const [userId, setUserId]               = useState<string | null>(null)
-  const [partner, setPartner]             = useState<Partner | null>(null)
-  const [wallet, setWallet]               = useState<Wallet | null>(null)
-  const [userName, setUserName]           = useState('')
-  const [availableOrders, setAvailable]   = useState<Order[]>([])
-  const [activeOrder, setActiveOrder]     = useState<Order | null>(null)
-  const [completedToday, setCompleted]    = useState(0)
-  const [loading, setLoading]             = useState(true)
-  const [toggling, setToggling]           = useState(false)
-  const [accepting, setAccepting]         = useState<string | null>(null)
-  const [alertsOn, setAlertsOn]           = useState(false)
+  const [userId, setUserId]             = useState<string | null>(null)
+  const [partner, setPartner]           = useState<Partner | null>(null)
+  const [wallet, setWallet]             = useState<Wallet | null>(null)
+  const [userName, setUserName]         = useState('')
+  const [userPhone, setUserPhone]       = useState('')
+  const [availableOrders, setAvailable] = useState<Order[]>([])
+  const [activeOrder, setActiveOrder]   = useState<Order | null>(null)
+  const [completedToday, setCompleted]  = useState(0)
+  const [loading, setLoading]           = useState(true)
+  const [toggling, setToggling]         = useState(false)
+  const [accepting, setAccepting]       = useState<string | null>(null)
+  const [alertsOn, setAlertsOn]         = useState(false)
 
-  // 🔔 Sound alert
   useDeliveryPartnerAlerts(userId, partner?.is_online ?? false)
 
   const loadData = useCallback(async () => {
@@ -38,11 +42,14 @@ export default function DeliveryDashboard() {
     setUserId(authUser.id)
 
     const [{ data: profile }, { data: partnerData }, { data: walletData }] = await Promise.all([
-      sb.from('users').select('name').eq('id', authUser.id).single(),
+      sb.from('users').select('name, phone').eq('id', authUser.id).single(),
       sb.from('delivery_partners').select('*').eq('user_id', authUser.id).single(),
       sb.from('wallets').select('balance, total_earned').eq('user_id', authUser.id).single(),
     ])
-    setUserName(profile?.name || ''); setPartner(partnerData); setWallet(walletData)
+    setUserName(profile?.name || '')
+    setUserPhone(profile?.phone || '')
+    setPartner(partnerData)
+    setWallet(walletData)
 
     const { data: myActive } = await sb.from('orders')
       .select('*, shop:shops(name,address,phone,latitude,longitude), items:order_items(product_name,quantity,price), customer:users!customer_id(name,phone)')
@@ -50,7 +57,7 @@ export default function DeliveryDashboard() {
       .order('created_at', { ascending: false }).limit(1).maybeSingle()
     setActiveOrder(myActive)
 
-    if (partnerData?.is_online) {
+    if (partnerData?.is_online && partnerData?.verification_status === 'approved') {
       const { data: avail } = await sb.from('orders')
         .select('*, shop:shops(name,address,phone,latitude,longitude), items:order_items(product_name,quantity,price), customer:users!customer_id(name,phone)')
         .eq('status', 'ready').is('delivery_partner_id', null).eq('type', 'delivery')
@@ -60,7 +67,8 @@ export default function DeliveryDashboard() {
 
     const today = new Date(); today.setHours(0,0,0,0)
     const { count } = await sb.from('orders').select('id', { count: 'exact' })
-      .eq('delivery_partner_id', authUser.id).eq('status', 'delivered').gte('created_at', today.toISOString())
+      .eq('delivery_partner_id', authUser.id).eq('status', 'delivered')
+      .gte('created_at', today.toISOString())
     setCompleted(count || 0)
     setLoading(false)
   }, [])
@@ -68,7 +76,10 @@ export default function DeliveryDashboard() {
   useEffect(() => {
     loadData()
     const sb = createClient()
-    const ch = sb.channel('delivery-live').on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, loadData).subscribe()
+    const ch = sb.channel('delivery-live')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, loadData)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'delivery_partners' }, loadData)
+      .subscribe()
     return () => { sb.removeChannel(ch) }
   }, [loadData])
 
@@ -80,7 +91,8 @@ export default function DeliveryDashboard() {
     let lat = partner.current_lat, lng = partner.current_lng
     if (going && navigator.geolocation) {
       try {
-        const pos = await new Promise<GeolocationPosition>((res, rej) => navigator.geolocation.getCurrentPosition(res, rej, { timeout: 8000 }))
+        const pos = await new Promise<GeolocationPosition>((res, rej) =>
+          navigator.geolocation.getCurrentPosition(res, rej, { timeout: 8000 }))
         lat = pos.coords.latitude; lng = pos.coords.longitude
       } catch {}
     }
@@ -115,24 +127,97 @@ export default function DeliveryDashboard() {
       await sb.from('wallets').update({ balance: w.balance + payout, total_earned: w.total_earned + payout }).eq('user_id', userId)
       await sb.from('transactions').insert({ wallet_id: w.id, order_id: activeOrder.id, amount: payout, type: 'credit', description: 'Delivery earnings' })
     }
-    // Fix: wrap rpc in try/catch instead of .catch() which TS doesn't allow on this type
     try { await sb.rpc('increment_deliveries', { partner_user_id: userId }) } catch {}
     fetch('/api/notifications/send', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ orderId: activeOrder.id, status: 'delivered', customerId: activeOrder.customer_id }) }).catch(() => {})
     loadData()
   }
 
-  const earningsToday = completedToday * 20
-  const isOnline = partner?.is_online
+  const earningsToday  = completedToday * 20
+  const isOnline       = partner?.is_online
+  const verStatus      = partner?.verification_status ?? 'approved'
+  const verNote        = partner?.verification_note ?? null
+  const headerBg       = isOnline ? 'linear-gradient(135deg,#0f4c2a,#166534)' : 'linear-gradient(135deg,#1a1a2e,#16213e)'
 
-  // ── Luxury dark header colour palette ──────────────────────────────────────
-  const headerBg   = isOnline ? 'linear-gradient(135deg, #0f4c2a 0%, #166534 100%)' : 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)'
-  const accentClr  = isOnline ? '#4ade80' : '#94a3b8'
+  // ── Loading ──
+  if (loading) return (
+    <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Plus Jakarta Sans',sans-serif" }}>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ width: 40, height: 40, border: '3px solid var(--brand)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 16px' }} />
+        <p style={{ color: 'var(--text-3)', fontSize: 14 }}>Loading…</p>
+      </div>
+    </div>
+  )
 
+  // ── PENDING VERIFICATION GATE ──
+  if (verStatus === 'pending') return (
+    <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, fontFamily: "'Plus Jakarta Sans',sans-serif" }}>
+      <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 24, padding: '40px 28px', maxWidth: 440, width: '100%', textAlign: 'center', boxShadow: 'var(--card-shadow)' }}>
+        <div style={{ width: 80, height: 80, borderRadius: '50%', background: 'rgba(245,158,11,0.12)', border: '3px solid rgba(245,158,11,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 36, margin: '0 auto 24px' }}>
+          ⏳
+        </div>
+        <h2 style={{ fontWeight: 900, fontSize: 22, color: 'var(--text)', marginBottom: 10 }}>Verification Pending</h2>
+        <p style={{ fontSize: 14, color: 'var(--text-2)', lineHeight: 1.7, marginBottom: 28 }}>
+          Welcome, <strong style={{ color: 'var(--text)' }}>{userName}</strong>!<br />
+          Your delivery partner account is under review.<br />
+          Our team will verify and approve you within <strong style={{ color: '#d97706' }}>24–48 hours</strong>.
+        </p>
+
+        <div style={{ background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 16, padding: '18px 20px', marginBottom: 24, textAlign: 'left' }}>
+          <p style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 14 }}>What happens next</p>
+          {[
+            { n: '1', t: 'ID & document check', d: 'Admin reviews your registration details' },
+            { n: '2', t: 'Approval notification', d: 'You will get access to accept deliveries' },
+            { n: '3', t: 'Start earning!', d: `Earn ₹20 per delivery, paid instantly to wallet` },
+          ].map(s => (
+            <div key={s.n} style={{ display: 'flex', gap: 12, marginBottom: 10, alignItems: 'flex-start' }}>
+              <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'rgba(245,158,11,0.18)', color: '#d97706', fontWeight: 900, fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{s.n}</div>
+              <div>
+                <p style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)' }}>{s.t}</p>
+                <p style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>{s.d}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <p style={{ fontSize: 12, color: 'var(--text-4)', marginBottom: 16 }}>Questions? support@welokl.com</p>
+        <button onClick={async () => { await createClient().auth.signOut(); window.location.href = '/' }}
+          style={{ fontSize: 13, color: 'var(--text-4)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+          Sign out
+        </button>
+      </div>
+    </div>
+  )
+
+  // ── REJECTED GATE ──
+  if (verStatus === 'rejected') return (
+    <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, fontFamily: "'Plus Jakarta Sans',sans-serif" }}>
+      <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 24, padding: '40px 28px', maxWidth: 440, width: '100%', textAlign: 'center', boxShadow: 'var(--card-shadow)' }}>
+        <div style={{ width: 80, height: 80, borderRadius: '50%', background: 'var(--red-bg)', border: '3px solid rgba(239,68,68,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 36, margin: '0 auto 24px' }}>❌</div>
+        <h2 style={{ fontWeight: 900, fontSize: 22, color: '#ef4444', marginBottom: 10 }}>Application Not Approved</h2>
+        <p style={{ fontSize: 14, color: 'var(--text-2)', lineHeight: 1.7, marginBottom: verNote ? 16 : 28 }}>
+          Your delivery partner application was not approved at this time.
+        </p>
+        {verNote && (
+          <div style={{ background: 'var(--red-bg)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 14, padding: '14px 18px', marginBottom: 24, textAlign: 'left' }}>
+            <p style={{ fontSize: 12, fontWeight: 800, color: '#ef4444', marginBottom: 6 }}>Reason from admin:</p>
+            <p style={{ fontSize: 13, color: '#ef4444', lineHeight: 1.5 }}>{verNote}</p>
+          </div>
+        )}
+        <p style={{ fontSize: 12, color: 'var(--text-4)', marginBottom: 16 }}>Contact support@welokl.com for more info.</p>
+        <button onClick={async () => { await createClient().auth.signOut(); window.location.href = '/' }}
+          style={{ fontSize: 13, color: 'var(--text-4)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+          Sign out
+        </button>
+      </div>
+    </div>
+  )
+
+  // ── MAIN DASHBOARD (approved) ──
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg)', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+    <div style={{ minHeight: '100vh', background: 'var(--bg)', fontFamily: "'Plus Jakarta Sans',sans-serif" }}>
 
-      {/* ── HEADER ── */}
+      {/* Header */}
       <div style={{ background: headerBg, padding: '20px 16px 24px', position: 'sticky', top: 0, zIndex: 40 }}>
         <div style={{ maxWidth: 520, margin: '0 auto' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
@@ -142,8 +227,10 @@ export default function DeliveryDashboard() {
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               {!alertsOn && (
-                <button onClick={() => { try { const A=window.AudioContext||(window as any).webkitAudioContext; if(A){const c=new A();c.resume();c.close()} } catch{} requestNotificationPermission(); setAlertsOn(true) }}
-                  style={{ fontSize: 11, fontWeight: 700, padding: '6px 10px', borderRadius: 10, background: 'rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.9)', border: '1px solid rgba(255,255,255,0.2)', cursor: 'pointer', fontFamily: 'inherit' }}>
+                <button onClick={() => {
+                  try { const A = window.AudioContext || (window as any).webkitAudioContext; if (A) { const c = new A(); c.resume(); c.close() } } catch {}
+                  requestNotificationPermission(); setAlertsOn(true)
+                }} style={{ fontSize: 11, fontWeight: 700, padding: '6px 10px', borderRadius: 10, background: 'rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.9)', border: '1px solid rgba(255,255,255,0.2)', cursor: 'pointer', fontFamily: 'inherit' }}>
                   🔔 Alerts
                 </button>
               )}
@@ -152,12 +239,11 @@ export default function DeliveryDashboard() {
             </div>
           </div>
 
-          {/* Stats */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginBottom: 16 }}>
             {[
-              { label: 'Today',   value: completedToday,            suffix: ' orders' },
-              { label: 'Earned',  value: `₹${earningsToday}`,       suffix: '' },
-              { label: 'Wallet',  value: `₹${wallet?.balance || 0}`, suffix: '' },
+              { label: 'Today',  value: completedToday,             suffix: ' orders' },
+              { label: 'Earned', value: `₹${earningsToday}`,        suffix: '' },
+              { label: 'Wallet', value: `₹${wallet?.balance || 0}`, suffix: '' },
             ].map(s => (
               <div key={s.label} style={{ background: 'rgba(255,255,255,0.10)', borderRadius: 14, padding: '10px 8px', textAlign: 'center', backdropFilter: 'blur(8px)' }}>
                 <div style={{ fontWeight: 900, fontSize: 18, color: '#fff', lineHeight: 1 }}>{s.value}{s.suffix}</div>
@@ -166,13 +252,11 @@ export default function DeliveryDashboard() {
             ))}
           </div>
 
-          {/* Online toggle */}
           <button onClick={toggleOnline} disabled={toggling}
             style={{ width: '100%', padding: '14px', borderRadius: 16, fontWeight: 900, fontSize: 15, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.2s',
               background: isOnline ? 'rgba(74,222,128,0.2)' : 'var(--brand)',
               color: isOnline ? '#4ade80' : '#fff',
-              border: isOnline ? '2px solid rgba(74,222,128,0.4)' : '2px solid transparent',
-            } as any}>
+              border: isOnline ? '2px solid rgba(74,222,128,0.4)' : '2px solid transparent' }}>
             {toggling ? '…' : isOnline ? '🟢 ONLINE — tap to go offline' : '⚫ OFFLINE — tap to go online'}
           </button>
         </div>
@@ -201,8 +285,7 @@ export default function DeliveryDashboard() {
                   <p style={{ fontSize: 11, fontWeight: 800, color: '#16a34a', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.07em' }}>📦 Pickup from</p>
                   <p style={{ fontWeight: 800, fontSize: 15, color: 'var(--text)', lineHeight: 1.4 }}>{activeOrder.shop?.address}</p>
                   {activeOrder.shop?.phone && (
-                    <a href={`tel:${activeOrder.shop.phone}`}
-                      style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginTop: 8, fontSize: 13, fontWeight: 800, color: '#fff', background: '#16a34a', padding: '5px 12px', borderRadius: 8, textDecoration: 'none' }}>
+                    <a href={`tel:${activeOrder.shop.phone}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginTop: 8, fontSize: 13, fontWeight: 800, color: '#fff', background: '#16a34a', padding: '5px 12px', borderRadius: 8, textDecoration: 'none' }}>
                       📞 Call shop
                     </a>
                   )}
@@ -212,8 +295,7 @@ export default function DeliveryDashboard() {
                     <p style={{ fontSize: 11, fontWeight: 800, color: '#ff5a1f', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.07em' }}>📍 Drop location</p>
                     <p style={{ fontWeight: 800, fontSize: 15, color: 'var(--text)', lineHeight: 1.4 }}>{activeOrder.delivery_address}</p>
                     {activeOrder.customer?.phone && (
-                      <a href={`tel:${activeOrder.customer.phone}`}
-                        style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginTop: 8, fontSize: 13, fontWeight: 800, color: '#fff', background: '#ff5a1f', padding: '5px 12px', borderRadius: 8, textDecoration: 'none' }}>
+                      <a href={`tel:${activeOrder.customer.phone}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginTop: 8, fontSize: 13, fontWeight: 800, color: '#fff', background: '#ff5a1f', padding: '5px 12px', borderRadius: 8, textDecoration: 'none' }}>
                         📞 Call customer
                       </a>
                     )}
@@ -284,7 +366,6 @@ export default function DeliveryDashboard() {
           </div>
         )}
 
-        {/* Offline state */}
         {!activeOrder && !isOnline && (
           <div style={{ background: 'var(--card-bg)', borderRadius: 18, border: '1px solid var(--border)', padding: '52px 20px', textAlign: 'center', marginBottom: 20 }}>
             <div style={{ fontSize: 52, marginBottom: 14 }}>😴</div>
@@ -294,7 +375,7 @@ export default function DeliveryDashboard() {
           </div>
         )}
 
-        {/* Wallet card */}
+        {/* Wallet */}
         <div style={{ background: 'var(--card-bg)', borderRadius: 18, border: '1px solid var(--border)', padding: 20, boxShadow: 'var(--card-shadow)' }}>
           <p style={{ fontWeight: 800, fontSize: 14, color: 'var(--text)', marginBottom: 14 }}>Wallet</p>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>

@@ -1,11 +1,10 @@
 'use client'
 import { useEffect, useState, useCallback } from 'react'
-import { useShopkeeperOrderAlerts, requestNotificationPermission } from '@/hooks/useOrderAlerts'
 import { createClient } from '@/lib/supabase/client'
 import type { Order, Shop, Product, User } from '@/types'
 import { ORDER_STATUS_LABELS, ORDER_STATUS_ICONS } from '@/types'
 
-type Tab = 'orders' | 'products' | 'analytics' | 'settings'
+type Tab = 'orders' | 'products' | 'analytics'
 
 export default function BusinessDashboard() {
   const [user, setUser] = useState<User | null>(null)
@@ -15,11 +14,8 @@ export default function BusinessDashboard() {
   const [tab, setTab] = useState<Tab>('orders')
   const [loading, setLoading] = useState(true)
   const [showAddProduct, setShowAddProduct] = useState(false)
-  const [actionError, setActionError] = useState('')
-  const [alertsEnabled, setAlertsEnabled] = useState(false)
-
-  // 🔔 Sound alert — fires on every new order INSERT for this shop
-  useShopkeeperOrderAlerts(shop?.id)
+  const [verStatus, setVerStatus] = useState<'pending' | 'approved' | 'rejected' | null>(null)
+  const [verNote, setVerNote] = useState<string | null>(null)
 
   const loadData = useCallback(async () => {
     const supabase = createClient()
@@ -30,6 +26,8 @@ export default function BusinessDashboard() {
     const { data: shopData } = await supabase.from('shops').select('*').eq('owner_id', authUser.id).single()
     if (!shopData) { setLoading(false); return }
     setShop(shopData)
+    setVerStatus((shopData as any).verification_status ?? 'approved')
+    setVerNote((shopData as any).verification_note ?? null)
     const [{ data: orderData }, { data: productData }] = await Promise.all([
       supabase.from('orders').select('*, items:order_items(*)').eq('shop_id', shopData.id).order('created_at', { ascending: false }).limit(50),
       supabase.from('products').select('*').eq('shop_id', shopData.id).order('sort_order'),
@@ -44,53 +42,19 @@ export default function BusinessDashboard() {
     const supabase = createClient()
     const channel = supabase.channel('biz-orders')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, loadData)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'shops' }, loadData)
       .subscribe()
     return () => { supabase.removeChannel(channel) }
   }, [loadData])
 
-  async function updateOrderStatus(orderId: string, status: string, currentOrder?: Order) {
-    setActionError('')
+  async function updateOrderStatus(orderId: string, status: string) {
     const supabase = createClient()
-
-    // ── CRITICAL CHECKS ──
-    // 1. Cannot hand to rider without a delivery partner assigned
-    if (status === 'picked_up' && currentOrder) {
-      if (!currentOrder.delivery_partner_id) {
-        setActionError('Cannot mark as picked up — no delivery partner has been assigned yet. Wait for a partner to be assigned, or contact support.')
-        return
-      }
+    await supabase.from('orders').update({ status }).eq('id', orderId)
+    await supabase.from('order_status_log').insert({ order_id: orderId, status, message: `Status: ${status}` })
+    if (status === 'accepted' && shop) {
+      await fetch('/api/orders/assign', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId, shopLat: shop.latitude, shopLng: shop.longitude }) })
     }
-
-    // 2. Cannot accept if shop is closed
-    if (status === 'accepted' && shop && !shop.is_open) {
-      setActionError('Your shop is marked as closed. Open your shop first before accepting orders.')
-      return
-    }
-
-    const updates: Record<string, unknown> = { status }
-    if (status === 'accepted') updates.accepted_at = new Date().toISOString()
-
-    await supabase.from('orders').update(updates).eq('id', orderId)
-    await supabase.from('order_status_log').insert({
-      order_id: orderId, status, message: `Status updated to ${status} by shop`
-    })
-
-    // Notify customer
-    if (currentOrder?.customer_id) {
-      fetch('/api/notifications/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId, status, customerId: currentOrder.customer_id }),
-      }).catch(() => {})
-    }
-
-    // NOTE: Delivery partners accept orders themselves — no auto-assign
-    // When shop marks order "ready", it becomes visible to online delivery partners
-    if (status === 'ready' && currentOrder?.type === 'delivery') {
-      setActionError('') // clear any previous error
-      // Order is now visible to all online delivery partners to accept
-    }
-
     loadData()
   }
 
@@ -116,95 +80,113 @@ export default function BusinessDashboard() {
 
   if (!loading && !shop) {
     return (
-      <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+      <div className="min-h-screen bg-[#fafaf7] flex items-center justify-center p-6">
         <div className="card p-8 max-w-md w-full text-center">
-          <div className="text-6xl mb-4">🏪</div>
-          <h2 className="font-black text-xl mb-2" style={{ fontFamily: 'Nunito' }}>Set up your shop</h2>
-          <p className="mb-6 text-sm" style={{ color: 'var(--ink-soft)' }}>Create your shop to start receiving orders.</p>
-          <button onClick={() => window.location.href = '/shop/setup'} className="btn-primary w-full py-3" style={{ borderRadius: '100px' }}>
-            Set up my shop →
-          </button>
+          <div className="text-5xl mb-4">🏪</div>
+          <h2 className="font-bold text-xl mb-2">Set up your shop first</h2>
+          <p className="text-gray-400 text-sm mb-6">Create your shop to start receiving orders.</p>
+          <button onClick={() => window.location.href = '/shop/setup'} className="btn-primary w-full py-3">Set up my shop →</button>
         </div>
       </div>
     )
   }
 
-  return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg)', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-
-      {/* Header */}
-      <div className="sticky top-0 z-40 border-b" style={{ background: 'var(--card-bg)', borderColor: 'var(--border)' }}>
-        <div className="max-w-4xl mx-auto px-4 py-3">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl flex items-center justify-center text-white font-black text-sm"
-                  style={{ background: 'linear-gradient(135deg, #ff5722, #e64a19)' }}>W</div>
-                <div>
-                  <h1 className="font-black text-base leading-none" style={{ color: 'var(--ink)', fontFamily: 'Nunito' }}>
-                    {shop?.name || 'My Shop'}
-                  </h1>
-                  <p className="text-xs" style={{ color: 'var(--ink-soft)' }}>{shop?.area}, {shop?.city}</p>
-                </div>
+  // ── PENDING VERIFICATION GATE ──
+  if (!loading && verStatus === 'pending') return (
+    <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+      <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 24, padding: '40px 32px', maxWidth: 480, width: '100%', textAlign: 'center', boxShadow: 'var(--card-shadow)' }}>
+        <div style={{ width: 80, height: 80, borderRadius: '50%', background: 'rgba(245,158,11,0.12)', border: '3px solid rgba(245,158,11,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 36, margin: '0 auto 24px' }}>⏳</div>
+        <h2 style={{ fontWeight: 900, fontSize: 22, color: 'var(--text)', marginBottom: 10 }}>Verification Pending</h2>
+        <p style={{ fontSize: 14, color: 'var(--text-2)', lineHeight: 1.7, marginBottom: 28 }}>
+          Your shop <strong style={{ color: 'var(--text)' }}>{shop?.name}</strong> has been submitted.<br />
+          Our team will review and approve it within <strong style={{ color: '#d97706' }}>24–48 hours</strong>.
+        </p>
+        <div style={{ background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 16, padding: '18px 20px', marginBottom: 24, textAlign: 'left' }}>
+          <p style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 14 }}>What happens next</p>
+          {[
+            { n: '1', t: 'Admin reviews your shop details', d: 'Name, category, area and contact info' },
+            { n: '2', t: 'Approval notification',           d: "You'll be able to go live and receive orders" },
+            { n: '3', t: 'Start selling!',                  d: 'Accept orders and grow your business' },
+          ].map(s => (
+            <div key={s.n} style={{ display: 'flex', gap: 12, marginBottom: 10, alignItems: 'flex-start' }}>
+              <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'rgba(245,158,11,0.18)', color: '#d97706', fontWeight: 900, fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{s.n}</div>
+              <div>
+                <p style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)' }}>{s.t}</p>
+                <p style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>{s.d}</p>
               </div>
             </div>
+          ))}
+        </div>
+        <p style={{ fontSize: 12, color: 'var(--text-4)', marginBottom: 16 }}>Questions? support@welokl.com</p>
+        <button onClick={async () => { await createClient().auth.signOut(); window.location.href = '/' }}
+          style={{ fontSize: 13, color: 'var(--text-4)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>Sign out</button>
+      </div>
+    </div>
+  )
+
+  // ── REJECTED GATE ──
+  if (!loading && verStatus === 'rejected') return (
+    <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+      <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 24, padding: '40px 32px', maxWidth: 480, width: '100%', textAlign: 'center', boxShadow: 'var(--card-shadow)' }}>
+        <div style={{ width: 80, height: 80, borderRadius: '50%', background: 'var(--red-bg)', border: '3px solid rgba(239,68,68,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 36, margin: '0 auto 24px' }}>❌</div>
+        <h2 style={{ fontWeight: 900, fontSize: 22, color: '#ef4444', marginBottom: 10 }}>Shop Not Approved</h2>
+        <p style={{ fontSize: 14, color: 'var(--text-2)', lineHeight: 1.7, marginBottom: verNote ? 16 : 28 }}>
+          Your shop <strong style={{ color: 'var(--text)' }}>{shop?.name}</strong> was not approved at this time.
+        </p>
+        {verNote && (
+          <div style={{ background: 'var(--red-bg)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 14, padding: '14px 18px', marginBottom: 24, textAlign: 'left' }}>
+            <p style={{ fontSize: 12, fontWeight: 800, color: '#ef4444', marginBottom: 6 }}>Reason from admin:</p>
+            <p style={{ fontSize: 13, color: '#ef4444', lineHeight: 1.5 }}>{verNote}</p>
+          </div>
+        )}
+        <p style={{ fontSize: 12, color: 'var(--text-4)', marginBottom: 16 }}>Contact support@welokl.com for assistance.</p>
+        <button onClick={async () => { await createClient().auth.signOut(); window.location.href = '/' }}
+          style={{ fontSize: 13, color: 'var(--text-4)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>Sign out</button>
+      </div>
+    </div>
+  )
+
+  return (
+    <div className="min-h-screen bg-[#fafaf7]">
+      <div className="bg-white border-b border-gray-100 px-4 py-4">
+        <div className="max-w-4xl mx-auto">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <p className="text-xs text-gray-400">Business Dashboard</p>
+              <h1 className="font-bold text-lg">{shop?.name || 'My Shop'}</h1>
+              <p className="text-xs text-gray-400">{shop?.area}, {shop?.city}</p>
+            </div>
             <div className="flex items-center gap-2">
-              {!alertsEnabled && (
-                <button
-                  onClick={() => {
-                    try { const A = window.AudioContext||(window as any).webkitAudioContext; if(A){const c=new A();c.resume();c.close()} } catch{}
-                    requestNotificationPermission()
-                    setAlertsEnabled(true)
-                  }}
-                  className="text-xs font-black px-3 py-1.5 rounded-full border-2 animate-pulse"
-                  style={{ background: '#fff8e1', color: '#f57f17', borderColor: '#ffe082' }}>🔔 Tap to enable alerts</button>
-              )}
-              <button
-                onClick={async () => {
-                  const s = createClient()
-                  await s.from('shops').update({ is_open: !shop?.is_open }).eq('id', shop?.id || '')
-                  loadData()
-                }}
-                className="text-xs font-black px-3 py-1.5 rounded-full border-2 transition-all"
-                style={shop?.is_open
-                  ? { background: '#e8f5e9', color: '#2e7d32', borderColor: '#a5d6a7' }
-                  : { background: '#ffebee', color: '#c62828', borderColor: '#ef9a9a' }}>
+              <button onClick={async () => { const s = createClient(); await s.from('shops').update({ is_open: !shop?.is_open }).eq('id', shop?.id || ''); loadData() }}
+                className={`text-xs font-bold px-3 py-1.5 rounded-full border ${shop?.is_open ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-600 border-red-200'}`}>
                 {shop?.is_open ? '● Open' : '● Closed'}
               </button>
               <button onClick={async () => { const s = createClient(); await s.auth.signOut(); window.location.href = '/' }}
-                className="btn-ghost text-sm">Logout</button>
+                className="text-xs text-gray-400 px-2">Logout</button>
             </div>
           </div>
-
-          {/* Stats row */}
           <div className="grid grid-cols-4 gap-2">
             {[
-              { label: 'New', value: newOrders.length, color: '#1565c0', bg: '#e3f2fd' },
-              { label: 'Active', value: activeOrders.length, color: '#e65100', bg: '#fff8e1' },
-              { label: 'Done', value: deliveredOrders.length, color: '#2e7d32', bg: '#e8f5e9' },
-              { label: 'Earned', value: `₹${netEarnings}`, color: '#ff5722', bg: '#fff3ef' },
+              { label: 'New', value: newOrders.length, color: 'text-blue-600' },
+              { label: 'Active', value: activeOrders.length, color: 'text-amber-600' },
+              { label: 'Done', value: deliveredOrders.length, color: 'text-green-600' },
+              { label: 'Earned', value: `₹${netEarnings}`, color: 'text-brand-500' },
             ].map(s => (
-              <div key={s.label} className="rounded-2xl p-3 text-center" style={{ background: s.bg }}>
-                <div className="font-black text-lg leading-none" style={{ color: s.color, fontFamily: 'Nunito' }}>{s.value}</div>
-                <div className="text-xs font-bold mt-0.5" style={{ color: s.color, opacity: 0.7 }}>{s.label}</div>
+              <div key={s.label} className="card p-3 text-center">
+                <div className={`font-bold text-lg ${s.color}`}>{s.value}</div>
+                <div className="text-xs text-gray-400">{s.label}</div>
               </div>
             ))}
           </div>
         </div>
+      </div>
 
-        {/* Tabs */}
-        <div className="max-w-4xl mx-auto px-4 flex border-t" style={{ borderColor: 'var(--border)' }}>
-          {(['orders','products','analytics','settings'] as Tab[]).map(t => (
-            <button key={t} onClick={() => { setTab(t); setActionError('') }}
-              className="px-5 py-3 text-sm font-black capitalize border-b-2 transition-all relative"
-              style={tab === t
-                ? { borderColor: 'var(--brand)', color: 'var(--brand)' }
-                : { borderColor: 'transparent', color: 'var(--ink-soft)' }}>
-              {t}
-              {t === 'orders' && newOrders.length > 0 && (
-                <span className="ml-1.5 text-white text-xs rounded-full px-1.5 py-0.5 font-black"
-                  style={{ background: 'var(--brand)' }}>{newOrders.length}</span>
-              )}
+      <div className="bg-white border-b border-gray-100 px-4">
+        <div className="max-w-4xl mx-auto flex">
+          {(['orders','products','analytics'] as Tab[]).map(t => (
+            <button key={t} onClick={() => setTab(t)}
+              className={`px-5 py-3 text-sm font-semibold capitalize border-b-2 transition-all ${tab === t ? 'border-brand-500 text-brand-500' : 'border-transparent text-gray-500'}`}>
+              {t}{t === 'orders' && newOrders.length > 0 && <span className="ml-1.5 bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5">{newOrders.length}</span>}
             </button>
           ))}
         </div>
@@ -212,51 +194,26 @@ export default function BusinessDashboard() {
 
       <div className="max-w-4xl mx-auto px-4 py-5">
 
-        {/* Action error banner */}
-        {actionError && (
-          <div className="mb-4 p-4 rounded-2xl border-2 flex items-start gap-3"
-            style={{ background: '#fff3cd', borderColor: '#ffc107' }}>
-            <span className="text-xl flex-shrink-0">⚠️</span>
-            <div>
-              <p className="font-bold text-sm" style={{ color: '#856404' }}>{actionError}</p>
-            </div>
-            <button onClick={() => setActionError('')} className="ml-auto text-lg" style={{ color: '#856404' }}>✕</button>
-          </div>
-        )}
-
-        {/* ORDERS */}
         {tab === 'orders' && (
           <div className="space-y-5">
             {newOrders.length > 0 && (
               <div>
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="w-2.5 h-2.5 rounded-full animate-pulse" style={{ background: 'var(--brand)' }} />
-                  <h2 className="font-black" style={{ color: 'var(--brand)', fontFamily: 'Nunito' }}>New Orders ({newOrders.length})</h2>
-                </div>
+                <div className="flex items-center gap-2 mb-3"><span className="w-2 h-2 bg-red-500 rounded-full animate-pulse" /><h2 className="font-bold text-red-600">New Orders ({newOrders.length})</h2></div>
                 <div className="space-y-3">
                   {newOrders.map(order => (
                     <div key={order.id} className="card p-4">
-                      <div className="flex justify-between items-start mb-3">
-                        <div>
-                          <span className="font-black text-sm" style={{ fontFamily: 'Nunito' }}>#{order.order_number}</span>
-                          <div className="flex gap-2 mt-1">
-                            <span className="status-placed">{order.type === 'delivery' ? '🛵 Delivery' : '🏃 Pickup'}</span>
-                            <span className="status-placed">{order.payment_method === 'cod' ? '💵 COD' : '📲 UPI'}</span>
-                          </div>
-                        </div>
-                        <span className="font-black text-lg" style={{ color: 'var(--ink)', fontFamily: 'Nunito' }}>₹{order.total_amount}</span>
+                      <div className="flex justify-between mb-2">
+                        <span className="font-bold text-sm">#{order.order_number}</span>
+                        <span className="font-bold">₹{order.total_amount}</span>
                       </div>
-                      <div className="text-xs mb-3 p-3 rounded-xl" style={{ background: 'var(--surface)', color: 'var(--ink-soft)' }}>
-                        {(order as any).items?.map((i: any) => `${i.product_name} ×${i.quantity}`).join(', ')}
-                        {order.delivery_address && <div className="mt-1">📍 {order.delivery_address}</div>}
+                      <div className="text-xs text-gray-500 mb-3">
+                        <div>{(order as any).items?.map((i: any) => `${i.product_name} ×${i.quantity}`).join(', ')}</div>
+                        <div className="mt-1">{order.payment_method === 'cod' ? '💵 COD' : '📲 UPI'} · {order.type === 'delivery' ? '🛵 Delivery' : '🏃 Pickup'}</div>
+                        {order.delivery_address && <div>📍 {order.delivery_address}</div>}
                       </div>
                       <div className="flex gap-2">
-                        <button onClick={() => updateOrderStatus(order.id, 'accepted', order)} className="btn-primary flex-1 text-sm py-2.5" style={{ borderRadius: '100px' }}>
-                          ✓ Accept Order
-                        </button>
-                        <button onClick={() => updateOrderStatus(order.id, 'rejected', order)} className="btn-secondary flex-1 text-sm py-2.5" style={{ borderRadius: '100px', color: '#c62828', borderColor: '#ef9a9a' }}>
-                          ✕ Reject
-                        </button>
+                        <button onClick={() => updateOrderStatus(order.id, 'accepted')} className="btn-primary text-sm py-2 flex-1">✓ Accept</button>
+                        <button onClick={() => updateOrderStatus(order.id, 'rejected')} className="btn-secondary text-sm py-2 flex-1 text-red-500 border-red-200">✕ Reject</button>
                       </div>
                     </div>
                   ))}
@@ -266,54 +223,23 @@ export default function BusinessDashboard() {
 
             {activeOrders.length > 0 && (
               <div>
-                <h2 className="font-black mb-3" style={{ color: '#e65100', fontFamily: 'Nunito' }}>Active ({activeOrders.length})</h2>
+                <h2 className="font-bold text-amber-600 mb-3">Active ({activeOrders.length})</h2>
                 <div className="space-y-3">
                   {activeOrders.map(order => {
-                    // Shop flow ends at "ready". Rider accepts order from their app.
-                    // For pickup (no delivery): shop can mark delivered directly.
-                    const nextMap: Record<string, { label: string; next: string; disabled?: boolean; disabledMsg?: string }> = {
+                    const nextMap: Record<string, { label: string; next: string }> = {
                       accepted: { label: '👨‍🍳 Start Preparing', next: 'preparing' },
-                      preparing: { label: '✅ Mark Ready for Pickup', next: 'ready' },
-                      ...(order.type !== 'delivery' ? { ready: { label: '🤝 Handed to Customer', next: 'delivered' } } : {}),
+                      preparing: { label: '📦 Mark Ready', next: 'ready' },
+                      ready: { label: '✓ Handed to Rider', next: 'picked_up' },
                     }
                     const a = nextMap[order.status]
                     return (
                       <div key={order.id} className="card p-4">
-                        <div className="flex justify-between items-center mb-2">
-                          <span className="font-black text-sm" style={{ fontFamily: 'Nunito' }}>#{order.order_number}</span>
-                          <span className={`status-${order.status}`}>
-                            {ORDER_STATUS_ICONS[order.status as keyof typeof ORDER_STATUS_ICONS]} {ORDER_STATUS_LABELS[order.status as keyof typeof ORDER_STATUS_LABELS]}
-                          </span>
+                        <div className="flex justify-between mb-1">
+                          <span className="font-bold text-sm">#{order.order_number}</span>
+                          <span className={`badge status-${order.status} text-xs`}>{ORDER_STATUS_LABELS[order.status as keyof typeof ORDER_STATUS_LABELS]}</span>
                         </div>
-                        <div className="text-xs mb-3" style={{ color: 'var(--ink-soft)' }}>
-                          {(order as any).items?.map((i: any) => `${i.product_name} ×${i.quantity}`).join(', ')}
-                          {order.type === 'delivery' && (
-                            <div className="mt-1.5">
-                              {order.delivery_partner_id
-                                ? <div className="text-xs font-bold px-2 py-1.5 rounded-xl" style={{background:'#f0fdf4',color:'#16a34a'}}><PartnerName partnerId={order.delivery_partner_id} /></div>
-                                : order.status === 'ready'
-                                  ? <div className="text-xs font-bold px-2 py-1.5 rounded-xl animate-pulse" style={{background:'#fff7ed',color:'#ea580c'}}>⏳ Waiting for a rider to accept this order...</div>
-                                  : <div style={{ fontSize: 11, color: 'var(--text-3)' }}>🛵 Riders will see this when you mark Ready</div>
-                              }
-                            </div>
-                          )}
-                        </div>
-                        {a && (
-                          <div>
-                            {a.disabled && a.disabledMsg && (
-                              <p className="text-xs mb-2 font-semibold" style={{ color: '#e65100' }}>⚠️ {a.disabledMsg}</p>
-                            )}
-                            <button
-                              onClick={() => !a.disabled && updateOrderStatus(order.id, a.next, order)}
-                              disabled={a.disabled}
-                              className="w-full text-sm py-2.5 font-black rounded-full transition-all"
-                              style={a.disabled
-                                ? { background: '#f5f4f0', color: '#999', cursor: 'not-allowed' }
-                                : { background: 'linear-gradient(135deg, #ff5722, #e64a19)', color: 'white', boxShadow: '0 4px 12px rgba(255,87,34,0.3)' }}>
-                              {a.label}
-                            </button>
-                          </div>
-                        )}
+                        <div className="text-xs text-gray-500 mb-3">{(order as any).items?.map((i: any) => `${i.product_name} ×${i.quantity}`).join(', ')}</div>
+                        {a && <button onClick={() => updateOrderStatus(order.id, a.next)} className="btn-primary text-sm py-2 w-full">{a.label}</button>}
                       </div>
                     )
                   })}
@@ -324,64 +250,45 @@ export default function BusinessDashboard() {
             {newOrders.length === 0 && activeOrders.length === 0 && (
               <div className="card p-12 text-center">
                 <div className="text-5xl mb-3">⏳</div>
-                <p className="font-black text-lg" style={{ fontFamily: 'Nunito' }}>No active orders</p>
-                <p className="text-sm mt-1" style={{ color: 'var(--ink-soft)' }}>New orders appear here in real time</p>
-              </div>
-            )}
-
-            {deliveredOrders.slice(0,5).length > 0 && (
-              <div>
-                <h2 className="font-bold text-sm mb-2" style={{ color: 'var(--ink-soft)' }}>Completed</h2>
-                <div className="space-y-2">
-                  {deliveredOrders.slice(0,5).map(order => (
-                    <div key={order.id} className="card px-4 py-3 flex justify-between items-center" style={{ opacity: 0.7 }}>
-                      <span className="font-bold text-sm">#{order.order_number}</span>
-                      <span className="font-bold text-sm" style={{ color: 'var(--ink-soft)' }}>₹{order.total_amount}</span>
-                      <span className="status-delivered">✓ Delivered</span>
-                    </div>
-                  ))}
-                </div>
+                <p className="font-bold">No active orders</p>
+                <p className="text-gray-400 text-sm mt-1">New orders appear here in real time</p>
               </div>
             )}
           </div>
         )}
 
-        {/* PRODUCTS */}
         {tab === 'products' && (
           <div>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="font-black" style={{ fontFamily: 'Nunito' }}>Products ({products.length})</h2>
-              <button onClick={() => setShowAddProduct(true)} className="btn-primary text-sm py-2 px-5" style={{ borderRadius: '100px' }}>
-                + Add Product
-              </button>
+              <h2 className="font-bold">Products ({products.length})</h2>
+              <button onClick={() => setShowAddProduct(true)} className="btn-primary text-sm py-2 px-4">+ Add Product</button>
             </div>
             {products.length === 0 ? (
               <div className="card p-10 text-center">
                 <div className="text-5xl mb-3">📦</div>
-                <p className="font-black mb-1" style={{ fontFamily: 'Nunito' }}>No products yet</p>
-                <p className="text-sm mb-4" style={{ color: 'var(--ink-soft)' }}>Add products so customers can order from you</p>
-                <button onClick={() => setShowAddProduct(true)} className="btn-primary px-6" style={{ borderRadius: '100px' }}>Add first product</button>
+                <p className="font-bold mb-1">No products yet</p>
+                <p className="text-gray-400 text-sm mb-4">Add products so customers can order from you</p>
+                <button onClick={() => setShowAddProduct(true)} className="btn-primary px-6">Add first product</button>
               </div>
             ) : (
               <div className="space-y-2">
                 {products.map(p => (
                   <div key={p.id} className="card px-4 py-3 flex items-center gap-3">
                     <div className="flex-1 min-w-0">
-                      <p className="font-bold text-sm truncate">{p.name}</p>
+                      <p className="font-semibold text-sm truncate">{p.name}</p>
                       <div className="flex items-center gap-2 mt-0.5">
-                        <span className="font-black text-sm" style={{ color: 'var(--brand)' }}>₹{p.price}</span>
-                        {p.original_price && p.original_price > p.price && (
-                          <span className="text-xs line-through" style={{ color: 'var(--ink-soft)' }}>₹{p.original_price}</span>
-                        )}
-                        {p.category && <span className="text-xs" style={{ color: 'var(--ink-soft)' }}>· {p.category}</span>}
+                        <span className="text-sm font-bold text-brand-500">₹{p.price}</span>
+                        {p.original_price && p.original_price > p.price && <span className="text-xs text-gray-400 line-through">₹{p.original_price}</span>}
+                        {p.category && <span className="text-xs text-gray-400">· {p.category}</span>}
                       </div>
                     </div>
-                    <button onClick={() => toggleProduct(p.id, !p.is_available)}
-                      className="relative w-11 h-6 rounded-full transition-all flex-shrink-0"
-                      style={{ background: p.is_available ? 'var(--green)' : '#ddd' }}>
-                      <span style={{ position: 'absolute', top: 3, left: p.is_available ? 22 : 3, width: 18, height: 18, borderRadius: '50%', background: '#fff', transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.25)' }} />
-                    </button>
-                    <button onClick={() => deleteProduct(p.id)} style={{ background: 'none', border: 'none', color: 'var(--text-4)', cursor: 'pointer', fontSize: 14, padding: '0 4px' }}>✕</button>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => toggleProduct(p.id, !p.is_available)}
+                        className={`relative w-10 h-5 rounded-full transition-colors ${p.is_available ? 'bg-green-500' : 'bg-gray-300'}`}>
+                        <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow-sm transition-transform ${p.is_available ? 'translate-x-5' : ''}`} />
+                      </button>
+                      <button onClick={() => deleteProduct(p.id)} className="text-gray-400 hover:text-red-500 text-sm px-1">✕</button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -389,37 +296,26 @@ export default function BusinessDashboard() {
           </div>
         )}
 
-        {/* ANALYTICS */}
-
-        {tab === 'settings' && shop && (
-          <ShopSettings shop={shop} onUpdate={loadData} />
-        )}
-
         {tab === 'analytics' && (
           <div className="space-y-4">
             <div className="grid sm:grid-cols-3 gap-4">
               {[
-                { label: 'Total Orders', value: deliveredOrders.length, icon: '📦', color: '#1565c0', bg: '#e3f2fd' },
-                { label: 'Gross Revenue', value: `₹${totalRevenue}`, icon: '💰', color: '#2e7d32', bg: '#e8f5e9' },
-                { label: 'Your Earnings', value: `₹${netEarnings}`, icon: '🏦', color: '#ff5722', bg: '#fff3ef' },
+                { label: 'Total Orders', value: deliveredOrders.length, icon: '📦' },
+                { label: 'Gross Revenue', value: `₹${totalRevenue}`, icon: '💰' },
+                { label: 'Your Earnings', value: `₹${netEarnings}`, icon: '🏦' },
               ].map(s => (
-                <div key={s.label} className="card p-5" style={{ borderLeft: `4px solid ${s.color}` }}>
+                <div key={s.label} className="card p-5">
                   <div className="text-2xl mb-2">{s.icon}</div>
-                  <div className="font-black text-2xl" style={{ color: s.color, fontFamily: 'Nunito' }}>{s.value}</div>
-                  <div className="text-sm mt-0.5" style={{ color: 'var(--ink-soft)' }}>{s.label}</div>
+                  <div className="font-bold text-2xl">{s.value}</div>
+                  <div className="text-sm text-gray-400 mt-0.5">{s.label}</div>
                 </div>
               ))}
             </div>
-            <div className="card p-5">
-              <h3 className="font-black mb-4" style={{ fontFamily: 'Nunito' }}>Revenue Breakdown</h3>
-              <div className="space-y-3 text-sm">
-                <div className="flex justify-between"><span style={{ color: 'var(--ink-soft)' }}>Gross Revenue</span><span className="font-bold">₹{totalRevenue}</span></div>
-                <div className="flex justify-between"><span style={{ color: '#c62828' }}>Platform commission ({shop?.commission_percent || 15}%)</span><span className="font-bold" style={{ color: '#c62828' }}>-₹{commission}</span></div>
-                <div className="flex justify-between pt-2 border-t" style={{ borderColor: 'var(--border)' }}>
-                  <span className="font-black" style={{ color: '#2e7d32' }}>Your earnings</span>
-                  <span className="font-black" style={{ color: '#2e7d32' }}>₹{netEarnings}</span>
-                </div>
-              </div>
+            <div className="card p-5 text-sm space-y-2">
+              <h3 className="font-bold mb-3">Breakdown</h3>
+              <div className="flex justify-between text-gray-600"><span>Gross Revenue</span><span className="font-semibold">₹{totalRevenue}</span></div>
+              <div className="flex justify-between text-red-500"><span>Commission ({shop?.commission_percent || 15}%)</span><span>-₹{commission}</span></div>
+              <div className="flex justify-between font-bold text-green-700 border-t pt-2"><span>Your earnings</span><span>₹{netEarnings}</span></div>
             </div>
           </div>
         )}
@@ -456,201 +352,59 @@ function AddProductModal({ shopId, onClose, onSuccess }: { shopId: string; onClo
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center" style={{ background: 'rgba(0,0,0,0.6)' }}>
-      <div style={{ background: 'var(--card-bg)', width: '100%', maxWidth: 448, borderRadius: '24px 24px 0 0', maxHeight: '90vh', overflowY: 'auto' }}>
-        <div style={{ display: 'flex', justifyContent: 'center', padding: '10px 0 4px' }}><div style={{ width: 40, height: 4, borderRadius: 999, background: 'var(--border-2)' }} /></div>
-        <div className="px-5 py-4 border-b flex items-center justify-between" style={{ borderColor: 'var(--border)' }}>
-          <h2 className="font-black text-lg" style={{ fontFamily: 'Nunito' }}>Add Product</h2>
-          <button onClick={onClose} style={{ background: 'var(--bg-3)', border: 'none', borderRadius: 8, width: 30, height: 30, fontSize: 16, cursor: 'pointer', color: 'var(--text-2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center">
+      <div className="bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl max-h-[90vh] overflow-y-auto">
+        <div className="flex justify-center pt-3 pb-1 sm:hidden"><div className="w-10 h-1 bg-gray-200 rounded-full" /></div>
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+          <h2 className="font-bold text-lg">Add Product</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">✕</button>
         </div>
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
-          <div><label className="block text-sm font-bold mb-1.5" style={{ color: 'var(--ink)' }}>Product name *</label>
-            <input type="text" value={form.name} onChange={e => update('name', e.target.value)} className="input-field" placeholder="Butter Chicken, Amul Milk..." required /></div>
-          <div><label className="block text-sm font-bold mb-1.5" style={{ color: 'var(--ink)' }}>Description</label>
-            <textarea value={form.description} onChange={e => update('description', e.target.value)} className="input-field resize-none" rows={2} placeholder="Short description..." /></div>
-          <div className="grid grid-cols-2 gap-3">
-            <div><label className="block text-sm font-bold mb-1.5" style={{ color: 'var(--ink)' }}>Selling Price (₹) *</label>
-              <input type="number" value={form.price} onChange={e => update('price', e.target.value)} className="input-field" placeholder="199" min="0" required /></div>
-            <div><label className="block text-sm font-bold mb-1.5" style={{ color: 'var(--ink)' }}>Original Price (₹)</label>
-              <input type="number" value={form.original_price} onChange={e => update('original_price', e.target.value)} className="input-field" placeholder="249" min="0" /></div>
-          </div>
-          <div><label className="block text-sm font-bold mb-1.5" style={{ color: 'var(--ink)' }}>Category</label>
-            <input type="text" value={form.category} onChange={e => update('category', e.target.value)} className="input-field" placeholder="Main Course, Dairy, Medicines..." /></div>
           <div>
-            <label className="block text-sm font-bold mb-2" style={{ color: 'var(--ink)' }}>Type</label>
+            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Product name *</label>
+            <input type="text" value={form.name} onChange={e => update('name', e.target.value)} className="input-field" placeholder="Butter Chicken, Amul Milk 1L..." required />
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Description</label>
+            <textarea value={form.description} onChange={e => update('description', e.target.value)} className="input-field resize-none" rows={2} placeholder="Short description..." />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1.5">Selling Price (₹) *</label>
+              <input type="number" value={form.price} onChange={e => update('price', e.target.value)} className="input-field" placeholder="199" min="0" required />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1.5">Original Price (₹)</label>
+              <input type="number" value={form.original_price} onChange={e => update('original_price', e.target.value)} className="input-field" placeholder="249" min="0" />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Category</label>
+            <input type="text" value={form.category} onChange={e => update('category', e.target.value)} className="input-field" placeholder="Main Course, Dairy, Medicines..." />
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">Type</label>
             <div className="flex gap-2">
               {[{ val: 'veg', label: '🟢 Veg' }, { val: 'nonveg', label: '🔴 Non-Veg' }, { val: '', label: 'N/A' }].map(o => (
                 <button key={o.val} type="button" onClick={() => update('is_veg', o.val)}
-                  className="flex-1 py-2.5 rounded-2xl border-2 text-sm font-bold transition-all"
-                  style={form.is_veg === o.val ? { borderColor: 'var(--brand)', background: 'var(--brand-pale)', color: 'var(--brand)' } : { borderColor: 'var(--border)', color: 'var(--ink-soft)' }}>
-                  {o.label}
-                </button>
+                  className={`flex-1 py-2 rounded-xl border-2 text-sm font-semibold transition-all ${form.is_veg === o.val ? 'border-brand-500 bg-brand-50' : 'border-gray-200'}`}>{o.label}</button>
               ))}
             </div>
           </div>
-          <div className="flex items-center justify-between p-3 rounded-2xl" style={{ background: 'var(--surface)' }}>
-            <div><p className="font-bold text-sm">Available to order</p><p className="text-xs" style={{ color: 'var(--ink-soft)' }}>Customers can add this to cart</p></div>
+          <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+            <div><p className="font-semibold text-sm">Available to order</p><p className="text-xs text-gray-400">Customers can add this to cart</p></div>
             <button type="button" onClick={() => update('is_available', !form.is_available)}
-              className="relative w-12 h-6 rounded-full transition-all"
-              style={{ background: form.is_available ? 'var(--green)' : '#ddd' }}>
-              <span style={{ position: 'absolute', top: 3, left: form.is_available ? 24 : 3, width: 18, height: 18, borderRadius: '50%', background: '#fff', transition: 'left 0.2s' }} />
+              className={`relative w-11 h-6 rounded-full transition-colors ${form.is_available ? 'bg-green-500' : 'bg-gray-300'}`}>
+              <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${form.is_available ? 'translate-x-5' : ''}`} />
             </button>
           </div>
-          {error && <div className="p-3 rounded-2xl text-sm font-semibold" style={{ background: 'var(--red-bg)', color: '#c62828' }}>{error}</div>}
+          {error && <div className="bg-red-50 border border-red-200 text-red-600 text-sm rounded-xl px-4 py-3">{error}</div>}
           <div className="flex gap-3 pb-2">
-            <button type="button" onClick={onClose} className="btn-secondary flex-1 py-3" style={{ borderRadius: '100px' }}>Cancel</button>
-            <button type="submit" disabled={loading} className="btn-primary flex-1 py-3" style={{ borderRadius: '100px' }}>
-              {loading ? 'Adding...' : 'Add product'}
-            </button>
+            <button type="button" onClick={onClose} className="btn-secondary flex-1 py-3">Cancel</button>
+            <button type="submit" disabled={loading} className="btn-primary flex-1 py-3">{loading ? 'Adding...' : 'Add product'}</button>
           </div>
         </form>
       </div>
-    </div>
-  )
-}
-
-// Shows delivery partner name when they accept an order
-function PartnerName({ partnerId }: { partnerId: string }) {
-  const [name, setName] = useState<string | null>(null)
-  useEffect(() => {
-    createClient().from('users').select('name, phone').eq('id', partnerId).single()
-      .then(({ data }) => setName(data ? `🛵 ${data.name} accepted · 📞 ${data.phone || ''}` : '✓ Rider assigned'))
-  }, [partnerId])
-  return <span>{name || '✓ Rider accepted...'}</span>
-}
-
-// ── Shop Settings Component ──
-function ShopSettings({ shop, onUpdate }: { shop: any; onUpdate: () => void }) {
-  const [imageFile, setImageFile] = useState<File | null>(null)
-  const [imagePreview, setImagePreview] = useState<string | null>(null)
-  const [uploading, setUploading] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [msg, setMsg] = useState('')
-  const [form, setForm] = useState({
-    name: shop.name || '',
-    description: shop.description || '',
-    phone: shop.phone || '',
-    opens_at: shop.opens_at || '09:00',
-    closes_at: shop.closes_at || '22:00',
-    min_order_amount: String(shop.min_order_amount || 0),
-    avg_delivery_time: String(shop.avg_delivery_time || 30),
-  })
-
-  function up(f: string, v: string) { setForm(p => ({ ...p, [f]: v })) }
-
-  function handleImage(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    if (file.size > 3 * 1024 * 1024) { setMsg('Image must be under 3MB'); return }
-    setImageFile(file)
-    const reader = new FileReader()
-    reader.onload = () => setImagePreview(reader.result as string)
-    reader.readAsDataURL(file)
-  }
-
-  async function saveSettings() {
-    setSaving(true); setMsg('')
-    const supabase = createClient()
-    let image_url = shop.image_url
-
-    if (imageFile) {
-      setUploading(true)
-      const ext = imageFile.name.split('.').pop() || 'jpg'
-      const path = `shops/${shop.id}/cover.${ext}`
-      const { error: uploadErr } = await supabase.storage.from('product-images').upload(path, imageFile, { upsert: true })
-      if (!uploadErr) {
-        const { data } = supabase.storage.from('product-images').getPublicUrl(path)
-        image_url = data.publicUrl
-      }
-      setUploading(false)
-    }
-
-    const { error } = await supabase.from('shops').update({
-      name: form.name,
-      description: form.description || null,
-      phone: form.phone || null,
-      opens_at: form.opens_at,
-      closes_at: form.closes_at,
-      min_order_amount: parseInt(form.min_order_amount) || 0,
-      avg_delivery_time: parseInt(form.avg_delivery_time) || 30,
-      image_url,
-    }).eq('id', shop.id)
-
-    setSaving(false)
-    if (error) { setMsg('Error: ' + error.message); return }
-    setMsg('✓ Shop updated!')
-    onUpdate()
-  }
-
-  return (
-    <div className="space-y-5 max-w-lg">
-      {/* Shop photo */}
-      <div className="card p-5">
-        <h3 className="font-black text-sm mb-3">Shop Cover Photo</h3>
-        <label className="block cursor-pointer">
-          {(imagePreview || shop.image_url) ? (
-            <div className="relative rounded-2xl overflow-hidden mb-2">
-              <img src={imagePreview || shop.image_url} alt="Shop" className="w-full h-40 object-cover" />
-              <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 hover:opacity-100 transition-opacity rounded-2xl">
-                <span className="text-white font-bold text-sm">📷 Change photo</span>
-              </div>
-            </div>
-          ) : (
-            <div className="w-full h-32 rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-2 mb-2 hover:border-orange-400 transition-colors" style={{ borderColor: 'var(--border-2)', background: 'var(--bg-1)' }}>
-              <span className="text-3xl">🏪</span>
-              <span style={{ fontSize: 13, color: 'var(--text-3)', fontWeight: 600 }}>Add a cover photo</span>
-            </div>
-          )}
-          <input type="file" accept="image/*" onChange={handleImage} className="hidden" />
-        </label>
-        <p style={{ fontSize: 11, color: 'var(--text-3)' }}>Recommended: 800×400px · Max 3MB</p>
-      </div>
-
-      {/* Basic settings */}
-      <div className="card p-5 space-y-4">
-        <h3 className="font-black text-sm">Shop Info</h3>
-        {[
-          { f: 'name', l: 'Shop Name', ph: '' },
-          { f: 'description', l: 'Description', ph: 'What do you sell?' },
-          { f: 'phone', l: 'Phone Number', ph: '+91 98765 43210' },
-        ].map(({ f, l, ph }) => (
-          <div key={f}>
-            <label className="block text-sm font-bold mb-1.5">{l}</label>
-            <input value={(form as any)[f]} onChange={e => up(f, e.target.value)} className="input-field" placeholder={ph} />
-          </div>
-        ))}
-      </div>
-
-      {/* Hours & delivery */}
-      <div className="card p-5 space-y-4">
-        <h3 className="font-black text-sm">Hours & Delivery</h3>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-sm font-bold mb-1.5">Opens at</label>
-            <input type="time" value={form.opens_at} onChange={e => up('opens_at', e.target.value)} className="input-field" />
-          </div>
-          <div>
-            <label className="block text-sm font-bold mb-1.5">Closes at</label>
-            <input type="time" value={form.closes_at} onChange={e => up('closes_at', e.target.value)} className="input-field" />
-          </div>
-          <div>
-            <label className="block text-sm font-bold mb-1.5">Min Order (₹)</label>
-            <input type="number" value={form.min_order_amount} onChange={e => up('min_order_amount', e.target.value)} className="input-field" min="0" />
-          </div>
-          <div>
-            <label className="block text-sm font-bold mb-1.5">Avg Delivery (min)</label>
-            <input type="number" value={form.avg_delivery_time} onChange={e => up('avg_delivery_time', e.target.value)} className="input-field" min="5" />
-          </div>
-        </div>
-      </div>
-
-      {msg && <div style={{ padding: '10px 14px', borderRadius: 12, fontSize: 13, fontWeight: 700, background: msg.startsWith('✓') ? 'rgba(34,197,94,0.12)' : 'var(--red-bg)', color: msg.startsWith('✓') ? '#16a34a' : '#ef4444' }}>{msg}</div>}
-
-      <button onClick={saveSettings} disabled={saving || uploading}
-        className="w-full py-3.5 rounded-2xl font-black text-white text-sm active:scale-95 transition-all"
-        style={{ background: '#ff5a1f', boxShadow: '0 4px 14px rgba(255,90,31,0.3)' }}>
-        {uploading ? 'Uploading photo...' : saving ? 'Saving...' : 'Save Changes'}
-      </button>
     </div>
   )
 }

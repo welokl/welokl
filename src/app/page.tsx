@@ -299,10 +299,18 @@ export default function HomePage() {
             </button>
             {/* Auth icon */}
             {user === undefined ? null : user ? (
-              <Link href="/dashboard/customer"
-                style={{ background: 'var(--brand-muted)', border: 'none', borderRadius: 9, width: 34, height: 34, display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none', fontSize: 15 }}>
-                📦
-              </Link>
+              <>
+                <Link href="/dashboard/customer"
+                  style={{ background: 'var(--brand-muted)', border: 'none', borderRadius: 9, width: 34, height: 34, display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none', fontSize: 15 }}>
+                  📦
+                </Link>
+                <button
+                  onClick={async () => { await createClient().auth.signOut(); setUser(null) }}
+                  style={{ background: 'var(--bg-3)', border: '1px solid var(--border-2)', borderRadius: 9, width: 34, height: 34, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: 14 }}
+                  title="Logout">
+                  🚪
+                </button>
+              </>
             ) : (
               <Link href="/auth/login"
                 style={{ background: 'var(--brand)', border: 'none', borderRadius: 9, padding: '6px 12px', display: 'flex', alignItems: 'center', textDecoration: 'none', fontSize: 12, fontWeight: 800, color: 'white', whiteSpace: 'nowrap' }}>
