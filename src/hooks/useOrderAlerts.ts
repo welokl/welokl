@@ -2,25 +2,27 @@
 import { useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
-// ── Audio engine — Web Audio API, zero external files ─────────────────────────
-function playSound(type: 'new_order' | 'status_update' | 'delivery_assigned') {
+// ── Audio engine ─────────────────────────────────────────────
+function playSound(type: 'new_order' | 'status_update' | 'delivery_assigned' | 'new_available') {
   try {
     const AudioCtx = window.AudioContext || (window as any).webkitAudioContext
     if (!AudioCtx) return
     const ctx = new AudioCtx()
-    const patterns: Record<string, [number, number][]> = {
-      new_order:         [[660,0],[880,0.18],[1100,0.36],[1320,0.54]],
-      status_update:     [[880,0],[1100,0.22]],
-      delivery_assigned: [[1046,0],[1046,0.20],[1318,0.40]],
+    const patterns: Record<string, { freqs: number[]; offsets: number[]; wave: OscillatorType; vol: number }> = {
+      new_order:         { freqs: [660,880,1100,1320,880,1320], offsets: [0,.18,.36,.54,.72,.90], wave: 'square', vol: 1.0 },
+      status_update:     { freqs: [880,1100],                   offsets: [0,.22],                 wave: 'sine',   vol: 0.6 },
+      delivery_assigned: { freqs: [1046,1046,1318],             offsets: [0,.20,.40],             wave: 'square', vol: 0.85 },
+      new_available:     { freqs: [880,1100,880,1100,880,1320], offsets: [0,.20,.42,.62,.84,1.06], wave: 'square', vol: 1.0 },
     }
-    const urgent = type !== 'status_update'
-    patterns[type].forEach(([freq, offset]) => {
-      const osc = ctx.createOscillator(), gain = ctx.createGain(), t = ctx.currentTime + offset
+    const p = patterns[type]
+    p.freqs.forEach((freq, i) => {
+      const osc = ctx.createOscillator(), gain = ctx.createGain()
+      const t = ctx.currentTime + p.offsets[i]
       osc.connect(gain); gain.connect(ctx.destination)
-      osc.type = urgent ? 'square' : 'sine'
+      osc.type = p.wave
       osc.frequency.setValueAtTime(freq, t)
       gain.gain.setValueAtTime(0, t)
-      gain.gain.linearRampToValueAtTime(urgent ? 0.9 : 0.6, t + 0.01)
+      gain.gain.linearRampToValueAtTime(p.vol, t + 0.01)
       gain.gain.linearRampToValueAtTime(0, t + 0.14)
       osc.start(t); osc.stop(t + 0.15)
     })
@@ -31,11 +33,36 @@ function vibrate(pattern: number[]) {
   try { if (navigator.vibrate) navigator.vibrate(pattern) } catch { }
 }
 
-// renotify is valid but some TS lib versions don't include it — cast to any to avoid the error
-async function pushNotify(title: string, body: string, tag = 'welokl') {
-  if (typeof window === 'undefined' || !('Notification' in window)) return
-  if (Notification.permission === 'default') await Notification.requestPermission().catch(() => {})
-  if (Notification.permission !== 'granted') return
+// ── Notification via Service Worker (survives backgrounding on Android/iOS PWA)
+// Falls back to new Notification() if SW not available
+async function pushNotify(title: string, body: string, tag = 'welokl', url = '/') {
+  if (typeof window === 'undefined') return
+
+  // Request permission if needed
+  if ('Notification' in window && Notification.permission === 'default') {
+    await Notification.requestPermission().catch(() => {})
+  }
+  if (!('Notification' in window) || Notification.permission !== 'granted') return
+
+  // Preferred: post to service worker — persists even when tab is backgrounded on mobile
+  if ('serviceWorker' in navigator) {
+    try {
+      const reg = await navigator.serviceWorker.ready
+      if (reg && reg.active) {
+        reg.active.postMessage({ type: 'NOTIFY', title, body, tag, url })
+        return
+      }
+      // SW registered but not yet active — use showNotification directly
+      await reg.showNotification(title, {
+        body, icon: '/icons/icon-192.png', badge: '/icons/badge-72.png',
+        tag, vibrate: [200, 100, 200],
+        data: { url },
+      } as NotificationOptions & { vibrate?: number[]; renotify?: boolean })
+      return
+    } catch { }
+  }
+
+  // Fallback: standard Notification API (works when tab is active/visible)
   try {
     new Notification(title, { body, icon: '/icons/icon-192.png', tag, ...({ renotify: true } as any) })
   } catch { }
@@ -47,76 +74,149 @@ export function requestNotificationPermission() {
     Notification.requestPermission().catch(() => {})
 }
 
-// ── HOOK 1: Shopkeeper ────────────────────────────────────────────────────────
+// ── Visibility reconnect helper ───────────────────────────────
+// When phone brings app back to foreground after suspension,
+// the Supabase WebSocket may have died. We force a page reload
+// only if the session gap was long enough to lose connection.
+function useVisibilityReconnect(onVisible: () => void) {
+  useEffect(() => {
+    let hiddenAt = 0
+    function handleVisibility() {
+      if (document.hidden) {
+        hiddenAt = Date.now()
+      } else {
+        // If backgrounded for more than 30 seconds, refresh data
+        if (hiddenAt && Date.now() - hiddenAt > 30_000) {
+          onVisible()
+        }
+        hiddenAt = 0
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => document.removeEventListener('visibilitychange', handleVisibility)
+  }, [onVisible]) // eslint-disable-line
+}
+
+export { useVisibilityReconnect }
+
+// ─────────────────────────────────────────────────────────────
+// HOOK 1: Shopkeeper — new order arrives for their shop
+// ─────────────────────────────────────────────────────────────
 export function useShopkeeperOrderAlerts(shopId: string | null | undefined) {
   const supabase = createClient()
   const ready = useRef(false)
+
   useEffect(() => {
     if (!shopId) return
-    const t = setTimeout(() => { ready.current = true }, 1000)
+    const t = setTimeout(() => { ready.current = true }, 1500)
     const ch = supabase
-      .channel(`sk-${shopId}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders', filter: `shop_id=eq.${shopId}` }, payload => {
-        if (!ready.current) return
-        const o = payload.new as any
-        playSound('new_order')
-        vibrate([200, 80, 200, 80, 400])
-        pushNotify('🛒 New Order!', `Order #${o.order_number || o.id?.slice(0,8)} just arrived`)
-      })
+      .channel(`sk-alerts-${shopId}`)
+      .on('postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'orders', filter: `shop_id=eq.${shopId}` },
+        payload => {
+          if (!ready.current) return
+          const o = payload.new as any
+          playSound('new_order')
+          vibrate([200, 80, 200, 80, 400, 80, 400])
+          pushNotify('🛒 New Order!', `Order #${o.order_number || o.id?.slice(0,8)} just arrived`, `order-${o.id}`, '/dashboard/business')
+        }
+      )
       .subscribe()
     return () => { clearTimeout(t); supabase.removeChannel(ch) }
   }, [shopId]) // eslint-disable-line
 }
 
-// ── HOOK 2: Customer ──────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// HOOK 2: Customer — order status changes
+// ─────────────────────────────────────────────────────────────
 export function useCustomerOrderAlerts(customerId: string | null | undefined) {
   const supabase = createClient()
+
   useEffect(() => {
     if (!customerId) return
     const ch = supabase
-      .channel(`cust-${customerId}`)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders', filter: `customer_id=eq.${customerId}` }, payload => {
-        const n = payload.new as any, o = payload.old as any
-        if (!n.status || n.status === o.status) return
-        playSound('status_update')
-        vibrate([100, 50, 100])
-        const msgs: Record<string, [string, string]> = {
-          accepted:         ['✅ Order Confirmed!',   'Shop accepted your order'],
-          preparing:        ['👨‍🍳 Being Prepared',   'Your order is being cooked'],
-          ready:            ['📦 Ready!',             'Your order is packed'],
-          out_for_delivery: ['🛵 On the Way!',        'Rider is heading to you'],
-          picked_up:        ['🛵 On the Way!',        'Rider picked up your order'],
-          delivered:        ['🎉 Delivered!',         'Enjoy your order!'],
-          cancelled:        ['❌ Cancelled',           'Your order was cancelled'],
+      .channel(`cust-alerts-${customerId}`)
+      .on('postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'orders', filter: `customer_id=eq.${customerId}` },
+        payload => {
+          const n = payload.new as any, o = payload.old as any
+          if (!n.status || n.status === o.status) return
+          playSound('status_update')
+          vibrate([100, 50, 100])
+          const msgs: Record<string, [string, string]> = {
+            accepted:  ['✅ Order Confirmed!',  'Your shop accepted the order'],
+            preparing: ['👨‍🍳 Being Prepared',   'Your order is being prepared'],
+            ready:     ['📦 Ready!',             'Your order is packed and ready'],
+            picked_up: ['🛵 On the Way!',        'Rider picked up your order'],
+            delivered: ['🎉 Delivered!',          'Your order has been delivered!'],
+            cancelled: ['❌ Order Cancelled',      'Your order was cancelled'],
+            rejected:  ['❌ Order Rejected',       'The shop could not accept your order'],
+          }
+          const [title, body] = msgs[n.status] || ['📦 Order Update', `Status: ${n.status}`]
+          pushNotify(title, body, `order-${n.order_number}`, '/dashboard/customer')
         }
-        const [title, body] = msgs[n.status] || ['📦 Update', `Status: ${n.status}`]
-        pushNotify(title, body, `order-${n.order_number}`)
-      })
+      )
       .subscribe()
     return () => { supabase.removeChannel(ch) }
   }, [customerId]) // eslint-disable-line
 }
 
-// ── HOOK 3: Delivery Partner ──────────────────────────────────────────────────
-export function useDeliveryPartnerAlerts(partnerId: string | null | undefined, isOnline: boolean) {
+// ─────────────────────────────────────────────────────────────
+// HOOK 3: Delivery Partner
+//   Channel A — orders assigned to them (active order updates)
+//   Channel B — any order going 'ready' with no partner yet
+// ─────────────────────────────────────────────────────────────
+export function useDeliveryPartnerAlerts(
+  partnerId: string | null | undefined,
+  isOnline: boolean
+) {
   const supabase = createClient()
+  const ready = useRef(false)
+  const lastAlerted = useRef<string | null>(null)
+
   useEffect(() => {
     if (!partnerId) return
-    const ch = supabase
-      .channel(`dp-${partnerId}`)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders', filter: `delivery_partner_id=eq.${partnerId}` }, payload => {
-        const n = payload.new as any, o = payload.old as any
-        if (n.status === o.status) return
-        const shop = n.shop_name || 'the shop'
-        if (n.status === 'accepted' && !o.delivery_partner_id && n.delivery_partner_id === partnerId) {
-          playSound('delivery_assigned'); vibrate([300, 100, 300, 100, 600])
-          pushNotify('📦 New Delivery Job!', `Pick up from ${shop} — #${n.order_number}`, `dp-${n.order_number}`)
-        } else if (n.status === 'ready') {
-          playSound('delivery_assigned'); vibrate([300, 100, 300])
-          pushNotify('✅ Order Ready for Pickup', `${shop} packed #${n.order_number}`, `dp-${n.order_number}`)
+    const t = setTimeout(() => { ready.current = true }, 1500)
+
+    // Channel A: my assigned order updates
+    const chA = supabase
+      .channel(`dp-assigned-${partnerId}`)
+      .on('postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'orders', filter: `delivery_partner_id=eq.${partnerId}` },
+        payload => {
+          if (!ready.current) return
+          const n = payload.new as any, o = payload.old as any
+          if (n.status === o.status) return
+          if (n.status === 'picked_up') {
+            playSound('delivery_assigned')
+            vibrate([300, 100, 300, 100, 600])
+            pushNotify('📦 Pickup Verified!', `Go deliver #${n.order_number}`, `dp-job-${n.order_number}`, '/dashboard/delivery')
+          }
         }
-      })
+      )
       .subscribe()
-    return () => { supabase.removeChannel(ch) }
-  }, [partnerId]) // eslint-disable-line
+
+    // Channel B: new available orders (ready, no partner yet)
+    const chB = supabase
+      .channel(`dp-available-${partnerId}`)
+      .on('postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'orders' },
+        payload => {
+          if (!ready.current || !isOnline) return
+          const n = payload.new as any, o = payload.old as any
+          if (n.status !== 'ready' || o.status === 'ready') return
+          if (n.delivery_partner_id != null) return
+          if (n.type !== 'delivery') return
+          if (lastAlerted.current === n.id) return
+          lastAlerted.current = n.id
+          setTimeout(() => { if (lastAlerted.current === n.id) lastAlerted.current = null }, 10000)
+          playSound('new_available')
+          vibrate([400, 100, 400, 100, 400, 100, 800])
+          pushNotify('🛵 New Order Available!', `Tap to accept — earn ₹20!`, `dp-avail-${n.id}`, '/dashboard/delivery')
+        }
+      )
+      .subscribe()
+
+    return () => { clearTimeout(t); supabase.removeChannel(chA); supabase.removeChannel(chB) }
+  }, [partnerId, isOnline]) // eslint-disable-line
 }

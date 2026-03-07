@@ -1,24 +1,22 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import type { Order, User } from '@/types'
 import { ORDER_STATUS_LABELS, ORDER_STATUS_ICONS } from '@/types'
 import NotificationSetup from '@/components/NotificationSetup'
+import { useCustomerOrderAlerts } from '@/hooks/useOrderAlerts'
 
 export default function CustomerDashboard() {
-  const [user, setUser]     = useState<User | null>(null)
-  const [orders, setOrders] = useState<Order[]>([])
+  const [user, setUser]       = useState<User | null>(null)
+  const [orders, setOrders]   = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
   const [greeting, setGreeting] = useState('Welcome back')
 
-  useEffect(() => {
-    const h = new Date().getHours()
-    setGreeting(h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening')
-    loadData()
-  }, [])
+  // 🔔 Sound + push notifications for order status changes
+  useCustomerOrderAlerts(user?.id)
 
-  async function loadData() {
+  const loadData = useCallback(async () => {
     const supabase = createClient()
     const { data: { user: authUser } } = await supabase.auth.getUser()
     if (!authUser) { window.location.href = '/auth/login'; return }
@@ -31,7 +29,33 @@ export default function CustomerDashboard() {
         .limit(20),
     ])
     setUser(profile); setOrders(orderData || []); setLoading(false)
-  }
+  }, [])
+
+  useEffect(() => {
+    const h = new Date().getHours()
+    setGreeting(h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening')
+    loadData()
+    const supabase = createClient()
+    // Realtime: auto-refresh whenever any of the customer's orders change
+    let customerId: string | null = null
+    supabase.auth.getUser().then(({ data: { user: u } }) => {
+      if (!u) return
+      customerId = u.id
+      supabase
+        .channel(`cust-rt-${u.id}`)
+        .on('postgres_changes',
+          { event: '*', schema: 'public', table: 'orders', filter: `customer_id=eq.${u.id}` },
+          () => loadData()
+        )
+        .subscribe()
+    })
+    return () => {
+      if (customerId) {
+        const sb = createClient()
+        sb.channel(`cust-rt-${customerId}`).unsubscribe()
+      }
+    }
+  }, [loadData])
 
   const activeOrders = orders.filter(o => !['delivered','cancelled','rejected'].includes(o.status))
   const pastOrders   = orders.filter(o => ['delivered','cancelled','rejected'].includes(o.status))

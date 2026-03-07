@@ -1,8 +1,9 @@
 'use client'
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { Order, Shop, Product, User } from '@/types'
 import { ORDER_STATUS_LABELS, ORDER_STATUS_ICONS } from '@/types'
+import { useShopkeeperOrderAlerts, useVisibilityReconnect } from '@/hooks/useOrderAlerts'
 
 type Tab = 'orders' | 'products' | 'analytics'
 
@@ -29,7 +30,7 @@ export default function BusinessDashboard() {
     setVerStatus((shopData as any).verification_status ?? 'approved')
     setVerNote((shopData as any).verification_note ?? null)
     const [{ data: orderData }, { data: productData }] = await Promise.all([
-      supabase.from('orders').select('*, items:order_items(*)').eq('shop_id', shopData.id).order('created_at', { ascending: false }).limit(50),
+      supabase.from('orders').select('*, delivery_partner_id, pickup_code, items:order_items(*)').eq('shop_id', shopData.id).order('created_at', { ascending: false }).limit(50),
       supabase.from('products').select('*').eq('shop_id', shopData.id).order('sort_order'),
     ])
     setOrders(orderData || [])
@@ -37,15 +38,39 @@ export default function BusinessDashboard() {
     setLoading(false)
   }, [])
 
+  // 🔔 Sound + push notifications — safe to call here, after loadData is declared
+  useShopkeeperOrderAlerts(shop?.id)
+
+  // Auto-refresh when phone brings app back from background (> 30s)
+  useVisibilityReconnect(loadData)
+
   useEffect(() => {
     loadData()
+    // Realtime: subscribe after we know the shop ID
+    // We re-subscribe when shop changes (loadData sets shop state, so we
+    // watch via a separate effect keyed on shop?.id — see below)
     const supabase = createClient()
-    const channel = supabase.channel('biz-orders')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, loadData)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'shops' }, loadData)
+    // Subscribe to shops table to auto-react to verification status changes
+    const chShops = supabase
+      .channel('biz-shops-rt')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'shops' }, loadData)
       .subscribe()
-    return () => { supabase.removeChannel(channel) }
+    return () => { supabase.removeChannel(chShops) }
   }, [loadData])
+
+  // Separate effect: subscribe to THIS shop's orders in realtime once we know shop.id
+  useEffect(() => {
+    if (!shop?.id) return
+    const supabase = createClient()
+    const chOrders = supabase
+      .channel(`biz-orders-${shop.id}`)
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'orders', filter: `shop_id=eq.${shop.id}` },
+        () => loadData()
+      )
+      .subscribe()
+    return () => { supabase.removeChannel(chOrders) }
+  }, [shop?.id, loadData])
 
   async function updateOrderStatus(orderId: string, status: string) {
     const supabase = createClient()
@@ -226,20 +251,57 @@ export default function BusinessDashboard() {
                 <h2 className="font-bold text-amber-600 mb-3">Active ({activeOrders.length})</h2>
                 <div className="space-y-3">
                   {activeOrders.map(order => {
-                    const nextMap: Record<string, { label: string; next: string }> = {
-                      accepted: { label: '👨‍🍳 Start Preparing', next: 'preparing' },
-                      preparing: { label: '📦 Mark Ready', next: 'ready' },
-                      ready: { label: '✓ Handed to Rider', next: 'picked_up' },
+                    const nextMap: Record<string, { label: string; next: string } | null> = {
+                      accepted:  { label: '👨‍🍳 Start Preparing', next: 'preparing' },
+                      preparing: { label: '📦 Mark Ready for Pickup', next: 'ready' },
+                      ready: null, // handled specially below — requires code verification
                     }
                     const a = nextMap[order.status]
+                    const isReady     = order.status === 'ready'
+                    const hasPartner  = !!(order as any).delivery_partner_id
+                    const pickupCode  = (order as any).pickup_code as string | null
+
                     return (
-                      <div key={order.id} className="card p-4">
-                        <div className="flex justify-between mb-1">
-                          <span className="font-bold text-sm">#{order.order_number}</span>
-                          <span className={`badge status-${order.status} text-xs`}>{ORDER_STATUS_LABELS[order.status as keyof typeof ORDER_STATUS_LABELS]}</span>
+                      <div key={order.id} style={{ background: 'var(--card-bg)', border: `1px solid ${isReady && hasPartner ? 'var(--brand)' : 'var(--border)'}`, borderRadius: 16, padding: 16, boxShadow: isReady && hasPartner ? '0 0 0 2px var(--brand-glow)' : 'var(--card-shadow)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                          <span style={{ fontWeight: 900, fontSize: 14, color: 'var(--text)' }}>#{order.order_number}</span>
+                          <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 999, background: 'var(--amber-bg)', color: '#d97706' }}>
+                            {ORDER_STATUS_LABELS[order.status as keyof typeof ORDER_STATUS_LABELS]}
+                          </span>
                         </div>
-                        <div className="text-xs text-gray-500 mb-3">{(order as any).items?.map((i: any) => `${i.product_name} ×${i.quantity}`).join(', ')}</div>
-                        {a && <button onClick={() => updateOrderStatus(order.id, a.next)} className="btn-primary text-sm py-2 w-full">{a.label}</button>}
+                        <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 12 }}>
+                          {(order as any).items?.map((i: any) => `${i.product_name} ×${i.quantity}`).join(', ')}
+                          <span style={{ marginLeft: 8 }}>{order.type === 'delivery' ? '🛵 Delivery' : '🏃 Pickup'}</span>
+                        </div>
+
+                        {/* ── READY + no partner yet: waiting */}
+                        {isReady && !hasPartner && (
+                          <div style={{ background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 14px', textAlign: 'center' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center', marginBottom: 4 }}>
+                              <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#f59e0b', display: 'inline-block', animation: 'pulse 1.5s infinite' }} />
+                              <p style={{ fontSize: 13, fontWeight: 700, color: '#d97706' }}>Waiting for a delivery partner to accept…</p>
+                            </div>
+                            <p style={{ fontSize: 12, color: 'var(--text-3)' }}>Available riders will see and claim this order</p>
+                          </div>
+                        )}
+
+                        {/* ── READY + partner assigned: enter the code they show you */}
+                        {isReady && hasPartner && (
+                          <PickupCodeVerifier
+                            orderId={order.id}
+                            correctCode={pickupCode}
+                            onVerified={() => loadData()}
+                          />
+                        )}
+
+                        {/* ── Other statuses: normal next-step button */}
+                        {a && (
+                          <button
+                            onClick={() => updateOrderStatus(order.id, a.next)}
+                            style={{ width: '100%', padding: '11px', borderRadius: 12, fontWeight: 900, fontSize: 14, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: '#ff3008', color: '#fff', boxShadow: '0 4px 12px rgba(255,48,8,0.25)' }}>
+                            {a.label}
+                          </button>
+                        )}
                       </div>
                     )
                   })}
@@ -324,6 +386,104 @@ export default function BusinessDashboard() {
       {showAddProduct && shop && (
         <AddProductModal shopId={shop.id} onClose={() => setShowAddProduct(false)} onSuccess={() => { setShowAddProduct(false); loadData() }} />
       )}
+    </div>
+  )
+}
+
+// ── PickupCodeVerifier ──────────────────────────────────────────────────────
+// Shown when order is 'ready' and a delivery partner has claimed it.
+// Shop enters the 4-digit code the rider shows them.
+// On match → updates order status to 'picked_up'.
+function PickupCodeVerifier({
+  orderId, correctCode, onVerified,
+}: {
+  orderId: string
+  correctCode: string | null
+  onVerified: () => void
+}) {
+  const [digits, setDigits] = useState(['', '', '', ''])
+  const [error, setError]   = useState('')
+  const [checking, setChecking] = useState(false)
+  const refs = [
+    useRef<HTMLInputElement>(null),
+    useRef<HTMLInputElement>(null),
+    useRef<HTMLInputElement>(null),
+    useRef<HTMLInputElement>(null),
+  ]
+
+  function handleDigit(i: number, val: string) {
+    const d = val.replace(/\D/g, '').slice(-1)
+    const next = [...digits]; next[i] = d; setDigits(next); setError('')
+    if (d && i < 3) refs[i + 1].current?.focus()
+    if (!d && i > 0) refs[i - 1].current?.focus()
+  }
+
+  function handleKeyDown(i: number, e: React.KeyboardEvent) {
+    if (e.key === 'Backspace' && !digits[i] && i > 0) {
+      refs[i - 1].current?.focus()
+    }
+  }
+
+  async function verify() {
+    const entered = digits.join('')
+    if (entered.length < 4) { setError('Enter all 4 digits'); return }
+    if (!correctCode) { setError('No code assigned yet — rider may still be on the way'); return }
+    if (entered !== correctCode) { setError('Wrong code. Ask the rider to show you again.'); return }
+    setChecking(true)
+    const sb = createClient()
+    await sb.from('orders').update({ status: 'picked_up', pickup_code: null }).eq('id', orderId)
+    await sb.from('order_status_log').insert({ order_id: orderId, status: 'picked_up', message: 'Pickup code verified by shop — handed to rider' })
+    setChecking(false)
+    onVerified()
+  }
+
+  return (
+    <div style={{ background: 'var(--bg-1)', border: '2px solid var(--brand)', borderRadius: 14, padding: '16px 18px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+        <span style={{ fontSize: 20 }}>🔐</span>
+        <div>
+          <p style={{ fontWeight: 900, fontSize: 13, color: 'var(--text)' }}>Enter the rider's pickup code</p>
+          <p style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>The delivery partner will show you a 4-digit code</p>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginBottom: 12 }}>
+        {digits.map((d, i) => (
+          <input
+            key={i}
+            ref={refs[i]}
+            value={d}
+            type="tel"
+            inputMode="numeric"
+            maxLength={1}
+            onChange={e => handleDigit(i, e.target.value)}
+            onKeyDown={e => handleKeyDown(i, e)}
+            style={{
+              width: 52, height: 60, textAlign: 'center', fontSize: 28, fontWeight: 900,
+              fontFamily: 'monospace', borderRadius: 12,
+              border: `2px solid ${error ? '#ef4444' : d ? 'var(--brand)' : 'var(--border-2)'}`,
+              background: 'var(--card-bg)', color: 'var(--text)', outline: 'none',
+              transition: 'border-color 0.15s', caretColor: 'transparent',
+            }}
+          />
+        ))}
+      </div>
+
+      {error && (
+        <p style={{ fontSize: 12, fontWeight: 700, color: '#ef4444', textAlign: 'center', marginBottom: 10 }}>⚠️ {error}</p>
+      )}
+
+      <button
+        onClick={verify}
+        disabled={checking || digits.join('').length < 4}
+        style={{ width: '100%', padding: '11px', borderRadius: 12, fontWeight: 900, fontSize: 14, border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+          background: digits.join('').length === 4 ? '#16a34a' : 'var(--bg-3)',
+          color: digits.join('').length === 4 ? '#fff' : 'var(--text-4)',
+          opacity: checking ? 0.7 : 1,
+          boxShadow: digits.join('').length === 4 ? '0 4px 12px rgba(22,163,74,0.3)' : 'none',
+          transition: 'all 0.2s' }}>
+        {checking ? 'Verifying…' : '✅ Verify & Hand Over'}
+      </button>
     </div>
   )
 }
