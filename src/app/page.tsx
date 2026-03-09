@@ -70,6 +70,7 @@ const CAT_ICON: Record<string, string> = {
 
 export default function HomePage() {
   const [user, setUser] = useState<any>(undefined)
+  const [userRole, setUserRole] = useState<string | null>(null)
   const [allShops, setAllShops] = useState<Shop[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [displayShops, setDisplayShops] = useState<(Shop & { km: number | null })[]>([])
@@ -90,10 +91,39 @@ export default function HomePage() {
     return () => clearInterval(t)
   }, [])
 
-  // auth
+  // auth + role gate
   useEffect(() => {
-    createClient().auth.getSession().then(({ data: { session } }) => setUser(session?.user ?? null))
-    const { data: { subscription } } = createClient().auth.onAuthStateChange((_, session) => setUser(session?.user ?? null))
+    async function checkAuth() {
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      const u = session?.user ?? null
+      setUser(u)
+      if (!u) { setUserRole(null); return }
+
+      // Get role from metadata (fast) or DB
+      let role: string = u.user_metadata?.role || ''
+      if (!role) {
+        const { data: profile } = await supabase.from('users').select('role').eq('id', u.id).single()
+        role = profile?.role || 'customer'
+      }
+      setUserRole(role)
+
+      // Non-customers should never see the customer homepage
+      const ROLE_HOME: Record<string, string> = {
+        shopkeeper: '/dashboard/business',
+        business:   '/dashboard/business',
+        delivery:   '/dashboard/delivery',
+        admin:      '/dashboard/admin',
+      }
+      if (ROLE_HOME[role]) {
+        window.location.replace(ROLE_HOME[role])
+      }
+    }
+    checkAuth()
+    const { data: { subscription } } = createClient().auth.onAuthStateChange((_, session) => {
+      setUser(session?.user ?? null)
+      if (!session?.user) setUserRole(null)
+    })
     return () => subscription.unsubscribe()
   }, [])
 
@@ -260,12 +290,12 @@ export default function HomePage() {
               <div style={{ width: 80, height: 34, borderRadius: 10 }} className="shimmer" />
             ) : user ? (
               <>
-                <Link href="/dashboard/customer" style={{
+                <Link href={userRole === 'shopkeeper' || userRole === 'business' ? '/dashboard/business' : userRole === 'delivery' ? '/dashboard/delivery' : userRole === 'admin' ? '/dashboard/admin' : '/dashboard/customer'} style={{
                   textDecoration: 'none', fontSize: 13, fontWeight: 700,
                   padding: '7px 14px', borderRadius: 10,
                   background: 'var(--brand-muted)', color: 'var(--brand)',
-                }}>My Orders</Link>
-                <button onClick={async () => { await createClient().auth.signOut(); setUser(null) }}
+                }}>My Dashboard</Link>
+                <button onClick={async () => { await createClient().auth.signOut(); setUser(null); setUserRole(null) }}
                   style={{ background: 'var(--bg-3)', border: '1px solid var(--border-2)', borderRadius: 10, padding: '7px 12px', fontSize: 13, fontWeight: 600, color: 'var(--text-3)', cursor: 'pointer', fontFamily: 'inherit' }}>
                   Logout
                 </button>
@@ -300,12 +330,12 @@ export default function HomePage() {
             {/* Auth icon */}
             {user === undefined ? null : user ? (
               <>
-                <Link href="/dashboard/customer"
+                <Link href={userRole === 'shopkeeper' || userRole === 'business' ? '/dashboard/business' : userRole === 'delivery' ? '/dashboard/delivery' : userRole === 'admin' ? '/dashboard/admin' : '/dashboard/customer'}
                   style={{ background: 'var(--brand-muted)', border: 'none', borderRadius: 9, width: 34, height: 34, display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none', fontSize: 15 }}>
                   📦
                 </Link>
                 <button
-                  onClick={async () => { await createClient().auth.signOut(); setUser(null) }}
+                  onClick={async () => { await createClient().auth.signOut(); setUser(null); setUserRole(null) }}
                   style={{ background: 'var(--bg-3)', border: '1px solid var(--border-2)', borderRadius: 9, width: 34, height: 34, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: 14 }}
                   title="Logout">
                   🚪

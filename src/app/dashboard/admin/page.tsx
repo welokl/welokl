@@ -44,7 +44,11 @@ export default function AdminDashboard() {
     const { data: { user } } = await sb.auth.getUser()
     if (!user) { window.location.href = '/auth/login'; return }
     const { data: profile } = await sb.from('users').select('role').eq('id', user.id).single()
-    if (profile?.role !== 'admin') { window.location.href = '/dashboard/customer'; return }
+    if (profile?.role !== 'admin') {
+      const roleHome: Record<string, string> = { customer: '/dashboard/customer', shopkeeper: '/dashboard/business', business: '/dashboard/business', delivery: '/dashboard/delivery' }
+      window.location.replace(roleHome[profile?.role || ''] || '/dashboard/customer')
+      return
+    }
 
     const [{ data: od }, { data: sd }, { data: ud }, { data: cd }, { data: dd }] = await Promise.all([
       sb.from('orders').select('*, shop:shops(name,commission_percent), customer:users!customer_id(name,phone), partner:users!delivery_partner_id(name,phone)').order('created_at', { ascending: false }).limit(200),

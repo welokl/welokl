@@ -78,6 +78,12 @@ export default function CheckoutPage() {
     const supabase = createClient()
     const { data: shop } = await supabase.from('shops').select('id,commission_percent').eq('id', cart.shop_id!).single()
     const fee = calculateFees(subtotal, shop?.commission_percent || 15, orderType)
+
+    // Generate a 4-digit code for pickup orders — customer shows this to shop on arrival
+    const pickupCode = orderType === 'pickup'
+      ? String(Math.floor(1000 + Math.random() * 9000))
+      : null
+
     const { data: order, error: orderError } = await supabase.from('orders').insert({
       customer_id: user.id, shop_id: cart.shop_id, status: 'placed', type: orderType,
       subtotal: fee.subtotal, delivery_fee: fee.delivery_fee, platform_fee: fee.platform_fee,
@@ -86,6 +92,7 @@ export default function CheckoutPage() {
       delivery_address: orderType === 'delivery' ? address.trim() : null,
       delivery_lat: selLat, delivery_lng: selLng,
       delivery_instructions: instructions.trim() || null, estimated_delivery: 30,
+      pickup_code: pickupCode,
     }).select().single()
     if (orderError || !order) { setError('Could not place order. Please try again.'); setLoading(false); return }
     await supabase.from('order_items').insert(cart.items.map(i => ({ order_id: order.id, product_id: i.product.id, product_name: i.product.name, quantity: i.quantity, price: i.product.price })))

@@ -29,7 +29,7 @@ export default function OrderPage() {
 
   async function loadOrder() {
     const supabase = createClient()
-    const { data } = await supabase.from('orders').select('*, shop:shops(*), items:order_items(*)').eq('id', id).single()
+    const { data } = await supabase.from('orders').select('*, pickup_code, shop:shops(*), items:order_items(*)').eq('id', id).single()
     setOrder(data)
     if (data?.delivery_partner_id) {
       const [{ data: pu }, { data: pp }] = await Promise.all([
@@ -146,6 +146,36 @@ export default function OrderPage() {
                 📍 {partner.name} has picked up your order and is heading your way
               </p>
             )}
+          </div>
+        )}
+
+        {/* ── PICKUP ORDER: show 4-digit code to present at shop ──────────────────
+             Shown for any non-cancelled, non-delivered pickup order.
+             Code was generated at checkout. Shop enters it to confirm handover.  */}
+        {order.type === 'pickup' && !isCancelled && !isDelivered && (order as any).pickup_code && (
+          <div style={{ background: 'linear-gradient(135deg, #1a1a2e, #16213e)', borderRadius: 20, padding: '22px 20px', marginBottom: 14, textAlign: 'center' }}>
+            <p style={{ fontSize: 11, fontWeight: 800, color: 'rgba(255,255,255,0.5)', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 14 }}>
+              🏪 Show this code at the shop
+            </p>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginBottom: 14 }}>
+              {String((order as any).pickup_code).split('').map((d: string, i: number) => (
+                <div key={i} style={{ width: 56, height: 72, background: 'rgba(255,255,255,0.08)', border: '2px solid rgba(255,48,8,0.6)', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 36, fontWeight: 900, color: '#ff3008', fontFamily: 'monospace', backdropFilter: 'blur(8px)' }}>
+                  {d}
+                </div>
+              ))}
+            </div>
+            <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.55)', lineHeight: 1.6 }}>
+              Tell this code to the shopkeeper when you arrive.<br />
+              <strong style={{ color: 'rgba(255,255,255,0.8)' }}>Don't share it before you're at the shop.</strong>
+            </p>
+          </div>
+        )}
+
+        {/* Pickup order delivered — no code needed */}
+        {order.type === 'pickup' && isDelivered && (
+          <div style={{ background: '#16a34a', borderRadius: 18, padding: '18px 20px', textAlign: 'center', marginBottom: 14 }}>
+            <p style={{ fontSize: 15, fontWeight: 900, color: '#fff' }}>✅ Picked up successfully!</p>
+            <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.7)', marginTop: 4 }}>Hope you enjoy your order from {(order as any).shop?.name}</p>
           </div>
         )}
 

@@ -43,6 +43,13 @@ export default function DeliveryDashboard() {
     const sb = createClient()
     const { data: { user: authUser } } = await sb.auth.getUser()
     if (!authUser) { window.location.href = '/auth/login'; return }
+
+    // Role guard — only delivery role allowed here
+    const role = authUser.user_metadata?.role || ''
+    if (role === 'customer')                          { window.location.replace('/dashboard/customer'); return }
+    if (role === 'shopkeeper' || role === 'business') { window.location.replace('/dashboard/business'); return }
+    if (role === 'admin')                             { window.location.replace('/dashboard/admin');    return }
+
     setUserId(authUser.id)
 
     const [{ data: profile }, { data: pd }, { data: wd }] = await Promise.all([

@@ -20,6 +20,12 @@ export default function CustomerDashboard() {
     const supabase = createClient()
     const { data: { user: authUser } } = await supabase.auth.getUser()
     if (!authUser) { window.location.href = '/auth/login'; return }
+
+    // Role guard — non-customers must not use this dashboard
+    const role = authUser.user_metadata?.role || 'customer'
+    if (role === 'shopkeeper' || role === 'business') { window.location.replace('/dashboard/business'); return }
+    if (role === 'delivery') { window.location.replace('/dashboard/delivery'); return }
+    if (role === 'admin')    { window.location.replace('/dashboard/admin');    return }
     const [{ data: profile }, { data: orderData }] = await Promise.all([
       supabase.from('users').select('*').eq('id', authUser.id).single(),
       supabase.from('orders')

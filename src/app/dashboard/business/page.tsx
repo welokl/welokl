@@ -22,6 +22,12 @@ export default function BusinessDashboard() {
     const supabase = createClient()
     const { data: { user: authUser } } = await supabase.auth.getUser()
     if (!authUser) { window.location.href = '/auth/login'; return }
+
+    // Role guard — only shopkeeper/business role allowed here
+    const role = authUser.user_metadata?.role || ''
+    if (role === 'customer')  { window.location.replace('/dashboard/customer'); return }
+    if (role === 'delivery')  { window.location.replace('/dashboard/delivery'); return }
+    if (role === 'admin')     { window.location.replace('/dashboard/admin');    return }
     const { data: profile } = await supabase.from('users').select('*').eq('id', authUser.id).single()
     setUser(profile)
     const { data: shopData } = await supabase.from('shops').select('*').eq('owner_id', authUser.id).single()
@@ -257,39 +263,55 @@ export default function BusinessDashboard() {
                       ready: null, // handled specially below — requires code verification
                     }
                     const a = nextMap[order.status]
-                    const isReady     = order.status === 'ready'
-                    const hasPartner  = !!(order as any).delivery_partner_id
-                    const pickupCode  = (order as any).pickup_code as string | null
+                    const isReady      = order.status === 'ready'
+                    const isPickupType = order.type === 'pickup'
+                    const hasPartner   = !!(order as any).delivery_partner_id
+                    const pickupCode   = (order as any).pickup_code as string | null
 
                     return (
-                      <div key={order.id} style={{ background: 'var(--card-bg)', border: `1px solid ${isReady && hasPartner ? 'var(--brand)' : 'var(--border)'}`, borderRadius: 16, padding: 16, boxShadow: isReady && hasPartner ? '0 0 0 2px var(--brand-glow)' : 'var(--card-shadow)' }}>
+                      <div key={order.id} style={{ background: 'var(--card-bg)', border: `1px solid ${isReady ? 'var(--brand)' : 'var(--border)'}`, borderRadius: 16, padding: 16, boxShadow: isReady ? '0 0 0 2px var(--brand-glow)' : 'var(--card-shadow)' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
                           <span style={{ fontWeight: 900, fontSize: 14, color: 'var(--text)' }}>#{order.order_number}</span>
-                          <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 999, background: 'var(--amber-bg)', color: '#d97706' }}>
-                            {ORDER_STATUS_LABELS[order.status as keyof typeof ORDER_STATUS_LABELS]}
-                          </span>
+                          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                            <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: isPickupType ? 'rgba(59,130,246,0.12)' : 'rgba(245,158,11,0.12)', color: isPickupType ? '#3b82f6' : '#d97706' }}>
+                              {isPickupType ? '🏪 Pickup' : '🛵 Delivery'}
+                            </span>
+                            <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: 'var(--amber-bg)', color: '#d97706' }}>
+                              {ORDER_STATUS_LABELS[order.status as keyof typeof ORDER_STATUS_LABELS]}
+                            </span>
+                          </div>
                         </div>
                         <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 12 }}>
                           {(order as any).items?.map((i: any) => `${i.product_name} ×${i.quantity}`).join(', ')}
-                          <span style={{ marginLeft: 8 }}>{order.type === 'delivery' ? '🛵 Delivery' : '🏃 Pickup'}</span>
                         </div>
 
-                        {/* ── READY + no partner yet: waiting */}
-                        {isReady && !hasPartner && (
-                          <div style={{ background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 14px', textAlign: 'center' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center', marginBottom: 4 }}>
-                              <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#f59e0b', display: 'inline-block', animation: 'pulse 1.5s infinite' }} />
-                              <p style={{ fontSize: 13, fontWeight: 700, color: '#d97706' }}>Waiting for a delivery partner to accept…</p>
-                            </div>
-                            <p style={{ fontSize: 12, color: 'var(--text-3)' }}>Available riders will see and claim this order</p>
-                          </div>
-                        )}
-
-                        {/* ── READY + partner assigned: enter the code they show you */}
-                        {isReady && hasPartner && (
+                        {/* ── PICKUP ORDER, READY: customer arrives and shows code ── */}
+                        {isReady && isPickupType && (
                           <PickupCodeVerifier
                             orderId={order.id}
                             correctCode={pickupCode}
+                            mode="customer"
+                            onVerified={() => loadData()}
+                          />
+                        )}
+
+                        {/* ── DELIVERY ORDER, READY + no rider yet: waiting ── */}
+                        {isReady && !isPickupType && !hasPartner && (
+                          <div style={{ background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 14px', textAlign: 'center' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center', marginBottom: 4 }}>
+                              <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#f59e0b', display: 'inline-block', animation: 'pulse 1.5s infinite' }} />
+                              <p style={{ fontSize: 13, fontWeight: 700, color: '#d97706' }}>Waiting for a delivery partner…</p>
+                            </div>
+                            <p style={{ fontSize: 12, color: 'var(--text-3)' }}>A rider will accept and show you their code</p>
+                          </div>
+                        )}
+
+                        {/* ── DELIVERY ORDER, READY + rider assigned: enter rider code ── */}
+                        {isReady && !isPickupType && hasPartner && (
+                          <PickupCodeVerifier
+                            orderId={order.id}
+                            correctCode={pickupCode}
+                            mode="rider"
                             onVerified={() => loadData()}
                           />
                         )}
@@ -391,18 +413,20 @@ export default function BusinessDashboard() {
 }
 
 // ── PickupCodeVerifier ──────────────────────────────────────────────────────
-// Shown when order is 'ready' and a delivery partner has claimed it.
-// Shop enters the 4-digit code the rider shows them.
-// On match → updates order status to 'picked_up'.
+// mode="customer" — Pickup order: customer arrives and shows their code.
+//                   On match → status becomes 'delivered'. Order is complete.
+// mode="rider"    — Delivery order: rider shows code to shop before taking it.
+//                   On match → status becomes 'picked_up'. Rider goes to deliver.
 function PickupCodeVerifier({
-  orderId, correctCode, onVerified,
+  orderId, correctCode, mode = 'rider', onVerified,
 }: {
   orderId: string
   correctCode: string | null
+  mode?: 'customer' | 'rider'
   onVerified: () => void
 }) {
-  const [digits, setDigits] = useState(['', '', '', ''])
-  const [error, setError]   = useState('')
+  const [digits, setDigits]     = useState(['', '', '', ''])
+  const [error, setError]       = useState('')
   const [checking, setChecking] = useState(false)
   const refs = [
     useRef<HTMLInputElement>(null),
@@ -410,6 +434,15 @@ function PickupCodeVerifier({
     useRef<HTMLInputElement>(null),
     useRef<HTMLInputElement>(null),
   ]
+
+  const isCustomer  = mode === 'customer'
+  const label       = isCustomer ? 'Enter the customer\'s pickup code' : 'Enter the rider\'s pickup code'
+  const sublabel    = isCustomer ? 'The customer will show you a 4-digit code on their phone' : 'The delivery partner will show you a 4-digit code'
+  const confirmText = isCustomer ? '✅ Confirm & Complete Order' : '✅ Verify & Hand Over'
+  const nextStatus  = isCustomer ? 'delivered' : 'picked_up'
+  const logMsg      = isCustomer
+    ? 'Pickup code verified by shop — customer collected order'
+    : 'Pickup code verified by shop — handed to rider'
 
   function handleDigit(i: number, val: string) {
     const d = val.replace(/\D/g, '').slice(-1)
@@ -419,31 +452,31 @@ function PickupCodeVerifier({
   }
 
   function handleKeyDown(i: number, e: React.KeyboardEvent) {
-    if (e.key === 'Backspace' && !digits[i] && i > 0) {
-      refs[i - 1].current?.focus()
-    }
+    if (e.key === 'Backspace' && !digits[i] && i > 0) refs[i - 1].current?.focus()
   }
 
   async function verify() {
     const entered = digits.join('')
     if (entered.length < 4) { setError('Enter all 4 digits'); return }
-    if (!correctCode) { setError('No code assigned yet — rider may still be on the way'); return }
-    if (entered !== correctCode) { setError('Wrong code. Ask the rider to show you again.'); return }
+    if (!correctCode) { setError('No code assigned yet'); return }
+    if (entered !== correctCode) { setError('Wrong code. Please check again.'); return }
     setChecking(true)
     const sb = createClient()
-    await sb.from('orders').update({ status: 'picked_up', pickup_code: null }).eq('id', orderId)
-    await sb.from('order_status_log').insert({ order_id: orderId, status: 'picked_up', message: 'Pickup code verified by shop — handed to rider' })
+    await sb.from('orders').update({ status: nextStatus, pickup_code: null }).eq('id', orderId)
+    await sb.from('order_status_log').insert({ order_id: orderId, status: nextStatus, message: logMsg })
     setChecking(false)
     onVerified()
   }
 
+  const filled = digits.join('').length === 4
+
   return (
-    <div style={{ background: 'var(--bg-1)', border: '2px solid var(--brand)', borderRadius: 14, padding: '16px 18px' }}>
+    <div style={{ background: isCustomer ? 'rgba(59,130,246,0.08)' : 'var(--bg-1)', border: `2px solid ${isCustomer ? 'rgba(59,130,246,0.4)' : 'var(--brand)'}`, borderRadius: 14, padding: '16px 18px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-        <span style={{ fontSize: 20 }}>🔐</span>
+        <span style={{ fontSize: 20 }}>{isCustomer ? '🏪' : '🔐'}</span>
         <div>
-          <p style={{ fontWeight: 900, fontSize: 13, color: 'var(--text)' }}>Enter the rider's pickup code</p>
-          <p style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>The delivery partner will show you a 4-digit code</p>
+          <p style={{ fontWeight: 900, fontSize: 13, color: 'var(--text)' }}>{label}</p>
+          <p style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>{sublabel}</p>
         </div>
       </div>
 
@@ -461,7 +494,7 @@ function PickupCodeVerifier({
             style={{
               width: 52, height: 60, textAlign: 'center', fontSize: 28, fontWeight: 900,
               fontFamily: 'monospace', borderRadius: 12,
-              border: `2px solid ${error ? '#ef4444' : d ? 'var(--brand)' : 'var(--border-2)'}`,
+              border: `2px solid ${error ? '#ef4444' : d ? (isCustomer ? '#3b82f6' : 'var(--brand)') : 'var(--border-2)'}`,
               background: 'var(--card-bg)', color: 'var(--text)', outline: 'none',
               transition: 'border-color 0.15s', caretColor: 'transparent',
             }}
@@ -475,14 +508,14 @@ function PickupCodeVerifier({
 
       <button
         onClick={verify}
-        disabled={checking || digits.join('').length < 4}
-        style={{ width: '100%', padding: '11px', borderRadius: 12, fontWeight: 900, fontSize: 14, border: 'none', cursor: 'pointer', fontFamily: 'inherit',
-          background: digits.join('').length === 4 ? '#16a34a' : 'var(--bg-3)',
-          color: digits.join('').length === 4 ? '#fff' : 'var(--text-4)',
+        disabled={checking || !filled}
+        style={{ width: '100%', padding: '11px', borderRadius: 12, fontWeight: 900, fontSize: 14, border: 'none', cursor: filled ? 'pointer' : 'default', fontFamily: 'inherit',
+          background: filled ? (isCustomer ? '#3b82f6' : '#16a34a') : 'var(--bg-3)',
+          color: filled ? '#fff' : 'var(--text-4)',
           opacity: checking ? 0.7 : 1,
-          boxShadow: digits.join('').length === 4 ? '0 4px 12px rgba(22,163,74,0.3)' : 'none',
+          boxShadow: filled ? `0 4px 12px ${isCustomer ? 'rgba(59,130,246,0.3)' : 'rgba(22,163,74,0.3)'}` : 'none',
           transition: 'all 0.2s' }}>
-        {checking ? 'Verifying…' : '✅ Verify & Hand Over'}
+        {checking ? 'Verifying…' : confirmText}
       </button>
     </div>
   )

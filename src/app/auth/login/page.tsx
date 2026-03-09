@@ -14,7 +14,14 @@ export default function LoginPage() {
     setLoading(true); setError('')
     const supabase = createClient()
     const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password })
-    if (authError || !data.user) { setError('Invalid email or password.'); setLoading(false); return }
+    if (authError || !data.user) {
+      if (authError?.status === 429 || authError?.message?.toLowerCase().includes('rate limit') || authError?.message?.toLowerCase().includes('too many')) {
+        setError('Too many login attempts. Please wait a few minutes and try again.')
+      } else {
+        setError(authError?.message || 'Invalid email or password.')
+      }
+      setLoading(false); return
+    }
     let role = data.user.user_metadata?.role
     if (!role) {
       const { data: profile } = await supabase.from('users').select('role').eq('id', data.user.id).single()
