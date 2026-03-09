@@ -96,13 +96,8 @@ export async function proxy(request: NextRequest) {
 
     const home = ROLE_HOME[role] || '/dashboard/customer'
 
-    // Homepage (/): non-customers go straight to their dashboard
-    if (pathname === '/') {
-      if (role !== 'customer') {
-        return NextResponse.redirect(new URL(home, request.url))
-      }
-      return supabaseResponse
-    }
+    // Homepage (/): landing page is open to everyone — no redirect
+    if (pathname === '/') return supabaseResponse
 
     // Customer-facing routes: only customers allowed
     if (isCustomerRoute(pathname)) {

@@ -1,440 +1,183 @@
 'use client'
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import ThemeToggle from '@/components/ThemeToggle'
 
-interface Shop {
-  id: string
-  name: string
-  description: string | null
-  category_name: string
-  is_open: boolean
-  rating: number
-  avg_delivery_time: number
-  delivery_enabled: boolean
-  pickup_enabled: boolean
-  min_order_amount: number
-  area: string
-  image_url: string | null
-  latitude: number | null
-  longitude: number | null
+const ROLE_HOME: Record<string, string> = {
+  customer:   '/dashboard/customer',
+  shopkeeper: '/dashboard/business',
+  business:   '/dashboard/business',
+  delivery:   '/dashboard/delivery',
+  admin:      '/dashboard/admin',
 }
 
-interface Product {
-  id: string
-  name: string
-  price: number
-  original_price: number | null
-  image_url: string | null
-  shop_id: string
-  shop_name?: string
-}
-
-// ── haversine distance in km ──
-function dist(lat1: number, lng1: number, lat2: number, lng2: number) {
-  const R = 6371
-  const dLat = (lat2 - lat1) * Math.PI / 180
-  const dLng = (lng2 - lng1) * Math.PI / 180
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-}
-
-const CATEGORIES = [
-  { icon: '🍔', name: 'Food', q: 'food' },
-  { icon: '🛒', name: 'Grocery', q: 'grocery' },
-  { icon: '💊', name: 'Pharmacy', q: 'pharmacy' },
-  { icon: '📱', name: 'Electronics', q: 'electronics' },
-  { icon: '💇', name: 'Salon', q: 'salon' },
-  { icon: '🌸', name: 'Gifts', q: 'gifts' },
-  { icon: '🔧', name: 'Hardware', q: 'hardware' },
-  { icon: '🐾', name: 'Pets', q: 'pet' },
-]
-
-const TICKER = [
-  '🍕 Pizza — 18 min',
-  '🥛 Milk — 9 min',
-  '💊 Pharmacy — midnight',
-  '🌹 Flowers — now',
-  '🍦 Ice cream — 2am',
-]
-
-const CAT_COLOR: Record<string, string> = {
-  food: '#FF3008', grocery: '#00A878', pharmacy: '#0066FF',
-  electronics: '#7B2FFF', salon: '#FF2D78', default: '#FF5A1F',
-}
-const CAT_ICON: Record<string, string> = {
-  food: '🍔', grocery: '🛒', pharmacy: '💊', electronics: '📱',
-  salon: '💇', hardware: '🔧', pet: '🐾', flower: '🌸', default: '🏪',
-}
-
-export default function HomePage() {
+export default function LandingPage() {
   const [user, setUser] = useState<any>(undefined)
-  const [userRole, setUserRole] = useState<string | null>(null)
-  const [allShops, setAllShops] = useState<Shop[]>([])
-  const [products, setProducts] = useState<Product[]>([])
-  const [displayShops, setDisplayShops] = useState<(Shop & { km: number | null })[]>([])
-  const [loaded, setLoaded] = useState(false)
-  const [locStatus, setLocStatus] = useState<'idle' | 'detecting' | 'granted' | 'denied'>('idle')
-  const [userLat, setUserLat] = useState<number | null>(null)
-  const [userLng, setUserLng] = useState<number | null>(null)
-  const [areaName, setAreaName] = useState('')
-  const [radius, setRadius] = useState(10)
-  const [activeCategory, setActiveCategory] = useState<string | null>(null)
-  const [tickerIdx, setTickerIdx] = useState(0)
-  const [searchVal, setSearchVal] = useState('')
-  const searchRef = useRef<HTMLInputElement>(null)
+  const [role, setRole] = useState<string>('')
 
-  // ticker
   useEffect(() => {
-    const t = setInterval(() => setTickerIdx(i => (i + 1) % TICKER.length), 2800)
-    return () => clearInterval(t)
-  }, [])
-
-  // auth + role gate
-  useEffect(() => {
-    async function checkAuth() {
-      const supabase = createClient()
-      const { data: { session } } = await supabase.auth.getSession()
+    async function init() {
+      const sb = createClient()
+      const { data: { session } } = await sb.auth.getSession()
       const u = session?.user ?? null
       setUser(u)
-      if (!u) { setUserRole(null); return }
-
-      // Get role from metadata (fast) or DB
-      let role: string = u.user_metadata?.role || ''
-      if (!role) {
-        const { data: profile } = await supabase.from('users').select('role').eq('id', u.id).single()
-        role = profile?.role || 'customer'
+      if (!u) { setRole(''); return }
+      let r = u.user_metadata?.role || ''
+      if (!r) {
+        const { data: p } = await sb.from('users').select('role').eq('id', u.id).single()
+        r = p?.role || 'customer'
       }
-      setUserRole(role)
-
-      // Non-customers should never see the customer homepage
-      const ROLE_HOME: Record<string, string> = {
-        shopkeeper: '/dashboard/business',
-        business:   '/dashboard/business',
-        delivery:   '/dashboard/delivery',
-        admin:      '/dashboard/admin',
-      }
-      if (ROLE_HOME[role]) {
-        window.location.replace(ROLE_HOME[role])
-      }
+      setRole(r)
     }
-    checkAuth()
-    const { data: { subscription } } = createClient().auth.onAuthStateChange((_, session) => {
-      setUser(session?.user ?? null)
-      if (!session?.user) setUserRole(null)
+    init()
+    const { data: { subscription } } = createClient().auth.onAuthStateChange((_, s) => {
+      setUser(s?.user ?? null)
+      if (!s?.user) setRole('')
     })
     return () => subscription.unsubscribe()
   }, [])
 
-  // location init
-  useEffect(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem('welokl_location') || 'null')
-      if (saved?.lat && saved?.lng) {
-        setUserLat(saved.lat)
-        setUserLng(saved.lng)
-        setAreaName(saved.name || '')
-        setLocStatus('granted')
-        return
-      }
-    } catch {}
-    detectLocation()
-  }, [])
-
-  function detectLocation() {
-    if (!navigator.geolocation) { setLocStatus('denied'); return }
-    setLocStatus('detecting')
-    navigator.geolocation.getCurrentPosition(
-      async pos => {
-        const { latitude, longitude } = pos.coords
-        setUserLat(latitude)
-        setUserLng(longitude)
-        setLocStatus('granted')
-        try {
-          const r = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`, { headers: { 'Accept-Language': 'en' } })
-          const d = await r.json()
-          const name = d.address?.suburb || d.address?.neighbourhood || d.address?.town || d.address?.city || 'Your area'
-          setAreaName(name)
-          localStorage.setItem('welokl_location', JSON.stringify({ lat: latitude, lng: longitude, name }))
-        } catch {
-          localStorage.setItem('welokl_location', JSON.stringify({ lat: latitude, lng: longitude, name: '' }))
-        }
-      },
-      () => setLocStatus('denied'),
-      { timeout: 8000, enableHighAccuracy: false }
-    )
-  }
-
-  // load shops
-  const loadShops = useCallback(async () => {
-    const supabase = createClient()
-    const { data } = await supabase.from('shops').select('*').eq('is_active', true).order('rating', { ascending: false })
-    setAllShops(data || [])
-    const { data: prods } = await supabase.from('products')
-      .select('id,name,price,original_price,image_url,shop_id,shops(name)')
-      .eq('is_available', true).limit(16)
-    setProducts((prods || []).map((p: any) => ({ ...p, shop_name: p.shops?.name })))
-    setLoaded(true)
-  }, [])
-
-  useEffect(() => { loadShops() }, [loadShops])
-
-  // filter + sort shops whenever deps change
-  useEffect(() => {
-    let shops = allShops.map(s => ({
-      ...s,
-      km: (userLat && userLng && s.latitude && s.longitude)
-        ? dist(userLat, userLng, Number(s.latitude), Number(s.longitude))
-        : null
-    }))
-
-    // STRICT location filter — if we have coords, only show within radius
-    if (userLat && userLng) {
-      shops = shops.filter(s => {
-        if (s.km === null) return false   // shop has no coords → exclude
-        return s.km <= radius
-      })
-    }
-
-    // category filter
-    if (activeCategory) {
-      shops = shops.filter(s => s.category_name?.toLowerCase().includes(activeCategory.toLowerCase()))
-    }
-
-    // search filter
-    if (searchVal.trim()) {
-      const q = searchVal.toLowerCase()
-      shops = shops.filter(s => s.name.toLowerCase().includes(q) || s.area?.toLowerCase().includes(q) || s.category_name?.toLowerCase().includes(q))
-    }
-
-    // sort: open first, then by distance, then rating
-    shops.sort((a, b) => {
-      if (a.is_open !== b.is_open) return a.is_open ? -1 : 1
-      if (a.km !== null && b.km !== null) return a.km - b.km
-      return b.rating - a.rating
-    })
-
-    setDisplayShops(shops)
-  }, [allShops, userLat, userLng, radius, activeCategory, searchVal])
-
-  const openShops = displayShops.filter(s => s.is_open)
-  const closedShops = displayShops.filter(s => !s.is_open)
+  const dashHref = ROLE_HOME[role] || '/dashboard/customer'
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg)', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+    <div style={{ minHeight: '100vh', background: '#0a0a0a', fontFamily: "'Plus Jakarta Sans', sans-serif", color: '#fff' }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap');
+        *{box-sizing:border-box;margin:0;padding:0;}
+        html{scroll-behavior:smooth;}
+        @keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+        @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+        .fade-up{animation:fadeUp .6s ease both}
+        .fade-up-1{animation:fadeUp .6s .1s ease both}
+        .fade-up-2{animation:fadeUp .6s .22s ease both}
+        .fade-up-3{animation:fadeUp .6s .36s ease both}
+        .fade-up-4{animation:fadeUp .6s .5s ease both}
+        .nav-a{color:rgba(255,255,255,.5);font-size:14px;font-weight:600;text-decoration:none;transition:color .15s}
+        .nav-a:hover{color:#fff}
+        .fcard{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:20px;padding:28px;transition:all .2s}
+        .fcard:hover{background:rgba(255,255,255,.07);border-color:rgba(255,255,255,.15);transform:translateY(-2px)}
+        .for-card{border-radius:24px;padding:32px;transition:transform .25s}
+        .for-card:hover{transform:translateY(-4px)}
+        .cta-p{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:14px 28px;border-radius:14px;font-weight:800;font-size:15px;text-decoration:none;transition:all .18s;border:none;cursor:pointer;font-family:inherit;background:#FF3008;color:white;box-shadow:0 6px 24px rgba(255,48,8,.35)}
+        .cta-p:hover{background:#e62800;transform:translateY(-1px);box-shadow:0 10px 32px rgba(255,48,8,.45)}
+        .cta-g{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:14px 28px;border-radius:14px;font-weight:800;font-size:15px;text-decoration:none;transition:all .18s;background:rgba(255,255,255,.08);color:white;border:1px solid rgba(255,255,255,.15)}
+        .cta-g:hover{background:rgba(255,255,255,.13);transform:translateY(-1px)}
+        @media(max-width:680px){
+          .hide-m{display:none!important}
+          .g2{grid-template-columns:1fr!important}
+          .g3{grid-template-columns:1fr!important}
+          .stats-g{grid-template-columns:1fr 1fr!important}
+          .hero-h{font-size:2.4rem!important}
+          .fl-r{flex-direction:column!important;align-items:flex-start!important}
+        }
+      `}</style>
 
-      {/* ── TOP NAV ── */}
-      <nav style={{
-        position: 'sticky', top: 0, zIndex: 50,
-        background: 'var(--glass-bg)',
-        backdropFilter: 'blur(12px)',
-        borderBottom: '1px solid var(--border)',
-        padding: '0 16px',
-      }}>
-        <div style={{ maxWidth: 1120, margin: '0 auto', height: 56, display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-
-          {/* Logo — always visible */}
-          <Link href="/" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-            <div style={{ width: 32, height: 32, borderRadius: 9, background: '#FF3008', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 900, fontSize: 15 }}>W</div>
-            <span style={{ fontWeight: 800, fontSize: 17, color: 'var(--text)', letterSpacing: '-0.03em' }}>welokl</span>
+      {/* NAV */}
+      <nav style={{position:'sticky',top:0,zIndex:100,borderBottom:'1px solid rgba(255,255,255,.06)',background:'rgba(10,10,10,.92)',backdropFilter:'blur(16px)'}}>
+        <div style={{maxWidth:1100,margin:'0 auto',padding:'0 20px',height:60,display:'flex',alignItems:'center',justifyContent:'space-between',gap:16}}>
+          <Link href="/" style={{display:'flex',alignItems:'center',gap:9,textDecoration:'none'}}>
+            <div style={{width:34,height:34,borderRadius:10,background:'#FF3008',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:900,fontSize:16,color:'#fff'}}>W</div>
+            <span style={{fontWeight:900,fontSize:18,color:'#fff',letterSpacing:'-0.03em'}}>welokl</span>
           </Link>
-
-          {/* Location pill — hidden on mobile */}
-          <button
-            className="nav-location"
-            onClick={detectLocation}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              background: 'var(--bg-3)', border: '1px solid var(--border-2)', borderRadius: 10,
-              padding: '7px 12px', cursor: 'pointer', flexShrink: 0,
-              fontSize: 13, fontWeight: 600, color: 'var(--text)', fontFamily: 'inherit',
-            }}
-          >
-            <span style={{ fontSize: 14 }}>📍</span>
-            <span style={{ maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {locStatus === 'detecting' ? 'Detecting…' : areaName || 'Set location'}
-            </span>
-            <span style={{ color: 'var(--text-3)', fontSize: 10 }}>▼</span>
-          </button>
-
-          {/* Search — hidden on mobile */}
-          <div className="nav-search" style={{ flex: 1, minWidth: 0, position: 'relative', maxWidth: 440 }}>
-            <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 15, color: 'var(--text-3)', pointerEvents: 'none' }}>🔍</span>
-            <input
-              ref={searchRef}
-              value={searchVal}
-              onChange={e => setSearchVal(e.target.value)}
-              onKeyDown={e => e.key === 'Escape' && setSearchVal('')}
-              placeholder="Search shops, dishes, products…"
-              style={{
-                width: '100%', padding: '9px 12px 9px 38px',
-                background: 'var(--input-bg)', border: '2px solid transparent',
-                borderRadius: 12, fontSize: 14, fontWeight: 500, color: 'var(--text)',
-                outline: 'none', transition: 'border-color 0.15s',
-              }}
-              onFocus={e => e.target.style.borderColor = '#FF3008'}
-              onBlur={e => e.target.style.borderColor = 'transparent'}
-            />
-            {searchVal && (
-              <button onClick={() => setSearchVal('')} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', fontSize: 14, color: 'var(--text-3)', cursor: 'pointer' }}>✕</button>
-            )}
+          <div className="hide-m" style={{display:'flex',alignItems:'center',gap:32}}>
+            <a href="#how" className="nav-a">How it works</a>
+            <a href="#for" className="nav-a">For you</a>
+            <a href="#mission" className="nav-a">Mission</a>
           </div>
-
-          {/* Spacer pushes auth to right on mobile */}
-          <div style={{ flex: 1 }} />
-
-          {/* Desktop auth — hidden on mobile */}
-          <div className="nav-desktop-auth" style={{ alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          <div style={{display:'flex',alignItems:'center',gap:10}}>
+            <ThemeToggle />
             {user === undefined ? (
-              <div style={{ width: 80, height: 34, borderRadius: 10 }} className="shimmer" />
+              <div style={{width:80,height:34,borderRadius:10,background:'rgba(255,255,255,.06)'}}/>
             ) : user ? (
-              <>
-                <Link href={userRole === 'shopkeeper' || userRole === 'business' ? '/dashboard/business' : userRole === 'delivery' ? '/dashboard/delivery' : userRole === 'admin' ? '/dashboard/admin' : '/dashboard/customer'} style={{
-                  textDecoration: 'none', fontSize: 13, fontWeight: 700,
-                  padding: '7px 14px', borderRadius: 10,
-                  background: 'var(--brand-muted)', color: 'var(--brand)',
-                }}>My Dashboard</Link>
-                <button onClick={async () => { await createClient().auth.signOut(); setUser(null); setUserRole(null) }}
-                  style={{ background: 'var(--bg-3)', border: '1px solid var(--border-2)', borderRadius: 10, padding: '7px 12px', fontSize: 13, fontWeight: 600, color: 'var(--text-3)', cursor: 'pointer', fontFamily: 'inherit' }}>
-                  Logout
-                </button>
-              </>
+              <Link href={dashHref} className="cta-p" style={{padding:'8px 18px',fontSize:13}}>My Dashboard →</Link>
             ) : (
               <>
-                <Link href="/auth/login" style={{ textDecoration: 'none', fontSize: 13, fontWeight: 600, color: 'var(--text-2)', padding: '7px 12px' }}>Log in</Link>
-                <Link href="/auth/signup" style={{
-                  textDecoration: 'none', fontSize: 13, fontWeight: 700,
-                  padding: '8px 16px', borderRadius: 10,
-                  background: 'var(--brand)', color: 'white',
-                }}>Sign up</Link>
+                <Link href="/auth/login" style={{color:'rgba(255,255,255,.6)',fontSize:14,fontWeight:600,textDecoration:'none',padding:'8px 12px'}} className="hide-m">Log in</Link>
+                <Link href="/auth/signup" className="cta-p" style={{padding:'8px 18px',fontSize:13}}>Get started free</Link>
               </>
             )}
-            <ThemeToggle />
           </div>
-
-          {/* Mobile icons — shown only on mobile */}
-          <div className="nav-mobile-icons" style={{ alignItems: 'center', gap: 6, flexShrink: 0 }}>
-            {/* Search icon */}
-            <button
-              onClick={() => { searchRef.current?.focus(); searchRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }) }}
-              style={{ background: 'var(--bg-3)', border: '1px solid var(--border-2)', borderRadius: 9, width: 34, height: 34, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: 15 }}>
-              🔍
-            </button>
-            {/* Location icon */}
-            <button
-              onClick={detectLocation}
-              style={{ background: 'var(--bg-3)', border: '1px solid var(--border-2)', borderRadius: 9, width: 34, height: 34, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: 15 }}>
-              📍
-            </button>
-            {/* Auth icon */}
-            {user === undefined ? null : user ? (
-              <>
-                <Link href={userRole === 'shopkeeper' || userRole === 'business' ? '/dashboard/business' : userRole === 'delivery' ? '/dashboard/delivery' : userRole === 'admin' ? '/dashboard/admin' : '/dashboard/customer'}
-                  style={{ background: 'var(--brand-muted)', border: 'none', borderRadius: 9, width: 34, height: 34, display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none', fontSize: 15 }}>
-                  📦
-                </Link>
-                <button
-                  onClick={async () => { await createClient().auth.signOut(); setUser(null); setUserRole(null) }}
-                  style={{ background: 'var(--bg-3)', border: '1px solid var(--border-2)', borderRadius: 9, width: 34, height: 34, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: 14 }}
-                  title="Logout">
-                  🚪
-                </button>
-              </>
-            ) : (
-              <Link href="/auth/login"
-                style={{ background: 'var(--brand)', border: 'none', borderRadius: 9, padding: '6px 12px', display: 'flex', alignItems: 'center', textDecoration: 'none', fontSize: 12, fontWeight: 800, color: 'white', whiteSpace: 'nowrap' }}>
-                Log in
-              </Link>
-            )}
-            <ThemeToggle />
-          </div>
-
         </div>
       </nav>
 
-      {/* ── HERO ── */}
-      <section style={{ background: '#1A1A1A', position: 'relative', overflow: 'hidden', padding: 'clamp(28px, 6vw, 56px) 16px' }}>
-        {/* subtle grid */}
-        <div style={{
-          position: 'absolute', inset: 0, opacity: 0.06,
-          backgroundImage: 'linear-gradient(rgba(255,255,255,0.3) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.3) 1px, transparent 1px)',
-          backgroundSize: '40px 40px', pointerEvents: 'none',
-        }} />
-        {/* glow */}
-        <div style={{ position: 'absolute', top: -100, right: -100, width: 500, height: 500, background: '#FF3008', borderRadius: '50%', opacity: 0.08, filter: 'blur(120px)', pointerEvents: 'none' }} />
+      {/* HERO */}
+      <section style={{padding:'clamp(72px,10vw,128px) 20px clamp(56px,8vw,96px)',position:'relative',overflow:'hidden'}}>
+        <div style={{position:'absolute',top:-80,right:-60,width:600,height:600,borderRadius:'50%',background:'radial-gradient(circle,rgba(255,48,8,.15) 0%,transparent 70%)',pointerEvents:'none'}}/>
+        <div style={{position:'absolute',bottom:-100,left:-80,width:500,height:500,borderRadius:'50%',background:'radial-gradient(circle,rgba(255,48,8,.06) 0%,transparent 70%)',pointerEvents:'none'}}/>
+        <div style={{position:'absolute',inset:0,opacity:.025,backgroundImage:'linear-gradient(rgba(255,255,255,.5) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.5) 1px,transparent 1px)',backgroundSize:'56px 56px',pointerEvents:'none'}}/>
 
-        <div style={{ maxWidth: 1120, margin: '0 auto', position: 'relative' }}>
-          {/* Ticker */}
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 999, padding: '6px 14px', marginBottom: 24, fontSize: 13, color: 'rgba(255,255,255,0.7)' }}>
-            <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22C55E', boxShadow: '0 0 8px #22C55E', display: 'inline-block', animation: 'pulse 2s infinite' }} />
-            <span style={{ color: 'rgba(255,255,255,0.45)', marginRight: 2 }}>Near you:</span>
-            <span style={{ fontWeight: 600, color: 'white' }}>{TICKER[tickerIdx]}</span>
+        <div style={{maxWidth:800,margin:'0 auto',textAlign:'center',position:'relative'}}>
+          <div className="fade-up" style={{display:'inline-flex',alignItems:'center',gap:8,background:'rgba(255,48,8,.12)',border:'1px solid rgba(255,48,8,.25)',borderRadius:999,padding:'7px 16px',marginBottom:28,fontSize:13,fontWeight:700,color:'#FF7A5C'}}>
+            <span style={{width:7,height:7,borderRadius:'50%',background:'#FF3008',display:'inline-block',animation:'pulse 2s infinite'}}/>
+            Hyperlocal delivery — live in your city
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 32, alignItems: 'center' }}>
-            <div>
-              <h1 style={{ fontSize: 'clamp(2rem, 4vw, 3.6rem)', fontWeight: 900, color: 'white', lineHeight: 1.05, letterSpacing: '-0.04em', marginBottom: 16 }}>
-                Anything from your<br />
-                <span style={{ color: '#FF3008' }}>neighbourhood</span>, delivered.
-              </h1>
-              <p style={{ fontSize: 16, color: 'rgba(255,255,255,0.5)', lineHeight: 1.75, maxWidth: 440, marginBottom: 28 }}>
-                Food, grocery, pharmacy, salon — real local shops near you. Real riders. Under 30 minutes.
-              </p>
+          <h1 className="fade-up-1 hero-h" style={{fontSize:'clamp(2.8rem,6vw,4.6rem)',fontWeight:900,lineHeight:1.05,letterSpacing:'-0.04em',marginBottom:24}}>
+            Your neighbourhood<br/>
+            <span style={{color:'#FF3008'}}>delivered to your door</span>
+          </h1>
 
-              {/* Location status & radius */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                {locStatus === 'denied' && (
-                  <button onClick={detectLocation} style={{
-                    background: '#FF3008', border: 'none', borderRadius: 12,
-                    padding: '10px 20px', fontSize: 14, fontWeight: 700, color: 'white', cursor: 'pointer', fontFamily: 'inherit'
-                  }}>📍 Allow location to see nearby shops</button>
-                )}
-                {locStatus === 'detecting' && (
-                  <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span className="shimmer" style={{ width: 8, height: 8, borderRadius: '50%', display: 'inline-block' }} /> Detecting your location…
-                  </div>
-                )}
-                {locStatus === 'granted' && areaName && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 10, padding: '8px 14px' }}>
-                    <span style={{ color: '#22C55E', fontSize: 13 }}>📍</span>
-                    <span style={{ color: '#22C55E', fontWeight: 700, fontSize: 13 }}>{areaName}</span>
-                    <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: 12 }}>·</span>
-                    <span style={{ color: 'rgba(255,255,255,0.45)', fontSize: 12 }}>within {radius}km</span>
-                  </div>
-                )}
+          <p className="fade-up-2" style={{fontSize:'clamp(15px,2.5vw,18px)',color:'rgba(255,255,255,.5)',lineHeight:1.8,maxWidth:540,margin:'0 auto 36px'}}>
+            Food, grocery, pharmacy, salon — real shops from your street. Real riders. Real-time tracking. Under 30 minutes.
+          </p>
 
-                {/* Radius chips */}
-                {locStatus === 'granted' && (
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    {[2, 5, 10, 20].map(r => (
-                      <button key={r} onClick={() => setRadius(r)}
-                        className="pill-btn"
-                        style={{
-                          padding: '5px 10px', borderRadius: 999, fontSize: 11, fontWeight: 700,
-                          background: radius === r ? '#FF3008' : 'rgba(255,255,255,0.1)',
-                          color: radius === r ? 'white' : 'rgba(255,255,255,0.5)',
-                          border: radius === r ? 'none' : '1px solid rgba(255,255,255,0.15)',
-                        }}>{r}km</button>
-                    ))}
-                  </div>
-                )}
+          <div className="fade-up-3" style={{display:'flex',alignItems:'center',justifyContent:'center',gap:12,flexWrap:'wrap'}}>
+            {user ? (
+              <Link href={dashHref} className="cta-p" style={{fontSize:16,padding:'15px 32px'}}>Go to my dashboard →</Link>
+            ) : (
+              <>
+                <Link href="/auth/signup" className="cta-p" style={{fontSize:16,padding:'15px 32px'}}>Order from nearby shops</Link>
+                <Link href="/auth/signup?role=business" className="cta-g" style={{fontSize:16,padding:'15px 32px'}}>List your shop</Link>
+              </>
+            )}
+          </div>
+
+          <div className="fade-up-4" style={{marginTop:44,display:'flex',alignItems:'center',justifyContent:'center',gap:24,flexWrap:'wrap'}}>
+            {['500+ local shops','Under 30 min delivery','UPI & Cash on delivery','Real riders near you'].map(t=>(
+              <div key={t} style={{display:'flex',alignItems:'center',gap:7,fontSize:13,color:'rgba(255,255,255,.35)',fontWeight:600}}>
+                <span style={{color:'#FF3008',fontSize:14}}>✓</span> {t}
               </div>
-            </div>
+            ))}
+          </div>
+        </div>
+      </section>
 
-            {/* Stats card */}
-            <div style={{ display: 'grid', gap: 8 }}>
+      {/* STATS BAR */}
+      <div style={{borderTop:'1px solid rgba(255,255,255,.06)',borderBottom:'1px solid rgba(255,255,255,.06)',background:'rgba(255,255,255,.02)'}}>
+        <div className="stats-g" style={{maxWidth:960,margin:'0 auto',display:'grid',gridTemplateColumns:'repeat(4,1fr)'}}>
+          {[{val:'500+',label:'Local shops listed'},{val:'< 30',label:'Minutes avg delivery'},{val:'4.8★',label:'Avg shop rating'},{val:'₹0',label:'Signup fee for shops'}].map(s=>(
+            <div key={s.label} style={{textAlign:'center',padding:'24px 16px',borderRight:'1px solid rgba(255,255,255,.06)'}}>
+              <div style={{fontWeight:900,fontSize:'clamp(1.6rem,3vw,2.2rem)',color:'#FF3008',letterSpacing:'-0.03em'}}>{s.val}</div>
+              <div style={{fontSize:12,color:'rgba(255,255,255,.4)',fontWeight:600,marginTop:4}}>{s.label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* THE PROBLEM */}
+      <section style={{padding:'clamp(64px,8vw,100px) 20px'}}>
+        <div style={{maxWidth:1000,margin:'0 auto'}}>
+          <div className="g2" style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:56,alignItems:'center'}}>
+            <div>
+              <p style={{fontSize:12,fontWeight:700,color:'#FF3008',letterSpacing:'.1em',textTransform:'uppercase',marginBottom:16}}>The Problem</p>
+              <h2 style={{fontWeight:900,fontSize:'clamp(1.8rem,3vw,2.6rem)',lineHeight:1.15,letterSpacing:'-0.03em',marginBottom:20}}>
+                Big apps ignore<br/>your street.<br/><span style={{color:'#FF3008'}}>We don't.</span>
+              </h2>
+              <p style={{color:'rgba(255,255,255,.45)',lineHeight:1.8,fontSize:15}}>
+                National delivery apps use dark kitchens 15km away. Your local kirana, pharmacy, corner bakery — invisible to them. Welokl makes every shop in your locality discoverable and deliverable.
+              </p>
+            </div>
+            <div style={{display:'flex',flexDirection:'column',gap:12}}>
               {[
-                { icon: '🏪', val: loaded ? displayShops.length : '…', label: locStatus === 'granted' ? `shops within ${radius}km` : 'shops nearby' },
-                { icon: '🟢', val: loaded ? openShops.length : '…', label: 'open right now' },
-                { icon: '⚡', val: '< 30', label: 'min avg delivery' },
-              ].map(s => (
-                <div key={s.label} style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 14, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <span style={{ fontSize: 22 }}>{s.icon}</span>
-                  <div>
-                    <div style={{ fontWeight: 900, fontSize: 22, color: 'white', lineHeight: 1 }}>{s.val}</div>
-                    <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', fontWeight: 500, marginTop: 2 }}>{s.label}</div>
-                  </div>
+                {bad:'Dark kitchens 15km away',good:'Your street-corner shop'},
+                {bad:'No local pharmacy delivery',good:'Medicine in 20 minutes'},
+                {bad:'Shops losing to big apps',good:'Shops keep 85% revenue'},
+                {bad:'Riders earn ₹5 per drop',good:'Riders earn ₹20+ per drop'},
+              ].map((row,i)=>(
+                <div key={i} style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+                  <div style={{background:'rgba(239,68,68,.07)',border:'1px solid rgba(239,68,68,.15)',borderRadius:12,padding:'11px 14px',fontSize:13,color:'rgba(255,255,255,.4)',fontWeight:600}}>❌ {row.bad}</div>
+                  <div style={{background:'rgba(34,197,94,.08)',border:'1px solid rgba(34,197,94,.2)',borderRadius:12,padding:'11px 14px',fontSize:13,color:'rgba(34,197,94,.9)',fontWeight:700}}>✅ {row.good}</div>
                 </div>
               ))}
             </div>
@@ -442,311 +185,144 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ── MOBILE SEARCH BAR — only visible on mobile ── */}
-      <div style={{ background: 'var(--card-bg)', borderBottom: '1px solid var(--border)', padding: '10px 16px' }}
-        className="mobile-search-bar">
-        <div style={{ position: 'relative', maxWidth: 600, margin: '0 auto' }}>
-          <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 15, color: 'var(--text-3)', pointerEvents: 'none' }}>🔍</span>
-          <input
-            ref={searchRef}
-            value={searchVal}
-            onChange={e => setSearchVal(e.target.value)}
-            onKeyDown={e => e.key === 'Escape' && setSearchVal('')}
-            placeholder="Search shops, dishes…"
-            style={{
-              width: '100%', padding: '10px 36px 10px 38px',
-              background: 'var(--input-bg)', border: '2px solid transparent',
-              borderRadius: 12, fontSize: 14, fontWeight: 500, color: 'var(--text)',
-              outline: 'none', transition: 'border-color 0.15s', boxSizing: 'border-box',
-            }}
-            onFocus={e => e.target.style.borderColor = '#FF3008'}
-            onBlur={e => e.target.style.borderColor = 'transparent'}
-          />
-          {searchVal && (
-            <button onClick={() => setSearchVal('')} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', fontSize: 14, color: 'var(--text-3)', cursor: 'pointer' }}>✕</button>
-          )}
-        </div>
-      </div>
-
-      {/* ── CATEGORY PILLS ── */}
-      <div style={{ borderBottom: '1px solid var(--border)', background: 'var(--card-bg)', position: 'sticky', top: 56, zIndex: 40 }}>
-        <div style={{ maxWidth: 1120, margin: '0 auto', padding: '12px 16px' }}>
-          <div className="no-scrollbar" style={{ display: 'flex', gap: 8, overflowX: 'auto' }}>
-            <button
-              onClick={() => setActiveCategory(null)}
-              className="pill-btn"
-              style={{
-                flexShrink: 0, padding: '8px 18px', borderRadius: 999, fontSize: 13, fontWeight: 700,
-                background: !activeCategory ? 'var(--brand)' : 'var(--bg-3)',
-                color: !activeCategory ? 'white' : 'var(--text-2)',
-                border: 'none',
-              }}
-            >All</button>
-            {CATEGORIES.map(cat => (
-              <button key={cat.name}
-                onClick={() => setActiveCategory(activeCategory === cat.q ? null : cat.q)}
-                className="pill-btn"
-                style={{
-                  flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6,
-                  padding: '8px 16px', borderRadius: 999, fontSize: 13, fontWeight: 700,
-                  background: activeCategory === cat.q ? '#FF3008' : '#F5F5F5',
-                  color: activeCategory === cat.q ? 'white' : 'var(--text-2)',
-                  border: 'none', whiteSpace: 'nowrap',
-                }}>
-                <span>{cat.icon}</span>{cat.name}
-              </button>
+      {/* HOW IT WORKS */}
+      <section id="how" style={{padding:'clamp(56px,8vw,96px) 20px',background:'rgba(255,255,255,.015)',borderTop:'1px solid rgba(255,255,255,.05)'}}>
+        <div style={{maxWidth:900,margin:'0 auto'}}>
+          <div style={{textAlign:'center',marginBottom:52}}>
+            <p style={{fontSize:12,fontWeight:700,color:'#FF3008',letterSpacing:'.1em',textTransform:'uppercase',marginBottom:14}}>How it works</p>
+            <h2 style={{fontWeight:900,fontSize:'clamp(1.8rem,3vw,2.4rem)',letterSpacing:'-0.03em'}}>Order in under 60 seconds</h2>
+          </div>
+          <div className="g3" style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:20}}>
+            {[
+              {n:'1',icon:'📍',title:'Share your location',desc:'We find every open shop within your neighbourhood — 2 to 20 km from you.'},
+              {n:'2',icon:'🛒',title:'Browse & add to cart',desc:'Groceries, food, medicine, salons. Filter by open now, category, or distance.'},
+              {n:'3',icon:'🛵',title:'Delivered in 30 min',desc:'A local rider picks up from the shop and delivers to your door. Track live.'},
+            ].map(s=>(
+              <div key={s.n} className="fcard">
+                <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:16}}>
+                  <div style={{width:36,height:36,borderRadius:10,background:'#FF3008',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:900,fontSize:16,color:'white',flexShrink:0}}>{s.n}</div>
+                  <span style={{fontSize:28}}>{s.icon}</span>
+                </div>
+                <h3 style={{fontWeight:800,fontSize:17,marginBottom:10,letterSpacing:'-0.01em'}}>{s.title}</h3>
+                <p style={{fontSize:14,color:'rgba(255,255,255,.45)',lineHeight:1.7}}>{s.desc}</p>
+              </div>
             ))}
           </div>
+          <div style={{textAlign:'center',marginTop:36}}>
+            <Link href={user ? dashHref : '/auth/signup'} className="cta-p">
+              {user ? 'Go to my dashboard →' : 'Start ordering free →'}
+            </Link>
+          </div>
         </div>
-      </div>
+      </section>
 
-      {/* ── MAIN CONTENT ── */}
-      <div style={{ maxWidth: 1120, margin: '0 auto', padding: '28px 16px 80px' }}>
-
-        {/* Location required state */}
-        {locStatus === 'denied' && (
-          <div style={{ textAlign: 'center', padding: '60px 20px', background: 'var(--card-bg)', borderRadius: 20, border: '1px solid var(--border)', marginBottom: 24 }}>
-            <div style={{ fontSize: 56, marginBottom: 16 }}>📍</div>
-            <h2 style={{ fontWeight: 900, fontSize: 22, color: 'var(--text)', marginBottom: 8 }}>Share your location</h2>
-            <p style={{ color: 'var(--text-3)', fontSize: 15, marginBottom: 24, maxWidth: 360, margin: '0 auto 24px' }}>
-              We only show shops near you. Enable location to see what's available right now.
-            </p>
-            <button onClick={detectLocation} style={{
-              background: '#FF3008', border: 'none', borderRadius: 12,
-              padding: '12px 28px', fontSize: 15, fontWeight: 700, color: 'white', cursor: 'pointer', fontFamily: 'inherit',
-            }}>Enable location</button>
+      {/* FOR EVERYONE */}
+      <section id="for" style={{padding:'clamp(56px,8vw,96px) 20px',borderTop:'1px solid rgba(255,255,255,.05)'}}>
+        <div style={{maxWidth:1060,margin:'0 auto'}}>
+          <div style={{textAlign:'center',marginBottom:52}}>
+            <p style={{fontSize:12,fontWeight:700,color:'#FF3008',letterSpacing:'.1em',textTransform:'uppercase',marginBottom:14}}>Who it's for</p>
+            <h2 style={{fontWeight:900,fontSize:'clamp(1.8rem,3vw,2.4rem)',letterSpacing:'-0.03em'}}>Built for the whole neighbourhood</h2>
           </div>
-        )}
-
-        {/* Section header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-          <div>
-            <h2 style={{ fontWeight: 900, fontSize: 22, color: 'var(--text)', letterSpacing: '-0.02em' }}>
-              {activeCategory
-                ? `${CATEGORIES.find(c => c.q === activeCategory)?.name} near you`
-                : searchVal
-                  ? `Results for "${searchVal}"`
-                  : locStatus === 'granted' ? `Shops within ${radius}km` : 'Shops near you'}
-            </h2>
-            <p style={{ fontSize: 13, color: 'var(--text-3)', marginTop: 3 }}>
-              {loaded
-                ? `${openShops.length} open · ${closedShops.length} closed`
-                : 'Loading…'}
-              {locStatus === 'detecting' && ' · Detecting location…'}
-            </p>
-          </div>
-          <Link href="/stores" style={{ textDecoration: 'none', fontSize: 13, fontWeight: 700, color: 'var(--brand)' }}>See all →</Link>
-        </div>
-
-        {/* Shop grid */}
-        {!loaded ? (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(240px, 100%), 1fr))', gap: 16 }}>
-            {Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} style={{ height: 240 }} className="shimmer" />
-            ))}
-          </div>
-        ) : displayShops.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '64px 20px', background: 'var(--card-bg)', borderRadius: 20, border: '1px solid var(--border)' }}>
-            <div style={{ fontSize: 56, marginBottom: 16 }}>🏪</div>
-            <h3 style={{ fontWeight: 900, fontSize: 20, color: 'var(--text)', marginBottom: 8 }}>No shops found nearby</h3>
-            <p style={{ color: 'var(--text-3)', fontSize: 14, marginBottom: 20 }}>
-              {locStatus === 'granted' ? `No shops within ${radius}km. Try increasing your radius.` : 'Set your location to see nearby shops.'}
-            </p>
-            {locStatus === 'granted' && (
-              <button onClick={() => setRadius(50)} style={{
-                background: '#FF3008', border: 'none', borderRadius: 12,
-                padding: '10px 24px', fontSize: 14, fontWeight: 700, color: 'white', cursor: 'pointer', fontFamily: 'inherit',
-              }}>Expand to 50km</button>
-            )}
-          </div>
-        ) : (
-          <>
-            {/* Open shops */}
-            {openShops.length > 0 && (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12, marginBottom: 24 }}>
-                {openShops.map((shop, i) => (
-                  <ShopCard key={shop.id} shop={shop} index={i} />
+          <div className="g3" style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:20}}>
+            <div className="for-card" style={{background:'rgba(255,48,8,.08)',border:'1px solid rgba(255,48,8,.2)'}}>
+              <div style={{fontSize:44,marginBottom:18}}>🛍️</div>
+              <h3 style={{fontWeight:900,fontSize:20,marginBottom:10}}>Customers</h3>
+              <p style={{fontSize:14,color:'rgba(255,255,255,.5)',lineHeight:1.7,marginBottom:20}}>Order from every kind of local shop — food, groceries, medicine — and get it fast or pick it up yourself.</p>
+              <ul style={{listStyle:'none',display:'flex',flexDirection:'column',gap:8,marginBottom:24}}>
+                {['Shop from your neighbourhood','Live delivery tracking','Pickup or delivery option','UPI & Cash accepted'].map(f=>(
+                  <li key={f} style={{fontSize:13,color:'rgba(255,255,255,.6)',display:'flex',alignItems:'center',gap:8}}><span style={{color:'#FF3008',fontWeight:900}}>→</span>{f}</li>
                 ))}
-              </div>
-            )}
-
-            {/* Closed shops */}
-            {closedShops.length > 0 && (
-              <>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-                  <span style={{ fontWeight: 800, fontSize: 16, color: 'var(--text-3)' }}>Closed now</span>
-                  <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12, marginBottom: 32 }}>
-                  {closedShops.map((shop, i) => (
-                    <ShopCard key={shop.id} shop={shop} index={i} closed />
-                  ))}
-                </div>
-              </>
-            )}
-          </>
-        )}
-
-        {/* Trending products */}
-        {products.length > 0 && (
-          <div style={{ marginTop: 16, borderTop: '1px solid var(--border)', paddingTop: 40 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-              <div>
-                <h2 style={{ fontWeight: 900, fontSize: 22, color: 'var(--text)', letterSpacing: '-0.02em' }}>🔥 Trending products</h2>
-                <p style={{ fontSize: 13, color: 'var(--text-3)', marginTop: 3 }}>Ordered the most today</p>
-              </div>
+              </ul>
+              <Link href={user&&role==='customer'?dashHref:'/auth/signup'} style={{display:'block',textAlign:'center',padding:'11px 0',borderRadius:12,background:'#FF3008',color:'white',fontWeight:800,fontSize:14,textDecoration:'none'}}>
+                {user&&role==='customer'?'Go to my orders →':'Order now free →'}
+              </Link>
             </div>
-            <div className="no-scrollbar" style={{ display: 'flex', gap: 14, overflowX: 'auto', paddingBottom: 4 }}>
-              {products.map(p => <ProductCard key={p.id} product={p} />)}
+
+            <div className="for-card" style={{background:'rgba(255,255,255,.04)',border:'1px solid rgba(255,255,255,.1)'}}>
+              <div style={{fontSize:44,marginBottom:18}}>🏪</div>
+              <h3 style={{fontWeight:900,fontSize:20,marginBottom:10}}>Shop Owners</h3>
+              <p style={{fontSize:14,color:'rgba(255,255,255,.5)',lineHeight:1.7,marginBottom:20}}>List free. We bring customers to you. You keep 85% of every order — the lowest commission in India.</p>
+              <ul style={{listStyle:'none',display:'flex',flexDirection:'column',gap:8,marginBottom:24}}>
+                {['Free listing — zero setup cost','15% only on completed sales','Dashboard to manage orders','Accept pickup & delivery'].map(f=>(
+                  <li key={f} style={{fontSize:13,color:'rgba(255,255,255,.6)',display:'flex',alignItems:'center',gap:8}}><span style={{color:'rgba(255,255,255,.3)',fontWeight:900}}>→</span>{f}</li>
+                ))}
+              </ul>
+              <Link href={user&&(role==='shopkeeper'||role==='business')?dashHref:'/auth/signup?role=business'} style={{display:'block',textAlign:'center',padding:'11px 0',borderRadius:12,background:'rgba(255,255,255,.1)',border:'1px solid rgba(255,255,255,.15)',color:'white',fontWeight:800,fontSize:14,textDecoration:'none'}}>
+                {user&&(role==='shopkeeper'||role==='business')?'Go to my shop →':'Register your shop →'}
+              </Link>
+            </div>
+
+            <div className="for-card" style={{background:'rgba(34,197,94,.06)',border:'1px solid rgba(34,197,94,.15)'}}>
+              <div style={{fontSize:44,marginBottom:18}}>🛵</div>
+              <h3 style={{fontWeight:900,fontSize:20,marginBottom:10}}>Delivery Riders</h3>
+              <p style={{fontSize:14,color:'rgba(255,255,255,.5)',lineHeight:1.7,marginBottom:20}}>Earn ₹20+ per delivery in your own neighbourhood. Work whenever you want. Paid instantly.</p>
+              <ul style={{listStyle:'none',display:'flex',flexDirection:'column',gap:8,marginBottom:24}}>
+                {['₹20+ per delivery','Instant wallet credit','Work your own hours','Short local distances only'].map(f=>(
+                  <li key={f} style={{fontSize:13,color:'rgba(255,255,255,.6)',display:'flex',alignItems:'center',gap:8}}><span style={{color:'#22C55E',fontWeight:900}}>→</span>{f}</li>
+                ))}
+              </ul>
+              <Link href={user&&role==='delivery'?dashHref:'/auth/signup?role=delivery'} style={{display:'block',textAlign:'center',padding:'11px 0',borderRadius:12,background:'rgba(34,197,94,.15)',border:'1px solid rgba(34,197,94,.3)',color:'#22C55E',fontWeight:800,fontSize:14,textDecoration:'none'}}>
+                {user&&role==='delivery'?'Go to my deliveries →':'Start earning →'}
+              </Link>
             </div>
           </div>
-        )}
-
-        {/* Partner CTA */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16, marginTop: 56, borderTop: '1px solid var(--border)', paddingTop: 40 }}>
-          <Link href="/auth/signup?role=business" style={{ textDecoration: 'none' }}>
-            <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 20, padding: 28, cursor: 'pointer', transition: 'box-shadow 0.15s' }}
-              onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 8px 32px rgba(0,0,0,0.1)')}
-              onMouseLeave={e => (e.currentTarget.style.boxShadow = 'none')}>
-              <div style={{ fontSize: 40, marginBottom: 14 }}>🏪</div>
-              <h3 style={{ fontWeight: 900, fontSize: 18, color: 'var(--text)', marginBottom: 6 }}>Own a shop?</h3>
-              <p style={{ fontSize: 14, color: 'var(--text-3)', lineHeight: 1.6, marginBottom: 16 }}>List free. 15% only on sales. We bring customers to you.</p>
-              <span style={{ fontSize: 14, fontWeight: 700, color: '#FF3008' }}>Register your shop →</span>
-            </div>
-          </Link>
-          <Link href="/auth/signup?role=delivery" style={{ textDecoration: 'none' }}>
-            <div style={{ background: '#1A1A1A', borderRadius: 20, padding: 28, cursor: 'pointer', transition: 'box-shadow 0.15s' }}
-              onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 8px 32px rgba(255,48,8,0.25)')}
-              onMouseLeave={e => (e.currentTarget.style.boxShadow = 'none')}>
-              <div style={{ fontSize: 40, marginBottom: 14 }}>🛵</div>
-              <h3 style={{ fontWeight: 900, fontSize: 18, color: 'white', marginBottom: 6 }}>Earn with Welokl</h3>
-              <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.5)', lineHeight: 1.6, marginBottom: 16 }}>₹20 per delivery, instant wallet credit. Work when you want.</p>
-              <span style={{ fontSize: 14, fontWeight: 700, color: '#FF3008' }}>Become a rider →</span>
-            </div>
-          </Link>
         </div>
-      </div>
+      </section>
 
-      {/* ── FOOTER ── */}
-      <footer style={{ borderTop: '1px solid var(--border)', background: 'var(--card-bg)', padding: '28px 16px' }}>
-        <div style={{ maxWidth: 1120, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{ width: 28, height: 28, borderRadius: 8, background: '#FF3008', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 900, fontSize: 13 }}>W</div>
-            <span style={{ fontWeight: 800, fontSize: 16, color: 'var(--text)', letterSpacing: '-0.02em' }}>welokl</span>
+      {/* MISSION */}
+      <section id="mission" style={{padding:'clamp(56px,8vw,96px) 20px',borderTop:'1px solid rgba(255,255,255,.05)',background:'rgba(255,255,255,.01)'}}>
+        <div style={{maxWidth:720,margin:'0 auto',textAlign:'center'}}>
+          <p style={{fontSize:12,fontWeight:700,color:'#FF3008',letterSpacing:'.1em',textTransform:'uppercase',marginBottom:20}}>Our Mission</p>
+          <blockquote style={{fontWeight:900,fontSize:'clamp(1.5rem,3.5vw,2.2rem)',lineHeight:1.3,letterSpacing:'-0.03em',marginBottom:24,fontStyle:'normal'}}>
+            "Make local commerce thrive in the age of apps — so the shop at the end of your street stays open."
+          </blockquote>
+          <p style={{fontSize:15,color:'rgba(255,255,255,.4)',lineHeight:1.8,maxWidth:560,margin:'0 auto 36px'}}>
+            Every order on Welokl keeps a local shopkeeper in business, puts fair wages in a rider's pocket, and gets fresh goods to a neighbour's door. Hyperlocal, honest, built to last.
+          </p>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:14,flexWrap:'wrap'}}>
+            {[{icon:'🌱',title:'Community first',sub:'No dark kitchens'},{icon:'⚡',title:'Under 30 minutes',sub:'Always'},{icon:'🤝',title:'Fair for all',sub:'Shops 85%, riders ₹20+'}].map(v=>(
+              <div key={v.title} style={{display:'flex',alignItems:'center',gap:10,background:'rgba(255,255,255,.04)',border:'1px solid rgba(255,255,255,.08)',borderRadius:14,padding:'14px 18px'}}>
+                <span style={{fontSize:22}}>{v.icon}</span>
+                <div style={{textAlign:'left'}}>
+                  <div style={{fontWeight:800,fontSize:13,color:'#fff'}}>{v.title}</div>
+                  <div style={{fontSize:11,color:'rgba(255,255,255,.35)'}}>{v.sub}</div>
+                </div>
+              </div>
+            ))}
           </div>
-          <p style={{ fontSize: 12, color: 'var(--text-3)' }}>Your neighbourhood, on your phone · © {new Date().getFullYear()} Welokl</p>
-          <div style={{ display: 'flex', gap: 20, fontSize: 12, color: 'var(--text-3)' }}>
-            <a href="#" style={{ textDecoration: 'none', color: 'inherit' }}>Privacy</a>
-            <a href="#" style={{ textDecoration: 'none', color: 'inherit' }}>Terms</a>
+        </div>
+      </section>
+
+      {/* BOTTOM CTA — only for guests */}
+      {!user && (
+        <section style={{padding:'clamp(56px,8vw,96px) 20px',borderTop:'1px solid rgba(255,255,255,.05)'}}>
+          <div style={{maxWidth:600,margin:'0 auto',textAlign:'center'}}>
+            <h2 style={{fontWeight:900,fontSize:'clamp(1.8rem,4vw,2.8rem)',letterSpacing:'-0.03em',marginBottom:16}}>
+              Order from your<br/><span style={{color:'#FF3008'}}>neighbourhood today</span>
+            </h2>
+            <p style={{fontSize:15,color:'rgba(255,255,255,.4)',marginBottom:32}}>Free to join. No minimum order. Shops open right now.</p>
+            <div style={{display:'flex',gap:12,justifyContent:'center',flexWrap:'wrap'}}>
+              <Link href="/auth/signup" className="cta-p" style={{fontSize:16,padding:'15px 36px'}}>Create free account</Link>
+              <Link href="/auth/login" className="cta-g" style={{fontSize:16,padding:'15px 36px'}}>Sign in</Link>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* FOOTER */}
+      <footer style={{borderTop:'1px solid rgba(255,255,255,.06)',padding:'28px 20px'}}>
+        <div style={{maxWidth:1100,margin:'0 auto',display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:16}}>
+          <div style={{display:'flex',alignItems:'center',gap:8}}>
+            <div style={{width:28,height:28,borderRadius:8,background:'#FF3008',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:900,fontSize:13,color:'#fff'}}>W</div>
+            <span style={{fontWeight:800,fontSize:16,letterSpacing:'-0.02em'}}>welokl</span>
+          </div>
+          <p style={{fontSize:12,color:'rgba(255,255,255,.25)'}}>Your neighbourhood, on your phone · © {new Date().getFullYear()} Welokl</p>
+          <div style={{display:'flex',gap:24,fontSize:12}}>
+            <a href="#" style={{textDecoration:'none',color:'rgba(255,255,255,.3)'}}>Privacy</a>
+            <a href="#" style={{textDecoration:'none',color:'rgba(255,255,255,.3)'}}>Terms</a>
           </div>
         </div>
       </footer>
     </div>
-  )
-}
-
-// ── SHOP CARD ──
-function ShopCard({ shop, index, closed }: { shop: Shop & { km: number | null }; index: number; closed?: boolean }) {
-  const catKey = Object.keys(CAT_ICON).find(k => shop.category_name?.toLowerCase().includes(k)) || 'default'
-  const accentColor = CAT_COLOR[catKey] || CAT_COLOR.default
-  const catBg: Record<string, string> = {
-    food: 'rgba(255,48,8,0.06)', grocery: 'rgba(0,168,120,0.07)', pharmacy: 'rgba(0,102,255,0.07)',
-    electronics: 'rgba(123,47,255,0.07)', salon: 'rgba(255,45,120,0.07)', hardware: 'rgba(120,113,108,0.07)',
-    pet: 'rgba(251,146,60,0.07)', default: 'rgba(255,90,31,0.06)'
-  }
-  const bg = catBg[catKey] || catBg.default
-
-  return (
-    <Link href={`/stores/${shop.id}`} style={{ textDecoration: 'none' }}>
-      <div
-        className="shop-card fade-in"
-        style={{
-          background: 'var(--card-bg)', borderRadius: 16, overflow: 'hidden',
-          border: '1px solid var(--border)', opacity: closed ? 0.65 : 1,
-          animationDelay: `${index * 30}ms`, animationFillMode: 'both',
-        }}
-      >
-        {/* Image / placeholder */}
-        <div style={{ height: 140, position: 'relative', overflow: 'hidden', background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          {shop.image_url ? (
-            <img src={shop.image_url} alt={shop.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-          ) : (
-            <span style={{ fontSize: 52, opacity: 0.35 }}>{CAT_ICON[catKey]}</span>
-          )}
-          {shop.image_url && (
-            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.45) 0%, transparent 55%)' }} />
-          )}
-
-          {/* Open/closed badge */}
-          <div style={{ position: 'absolute', top: 10, left: 10 }}>
-            {shop.is_open ? (
-              <span style={{ background: 'rgba(22,197,94,0.95)', color: 'white', fontWeight: 700, fontSize: 11, padding: '3px 8px', borderRadius: 999, backdropFilter: 'blur(4px)' }}>● Open</span>
-            ) : (
-              <span style={{ background: 'rgba(0,0,0,0.55)', color: 'rgba(255,255,255,0.7)', fontWeight: 600, fontSize: 11, padding: '3px 8px', borderRadius: 999, backdropFilter: 'blur(4px)' }}>Closed</span>
-            )}
-          </div>
-
-          {/* Rating */}
-          <div style={{ position: 'absolute', top: 10, right: 10, background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)', borderRadius: 8, padding: '3px 8px', fontSize: 12, fontWeight: 800, color: '#FFB800', display: 'flex', alignItems: 'center', gap: 3 }}>
-            ★ {shop.rating?.toFixed(1)}
-          </div>
-
-          {/* Distance */}
-          {shop.km !== null && (
-            <div style={{ position: 'absolute', bottom: 10, right: 10, background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)', borderRadius: 8, padding: '3px 8px', fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.9)' }}>
-              📍 {shop.km < 1 ? `${Math.round(shop.km * 1000)}m` : `${shop.km.toFixed(1)}km`}
-            </div>
-          )}
-        </div>
-
-        {/* Info */}
-        <div style={{ padding: '14px 14px 12px' }}>
-          <p style={{ fontWeight: 800, fontSize: 15, color: 'var(--text)', marginBottom: 4, letterSpacing: '-0.01em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{shop.name}</p>
-          <p style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 10, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {shop.description || `${shop.category_name?.split(' ')[0]} · ${shop.area}`}
-          </p>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 10, borderTop: '1px solid var(--border)' }}>
-            <span style={{ fontSize: 12, color: 'var(--text-3)', fontWeight: 600 }}>
-              {shop.delivery_enabled ? `🛵 ${shop.avg_delivery_time} min` : '🏃 Pickup only'}
-            </span>
-            <span style={{ fontSize: 12, color: 'var(--text-3)', fontWeight: 500 }}>
-              {shop.min_order_amount > 0 ? `₹${shop.min_order_amount}+ min` : 'No minimum'}
-            </span>
-          </div>
-        </div>
-      </div>
-    </Link>
-  )
-}
-
-// ── PRODUCT CARD ──
-function ProductCard({ product }: { product: Product }) {
-  const disc = product.original_price && product.original_price > product.price
-    ? Math.round(((product.original_price - product.price) / product.original_price) * 100)
-    : null
-
-  return (
-    <Link href={`/stores/${product.shop_id}`} style={{ textDecoration: 'none' }}>
-      <div className="shop-card" style={{ flexShrink: 0, width: 160, background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden' }}>
-        <div style={{ height: 110, background: 'var(--bg-3)', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          {product.image_url ? (
-            <img src={product.image_url} alt={product.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-          ) : (
-            <span style={{ fontSize: 36, opacity: 0.25 }}>🍽️</span>
-          )}
-          {disc && (
-            <div style={{ position: 'absolute', top: 8, left: 8, background: '#22C55E', color: 'white', fontSize: 11, fontWeight: 800, padding: '2px 7px', borderRadius: 999 }}>-{disc}%</div>
-          )}
-        </div>
-        <div style={{ padding: '10px 12px 12px' }}>
-          <p style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{product.name}</p>
-          {product.shop_name && <p style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{product.shop_name}</p>}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
-            <span style={{ fontWeight: 800, fontSize: 15, color: '#FF3008' }}>₹{product.price}</span>
-            {product.original_price && <span style={{ fontSize: 12, color: 'var(--text-4)', textDecoration: 'line-through' }}>₹{product.original_price}</span>}
-          </div>
-        </div>
-      </div>
-    </Link>
   )
 }
