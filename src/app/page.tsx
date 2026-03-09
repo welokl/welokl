@@ -42,36 +42,7 @@ export default function LandingPage() {
 
   return (
     <div style={{ minHeight: '100vh', background: '#0a0a0a', fontFamily: "'Plus Jakarta Sans', sans-serif", color: '#fff' }}>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap');
-        *{box-sizing:border-box;margin:0;padding:0;}
-        html{scroll-behavior:smooth;}
-        @keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
-        @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
-        .fade-up{animation:fadeUp .6s ease both}
-        .fade-up-1{animation:fadeUp .6s .1s ease both}
-        .fade-up-2{animation:fadeUp .6s .22s ease both}
-        .fade-up-3{animation:fadeUp .6s .36s ease both}
-        .fade-up-4{animation:fadeUp .6s .5s ease both}
-        .nav-a{color:rgba(255,255,255,.5);font-size:14px;font-weight:600;text-decoration:none;transition:color .15s}
-        .nav-a:hover{color:#fff}
-        .fcard{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:20px;padding:28px;transition:all .2s}
-        .fcard:hover{background:rgba(255,255,255,.07);border-color:rgba(255,255,255,.15);transform:translateY(-2px)}
-        .for-card{border-radius:24px;padding:32px;transition:transform .25s}
-        .for-card:hover{transform:translateY(-4px)}
-        .cta-p{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:14px 28px;border-radius:14px;font-weight:800;font-size:15px;text-decoration:none;transition:all .18s;border:none;cursor:pointer;font-family:inherit;background:#FF3008;color:white;box-shadow:0 6px 24px rgba(255,48,8,.35)}
-        .cta-p:hover{background:#e62800;transform:translateY(-1px);box-shadow:0 10px 32px rgba(255,48,8,.45)}
-        .cta-g{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:14px 28px;border-radius:14px;font-weight:800;font-size:15px;text-decoration:none;transition:all .18s;background:rgba(255,255,255,.08);color:white;border:1px solid rgba(255,255,255,.15)}
-        .cta-g:hover{background:rgba(255,255,255,.13);transform:translateY(-1px)}
-        @media(max-width:680px){
-          .hide-m{display:none!important}
-          .g2{grid-template-columns:1fr!important}
-          .g3{grid-template-columns:1fr!important}
-          .stats-g{grid-template-columns:1fr 1fr!important}
-          .hero-h{font-size:2.4rem!important}
-          .fl-r{flex-direction:column!important;align-items:flex-start!important}
-        }
-      `}</style>
+      
 
       {/* NAV */}
       <nav style={{position:'sticky',top:0,zIndex:100,borderBottom:'1px solid rgba(255,255,255,.06)',background:'rgba(10,10,10,.92)',backdropFilter:'blur(16px)'}}>

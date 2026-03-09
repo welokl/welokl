@@ -22,7 +22,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
+        <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
         <link rel="manifest" href="/manifest.json" />
         <link rel="apple-touch-icon" href="/icons/icon-192.png" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -30,23 +30,26 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta name="apple-mobile-web-app-title" content="Welokl" />
 
         {/*
-          ┌─────────────────────────────────────────────────────────┐
-          │  ANTI-FLASH THEME SCRIPT                                │
-          │  Runs synchronously before any paint.                   │
-          │  Reads localStorage → applies html.dark class instantly │
-          │  so the user never sees a white flash in dark mode.     │
-          └─────────────────────────────────────────────────────────┘
+          ANTI-FLASH THEME SCRIPT
+          Runs synchronously before any paint — zero flash.
+          Default: DARK. Only switches to light if user explicitly chose it.
+          Reads localStorage('welokl_theme'): 'dark' | 'light'
+          Anything other than 'light' → dark mode.
         */}
         <script
           dangerouslySetInnerHTML={{
             __html: `
-(function() {
-  try {
+(function(){
+  try{
     var t = localStorage.getItem('welokl_theme');
-    var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    var dark = t === 'dark' || (!t && prefersDark) || (t === 'system' && prefersDark);
-    if (dark) document.documentElement.classList.add('dark');
-  } catch(e) {}
+    // Default is DARK. Only skip dark if user explicitly chose light.
+    if(t !== 'light'){
+      document.documentElement.classList.add('dark');
+    }
+  }catch(e){
+    // localStorage unavailable (e.g. private browsing) → default dark
+    document.documentElement.classList.add('dark');
+  }
 })();
             `.trim()
           }}
@@ -56,8 +59,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {children}
         <script dangerouslySetInnerHTML={{
           __html: `
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', function() {
+if('serviceWorker' in navigator){
+  window.addEventListener('load',function(){
     navigator.serviceWorker.register('/sw.js').catch(function(){});
   });
 }

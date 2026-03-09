@@ -4,8 +4,11 @@ import { createClient } from '@/lib/supabase/client'
 import type { Order, Shop, Product, User } from '@/types'
 import { ORDER_STATUS_LABELS, ORDER_STATUS_ICONS } from '@/types'
 import { useShopkeeperOrderAlerts, useVisibilityReconnect } from '@/hooks/useOrderAlerts'
+import ThemeToggle from '@/components/ThemeToggle'
+import ImageUploader from '@/components/ImageUploader'
+import { uploadShopImage, deleteProductImages, imgUrl } from '@/lib/imageService'
 
-type Tab = 'orders' | 'products' | 'analytics'
+type Tab = 'orders' | 'products' | 'analytics' | 'settings'
 
 export default function BusinessDashboard() {
   const [user, setUser] = useState<User | null>(null)
@@ -17,6 +20,9 @@ export default function BusinessDashboard() {
   const [showAddProduct, setShowAddProduct] = useState(false)
   const [verStatus, setVerStatus] = useState<'pending' | 'approved' | 'rejected' | null>(null)
   const [verNote, setVerNote] = useState<string | null>(null)
+  const [logoProgress, setLogoProgress]     = useState(0)
+  const [bannerProgress, setBannerProgress] = useState(0)
+  const [imgError, setImgError]             = useState('')
 
   const loadData = useCallback(async () => {
     const supabase = createClient()
@@ -98,8 +104,25 @@ export default function BusinessDashboard() {
   async function deleteProduct(productId: string) {
     if (!confirm('Delete this product?')) return
     const supabase = createClient()
+    // Delete from DB (triggers SQL also deletes storage, but client-side delete is instant)
+    if (user?.id) await deleteProductImages(user.id, productId)
     await supabase.from('products').delete().eq('id', productId)
     loadData()
+  }
+
+  async function handleShopImageUpload(file: File, type: 'logo' | 'banner') {
+    if (!user?.id || !shop?.id) return
+    setImgError('')
+    try {
+      const progress = type === 'logo' ? setLogoProgress : setBannerProgress
+      const { url } = await uploadShopImage(file, user.id, type, progress)
+      const field = type === 'logo' ? 'image_url' : 'banner_url'
+      await createClient().from('shops').update({ [field]: url }).eq('id', shop.id)
+      setShop(prev => prev ? { ...prev, [field]: url } : prev)
+      setTimeout(() => progress(0), 1500)
+    } catch (e: any) {
+      setImgError(e.message || 'Upload failed')
+    }
   }
 
   const newOrders = orders.filter(o => o.status === 'placed')
@@ -111,11 +134,11 @@ export default function BusinessDashboard() {
 
   if (!loading && !shop) {
     return (
-      <div className="min-h-screen bg-[#fafaf7] flex items-center justify-center p-6">
+      <div style={{minHeight:"100vh", background:"var(--bg)", display:"flex", alignItems:"center", justifyContent:"center", padding:24}}>
         <div className="card p-8 max-w-md w-full text-center">
           <div className="text-5xl mb-4">🏪</div>
           <h2 className="font-bold text-xl mb-2">Set up your shop first</h2>
-          <p className="text-gray-400 text-sm mb-6">Create your shop to start receiving orders.</p>
+          <p style={{fontSize:13, color:"var(--text-3)", marginBottom:24}}>Create your shop to start receiving orders.</p>
           <button onClick={() => window.location.href = '/shop/setup'} className="btn-primary w-full py-3">Set up my shop →</button>
         </div>
       </div>
@@ -178,22 +201,23 @@ export default function BusinessDashboard() {
   )
 
   return (
-    <div className="min-h-screen bg-[#fafaf7]">
-      <div className="bg-white border-b border-gray-100 px-4 py-4">
+    <div style={{minHeight:"100vh", background:"var(--bg)"}}>
+      <div style={{background:"var(--card-bg)", borderBottom:"1px solid var(--border)", padding:"16px"}}>
         <div className="max-w-4xl mx-auto">
           <div className="flex items-center justify-between mb-3">
             <div>
-              <p className="text-xs text-gray-400">Business Dashboard</p>
+              <p style={{fontSize:11,color:"var(--text-3)"}}>Business Dashboard</p>
               <h1 className="font-bold text-lg">{shop?.name || 'My Shop'}</h1>
-              <p className="text-xs text-gray-400">{shop?.area}, {shop?.city}</p>
+              <p style={{fontSize:11,color:"var(--text-3)"}}>{shop?.area}, {shop?.city}</p>
             </div>
             <div className="flex items-center gap-2">
               <button onClick={async () => { const s = createClient(); await s.from('shops').update({ is_open: !shop?.is_open }).eq('id', shop?.id || ''); loadData() }}
                 className={`text-xs font-bold px-3 py-1.5 rounded-full border ${shop?.is_open ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-600 border-red-200'}`}>
                 {shop?.is_open ? '● Open' : '● Closed'}
               </button>
+              <ThemeToggle />
               <button onClick={async () => { const s = createClient(); await s.auth.signOut(); window.location.href = '/' }}
-                className="text-xs text-gray-400 px-2">Logout</button>
+                style={{fontSize:12, color:"var(--text-3)", background:"none", border:"none", cursor:"pointer", fontFamily:"inherit", padding:"0 8px"}}>Logout</button>
             </div>
           </div>
           <div className="grid grid-cols-4 gap-2">
@@ -205,19 +229,19 @@ export default function BusinessDashboard() {
             ].map(s => (
               <div key={s.label} className="card p-3 text-center">
                 <div className={`font-bold text-lg ${s.color}`}>{s.value}</div>
-                <div className="text-xs text-gray-400">{s.label}</div>
+                <div style={{fontSize:11,color:"var(--text-3)"}}>{s.label}</div>
               </div>
             ))}
           </div>
         </div>
       </div>
 
-      <div className="bg-white border-b border-gray-100 px-4">
+      <div style={{background:"var(--card-bg)", borderBottom:"1px solid var(--border)", padding:"0 16px"}}>
         <div className="max-w-4xl mx-auto flex">
-          {(['orders','products','analytics'] as Tab[]).map(t => (
+          {(['orders','products','analytics','settings'] as Tab[]).map(t => (
             <button key={t} onClick={() => setTab(t)}
-              className={`px-5 py-3 text-sm font-semibold capitalize border-b-2 transition-all ${tab === t ? 'border-brand-500 text-brand-500' : 'border-transparent text-gray-500'}`}>
-              {t}{t === 'orders' && newOrders.length > 0 && <span className="ml-1.5 bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5">{newOrders.length}</span>}
+              style={{padding:'12px 20px', fontSize:13, fontWeight:700, textTransform:'capitalize', borderBottom:`2px solid ${tab===t?'#FF3008':'transparent'}`, color:tab===t?'#FF3008':'var(--text-3)', background:'none', cursor:'pointer', fontFamily:'inherit', transition:'all .15s'}}>
+              {t === 'settings' ? '⚙ Images' : t}{t === 'orders' && newOrders.length > 0 && <span className="ml-1.5 bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5">{newOrders.length}</span>}
             </button>
           ))}
         </div>
@@ -237,7 +261,7 @@ export default function BusinessDashboard() {
                         <span className="font-bold text-sm">#{order.order_number}</span>
                         <span className="font-bold">₹{order.total_amount}</span>
                       </div>
-                      <div className="text-xs text-gray-500 mb-3">
+                      <div style={{fontSize:11, color:"var(--text-3)", marginBottom:12}}>
                         <div>{(order as any).items?.map((i: any) => `${i.product_name} ×${i.quantity}`).join(', ')}</div>
                         <div className="mt-1">{order.payment_method === 'cod' ? '💵 COD' : '📲 UPI'} · {order.type === 'delivery' ? '🛵 Delivery' : '🏃 Pickup'}</div>
                         {order.delivery_address && <div>📍 {order.delivery_address}</div>}
@@ -335,7 +359,7 @@ export default function BusinessDashboard() {
               <div className="card p-12 text-center">
                 <div className="text-5xl mb-3">⏳</div>
                 <p className="font-bold">No active orders</p>
-                <p className="text-gray-400 text-sm mt-1">New orders appear here in real time</p>
+                <p style={{fontSize:13, color:"var(--text-3)", marginTop:4}}>New orders appear here in real time</p>
               </div>
             )}
           </div>
@@ -351,7 +375,7 @@ export default function BusinessDashboard() {
               <div className="card p-10 text-center">
                 <div className="text-5xl mb-3">📦</div>
                 <p className="font-bold mb-1">No products yet</p>
-                <p className="text-gray-400 text-sm mb-4">Add products so customers can order from you</p>
+                <p style={{fontSize:13, color:"var(--text-3)", marginBottom:16}}>Add products so customers can order from you</p>
                 <button onClick={() => setShowAddProduct(true)} className="btn-primary px-6">Add first product</button>
               </div>
             ) : (
@@ -362,16 +386,16 @@ export default function BusinessDashboard() {
                       <p className="font-semibold text-sm truncate">{p.name}</p>
                       <div className="flex items-center gap-2 mt-0.5">
                         <span className="text-sm font-bold text-brand-500">₹{p.price}</span>
-                        {p.original_price && p.original_price > p.price && <span className="text-xs text-gray-400 line-through">₹{p.original_price}</span>}
-                        {p.category && <span className="text-xs text-gray-400">· {p.category}</span>}
+                        {p.original_price && p.original_price > p.price && <span style={{fontSize:12, color:"var(--text-3)", textDecoration:"line-through"}}>₹{p.original_price}</span>}
+                        {p.category && <span style={{fontSize:11,color:"var(--text-3)"}}>· {p.category}</span>}
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <button onClick={() => toggleProduct(p.id, !p.is_available)}
-                        className={`relative w-10 h-5 rounded-full transition-colors ${p.is_available ? 'bg-green-500' : 'bg-gray-300'}`}>
-                        <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow-sm transition-transform ${p.is_available ? 'translate-x-5' : ''}`} />
+                        style={{position:'relative', width:40, height:20, borderRadius:999, background:p.is_available?'#22c55e':'var(--bg-4)', border:'none', cursor:'pointer', transition:'background .2s', flexShrink:0}}>
+                        <span style={{position:'absolute', top:2, left:2, width:16, height:16, borderRadius:'50%', background:'white', boxShadow:'0 1px 3px rgba(0,0,0,.2)', transition:'transform .2s', transform:p.is_available?'translateX(20px)':'none'}} />
                       </button>
-                      <button onClick={() => deleteProduct(p.id)} className="text-gray-400 hover:text-red-500 text-sm px-1">✕</button>
+                      <button onClick={() => deleteProduct(p.id)} style={{color:"var(--text-3)", background:"none", border:"none", cursor:"pointer", fontSize:16, padding:"0 4px", fontFamily:"inherit"}}>✕</button>
                     </div>
                   </div>
                 ))}
@@ -391,22 +415,73 @@ export default function BusinessDashboard() {
                 <div key={s.label} className="card p-5">
                   <div className="text-2xl mb-2">{s.icon}</div>
                   <div className="font-bold text-2xl">{s.value}</div>
-                  <div className="text-sm text-gray-400 mt-0.5">{s.label}</div>
+                  <div style={{fontSize:13, color:"var(--text-3)", marginTop:2}}>{s.label}</div>
                 </div>
               ))}
             </div>
             <div className="card p-5 text-sm space-y-2">
               <h3 className="font-bold mb-3">Breakdown</h3>
-              <div className="flex justify-between text-gray-600"><span>Gross Revenue</span><span className="font-semibold">₹{totalRevenue}</span></div>
+              <div className="flex justify-between"><span>Gross Revenue</span><span className="font-semibold">₹{totalRevenue}</span></div>
               <div className="flex justify-between text-red-500"><span>Commission ({shop?.commission_percent || 15}%)</span><span>-₹{commission}</span></div>
               <div className="flex justify-between font-bold text-green-700 border-t pt-2"><span>Your earnings</span><span>₹{netEarnings}</span></div>
             </div>
           </div>
         )}
+
+        {tab === 'settings' && (
+          <div style={{ maxWidth: 520 }}>
+            <h2 style={{ fontWeight: 900, fontSize: 18, color: 'var(--text)', marginBottom: 4 }}>Shop Images</h2>
+            <p style={{ fontSize: 13, color: 'var(--text-3)', marginBottom: 24 }}>
+              Images are automatically compressed to WebP (max 300 KB) before upload. Served at optimal size for fast loading.
+            </p>
+
+            {imgError && (
+              <div style={{ background: 'rgba(239,68,68,.1)', border: '1px solid rgba(239,68,68,.25)', borderRadius: 12, padding: '10px 14px', fontSize: 13, color: '#ef4444', marginBottom: 16 }}>
+                ⚠ {imgError}
+              </div>
+            )}
+
+            {/* Logo */}
+            <div style={{ marginBottom: 28 }}>
+              <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: 'var(--text-2)', marginBottom: 8 }}>
+                Shop Logo <span style={{ color: 'var(--text-4)', fontWeight: 500 }}>(1 : 1, shown in shop cards)</span>
+              </label>
+              <div style={{ width: 160 }}>
+                <ImageUploader
+                  label="Upload logo"
+                  currentUrl={(shop as any)?.image_url || null}
+                  aspectRatio="1:1"
+                  progress={logoProgress}
+                  onUpload={(file: File) => handleShopImageUpload(file, 'logo')}
+                  hint="Square image, min 200×200px"
+                />
+              </div>
+            </div>
+
+            {/* Banner */}
+            <div style={{ marginBottom: 28 }}>
+              <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: 'var(--text-2)', marginBottom: 8 }}>
+                Shop Banner <span style={{ color: 'var(--text-4)', fontWeight: 500 }}>(16 : 9, shown at top of store page)</span>
+              </label>
+              <ImageUploader
+                label="Upload banner"
+                currentUrl={(shop as any)?.banner_url || null}
+                aspectRatio="16:9"
+                progress={bannerProgress}
+                onUpload={(file: File) => handleShopImageUpload(file, 'banner')}
+                hint="Wide image, min 800×450px"
+              />
+            </div>
+
+            <div style={{ background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 14, padding: '14px 16px', fontSize: 12, color: 'var(--text-3)', lineHeight: 1.7 }}>
+              <strong style={{ color: 'var(--text-2)' }}>How it works:</strong> Files are compressed client-side to WebP before upload. Images are served dynamically at the right size (200px for thumbnails, 800px for banners). Product images upload inside the product modal — max 2 per product.
+            </div>
+          </div>
+        )}
       </div>
 
-      {showAddProduct && shop && (
-        <AddProductModal shopId={shop.id} onClose={() => setShowAddProduct(false)} onSuccess={() => { setShowAddProduct(false); loadData() }} />
+      {showAddProduct && shop && user && (
+        <AddProductModal shopId={shop.id} userId={user.id} onClose={() => setShowAddProduct(false)} onSuccess={() => { setShowAddProduct(false); loadData() }} />
       )}
     </div>
   )
@@ -521,11 +596,19 @@ function PickupCodeVerifier({
   )
 }
 
-function AddProductModal({ shopId, onClose, onSuccess }: { shopId: string; onClose: () => void; onSuccess: () => void }) {
+function AddProductModal({ shopId, userId, onClose, onSuccess }: { shopId: string; userId: string; onClose: () => void; onSuccess: () => void }) {
   const [form, setForm] = useState({ name: '', description: '', price: '', original_price: '', category: '', is_veg: '', is_available: true })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [imgFiles, setImgFiles] = useState<(File | null)[]>([null, null])
+  const [imgPreviews, setImgPreviews] = useState<(string | null)[]>([null, null])
+  const [imgProgress, setImgProgress] = useState<number[]>([0, 0])
   function update(field: string, value: string | boolean) { setForm(p => ({ ...p, [field]: value })) }
+
+  function handleImgSelect(file: File, slot: 0 | 1) {
+    const newFiles = [...imgFiles]; newFiles[slot] = file; setImgFiles(newFiles)
+    const newPreviews = [...imgPreviews]; newPreviews[slot] = URL.createObjectURL(file); setImgPreviews(newPreviews)
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -533,64 +616,112 @@ function AddProductModal({ shopId, onClose, onSuccess }: { shopId: string; onClo
     if (!form.price || isNaN(Number(form.price))) { setError('Valid price required'); return }
     setLoading(true); setError('')
     const supabase = createClient()
-    const { error: err } = await supabase.from('products').insert({
+
+    // Insert product first to get the ID
+    const { data: product, error: err } = await supabase.from('products').insert({
       shop_id: shopId, name: form.name.trim(), description: form.description.trim() || null,
       price: parseInt(form.price), original_price: form.original_price ? parseInt(form.original_price) : null,
       category: form.category.trim() || null,
       is_veg: form.is_veg === 'veg' ? true : form.is_veg === 'nonveg' ? false : null,
       is_available: form.is_available,
-    })
-    if (err) { setError(err.message); setLoading(false); return }
+    }).select('id').single()
+
+    if (err || !product) { setError(err?.message || 'Failed to create product'); setLoading(false); return }
+
+    // Upload images if selected
+    const { uploadProductImage } = await import('@/lib/imageService')
+    let image_url: string | null = null
+    for (let i = 0; i < 2; i++) {
+      if (imgFiles[i]) {
+        try {
+          const { url } = await uploadProductImage(
+            imgFiles[i]!, userId, product.id, (i + 1) as 1 | 2,
+            (pct: number) => setImgProgress(prev => { const n = [...prev]; n[i] = pct; return n })
+          )
+          if (i === 0) image_url = url
+        } catch (uploadErr: any) {
+          console.error('Image upload error:', uploadErr.message)
+        }
+      }
+    }
+
+    // Update product with primary image URL
+    if (image_url) {
+      await supabase.from('products').update({ image_url }).eq('id', product.id)
+    }
+
     onSuccess()
   }
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center">
-      <div className="bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl max-h-[90vh] overflow-y-auto">
-        <div className="flex justify-center pt-3 pb-1 sm:hidden"><div className="w-10 h-1 bg-gray-200 rounded-full" /></div>
-        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+      <div style={{background:"var(--card-bg)", width:"100%", maxWidth:448, borderRadius:"16px 16px 0 0", maxHeight:"90vh", overflowY:"auto"}}>
+        <div className="flex justify-center pt-3 pb-1 sm:hidden"><div style={{width:40, height:4, background:"var(--bg-3)", borderRadius:999}} /></div>
+        <div style={{padding:"16px 20px", borderBottom:"1px solid var(--border)", display:"flex", alignItems:"center", justifyContent:"space-between"}}>
           <h2 className="font-bold text-lg">Add Product</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+          <button onClick={onClose} style={{color:"var(--text-3)", background:"none", border:"none", cursor:"pointer", fontSize:20, fontFamily:"inherit"}}>✕</button>
         </div>
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Product name *</label>
+            <label style={{display:"block", fontSize:13, fontWeight:700, color:"var(--text-2)", marginBottom:6}}>Product name *</label>
             <input type="text" value={form.name} onChange={e => update('name', e.target.value)} className="input-field" placeholder="Butter Chicken, Amul Milk 1L..." required />
           </div>
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Description</label>
+            <label style={{display:"block", fontSize:13, fontWeight:700, color:"var(--text-2)", marginBottom:6}}>Description</label>
             <textarea value={form.description} onChange={e => update('description', e.target.value)} className="input-field resize-none" rows={2} placeholder="Short description..." />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1.5">Selling Price (₹) *</label>
+              <label style={{display:"block", fontSize:13, fontWeight:700, color:"var(--text-2)", marginBottom:6}}>Selling Price (₹) *</label>
               <input type="number" value={form.price} onChange={e => update('price', e.target.value)} className="input-field" placeholder="199" min="0" required />
             </div>
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1.5">Original Price (₹)</label>
+              <label style={{display:"block", fontSize:13, fontWeight:700, color:"var(--text-2)", marginBottom:6}}>Original Price (₹)</label>
               <input type="number" value={form.original_price} onChange={e => update('original_price', e.target.value)} className="input-field" placeholder="249" min="0" />
             </div>
           </div>
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Category</label>
+            <label style={{display:"block", fontSize:13, fontWeight:700, color:"var(--text-2)", marginBottom:6}}>Category</label>
             <input type="text" value={form.category} onChange={e => update('category', e.target.value)} className="input-field" placeholder="Main Course, Dairy, Medicines..." />
           </div>
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">Type</label>
+            <label style={{display:"block", fontSize:13, fontWeight:700, color:"var(--text-2)", marginBottom:8}}>Type</label>
             <div className="flex gap-2">
               {[{ val: 'veg', label: '🟢 Veg' }, { val: 'nonveg', label: '🔴 Non-Veg' }, { val: '', label: 'N/A' }].map(o => (
                 <button key={o.val} type="button" onClick={() => update('is_veg', o.val)}
-                  className={`flex-1 py-2 rounded-xl border-2 text-sm font-semibold transition-all ${form.is_veg === o.val ? 'border-brand-500 bg-brand-50' : 'border-gray-200'}`}>{o.label}</button>
+                  style={{flex:1, padding:'8px 0', borderRadius:12, border:`2px solid ${form.is_veg===o.val?'#FF3008':'var(--border-2)'}`, fontSize:13, fontWeight:700, background:form.is_veg===o.val?'rgba(255,48,8,.08)':'transparent', color:form.is_veg===o.val?'#FF3008':'var(--text-2)', cursor:'pointer', fontFamily:'inherit', transition:'all .15s'}}>{o.label}</button>
               ))}
             </div>
           </div>
-          <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
-            <div><p className="font-semibold text-sm">Available to order</p><p className="text-xs text-gray-400">Customers can add this to cart</p></div>
+          <div style={{display:"flex", alignItems:"center", justifyContent:"space-between", padding:12, background:"var(--bg-2)", borderRadius:12}}>
+            <div><p className="font-semibold text-sm">Available to order</p><p style={{fontSize:11,color:"var(--text-3)"}}>Customers can add this to cart</p></div>
             <button type="button" onClick={() => update('is_available', !form.is_available)}
-              className={`relative w-11 h-6 rounded-full transition-colors ${form.is_available ? 'bg-green-500' : 'bg-gray-300'}`}>
-              <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${form.is_available ? 'translate-x-5' : ''}`} />
+              style={{position:'relative', width:44, height:24, borderRadius:999, background:form.is_available?'#22c55e':'var(--bg-4)', border:'none', cursor:'pointer', transition:'background .2s'}}>
+              <span style={{position:'absolute', top:2, left:2, width:16, height:16, borderRadius:'50%', background:'white', boxShadow:'0 1px 3px rgba(0,0,0,.2)', transition:'transform .2s', transform:form.is_available?'translateX(20px)':'none'}} />
             </button>
           </div>
+
+          {/* Product images — max 2 */}
+          <div>
+            <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: 'var(--text-2)', marginBottom: 10 }}>
+              Product Photos <span style={{ fontWeight: 500, color: 'var(--text-4)' }}>(optional, max 2)</span>
+            </label>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              {[0, 1].map(i => (
+                <div key={i}>
+                  <ImageUploader
+                    label={i === 0 ? 'Main photo' : 'Extra photo'}
+                    currentUrl={imgPreviews[i]}
+                    aspectRatio="1:1"
+                    progress={imgProgress[i]}
+                    onUpload={(file: File) => handleImgSelect(file, i as 0 | 1)}
+                    hint={i === 0 ? 'Primary image' : 'Optional 2nd image'}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+
           {error && <div className="bg-red-50 border border-red-200 text-red-600 text-sm rounded-xl px-4 py-3">{error}</div>}
           <div className="flex gap-3 pb-2">
             <button type="button" onClick={onClose} className="btn-secondary flex-1 py-3">Cancel</button>
