@@ -1,17 +1,24 @@
 {
-  "name": "Welokl — Your Neighbourhood, Delivered",
+  "name": "Welokl \u2014 Your Neighbourhood, Delivered",
   "short_name": "Welokl",
-  "description": "Order from any local shop nearby. Food, grocery, pharmacy & more — delivered or pick up yourself.",
+  "description": "Order from any local shop nearby. Food, grocery, pharmacy & more \u2014 delivered or pick up yourself.",
   "start_url": "/?source=pwa",
   "display": "standalone",
-  "display_override": ["window-controls-overlay", "standalone"],
+  "display_override": [
+    "window-controls-overlay",
+    "standalone"
+  ],
   "background_color": "#FFFBF5",
   "theme_color": "#FF3008",
   "orientation": "portrait-primary",
   "scope": "/",
   "lang": "en-IN",
   "dir": "ltr",
-  "categories": ["shopping", "food", "lifestyle"],
+  "categories": [
+    "shopping",
+    "food",
+    "lifestyle"
+  ],
   "iarc_rating_id": "",
   "prefer_related_applications": false,
   "icons": [
@@ -83,6 +90,13 @@
       "type": "image/png",
       "form_factor": "narrow",
       "label": "Home screen showing local shops"
+    },
+    {
+      "src": "/screenshots/home-wide.png",
+      "sizes": "1280x800",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Welokl desktop view"
     }
   ],
   "shortcuts": [
@@ -91,21 +105,39 @@
       "short_name": "Shops",
       "description": "Browse all local shops near you",
       "url": "/stores?source=shortcut",
-      "icons": [{ "src": "/icons/icon-96.png", "sizes": "96x96", "type": "image/png" }]
+      "icons": [
+        {
+          "src": "/icons/icon-96.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
     },
     {
       "name": "My Orders",
       "short_name": "Orders",
       "description": "Track your current and past orders",
       "url": "/orders/history?source=shortcut",
-      "icons": [{ "src": "/icons/icon-96.png", "sizes": "96x96", "type": "image/png" }]
+      "icons": [
+        {
+          "src": "/icons/icon-96.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
     },
     {
       "name": "My Cart",
       "short_name": "Cart",
       "description": "View your cart",
       "url": "/cart?source=shortcut",
-      "icons": [{ "src": "/icons/icon-96.png", "sizes": "96x96", "type": "image/png" }]
+      "icons": [
+        {
+          "src": "/icons/icon-96.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
     }
   ],
   "related_applications": [],
@@ -117,5 +149,9 @@
       "text": "text",
       "url": "url"
     }
+  },
+  "id": "/?source=pwa",
+  "launch_handler": {
+    "client_mode": "navigate-existing"
   }
 }
