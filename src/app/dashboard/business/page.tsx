@@ -1,4 +1,5 @@
 'use client'
+import { useFCM } from '@/hooks/useFCM'
 import { useEffect, useState, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
@@ -529,6 +530,18 @@ function PickupCodeVerifier({
     const sb = createClient()
     await sb.from('orders').update({ status: nextStatus, pickup_code: null }).eq('id', orderId)
     await sb.from('order_status_log').insert({ order_id: orderId, status: nextStatus, message: logMsg })
+    // Push notification to customer on key status changes
+    const notifyType = nextStatus === 'accepted' ? 'order_accepted'
+      : nextStatus === 'ready' ? 'order_ready'
+      : null
+    if (notifyType) {
+      const { data: ord } = await sb.from('orders').select('customer_id, shop_id').eq('id', orderId).single()
+      if (ord) fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-notification`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}` },
+        body: JSON.stringify({ type: notifyType, order_id: orderId, customer_id: ord.customer_id, shop_id: ord.shop_id })
+      }).catch(() => {})
+    }
     setChecking(false)
     onVerified()
   }

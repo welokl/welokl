@@ -1,4 +1,5 @@
 'use client'
+import { useFCM } from '@/hooks/useFCM'
 import { useEffect, useState, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'

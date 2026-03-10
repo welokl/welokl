@@ -30,6 +30,7 @@ export default function CheckoutPage() {
   const [selLat, setSelLat]         = useState<number | null>(null)
   const [selLng, setSelLng]         = useState<number | null>(null)
   const [copied, setCopied]         = useState(false)
+  const [merchantUpi, setMerchantUpi] = useState('welokl@upi')
 
   const subtotal = cart.subtotal()
   const fees = calculateFees(subtotal, 15, orderType)
@@ -43,6 +44,9 @@ export default function CheckoutPage() {
       if (!authUser) { window.location.href = '/auth/login'; return }
       const { data: profile } = await supabase.from('users').select('*').eq('id', authUser.id).single()
       setUser(profile)
+      // Fetch merchant UPI ID set by admin
+      const { data: cfg } = await supabase.from('platform_config').select('value').eq('key', 'upi_id').single()
+      if (cfg?.value) setMerchantUpi(cfg.value)
       try {
         const saved = JSON.parse(localStorage.getItem('welokl_addresses') || '[]')
         setSaved(saved)
@@ -82,7 +86,10 @@ export default function CheckoutPage() {
 
   async function placeOrder() {
     if (orderType === 'delivery' && !address.trim()) { setError('Please enter or detect your delivery address'); return }
-    if (payMethod === 'upi' && !upiId.trim()) { setError('Please enter your UPI transaction ID after paying'); return }
+    if (payMethod === 'upi') {
+      if (!upiId.trim()) { setError('UTR / Transaction ID is required for UPI payment'); return }
+      if (upiId.trim().length < 10) { setError('Please enter a valid UTR number (min 10 digits)'); return }
+    }
     if (cart.items.length === 0) { window.location.href = '/stores'; return }
     setLoading(true); setError('')
     const supabase = createClient()
@@ -108,6 +115,12 @@ export default function CheckoutPage() {
     await supabase.from('order_items').insert(cart.items.map(i => ({ order_id: order.id, product_id: i.product.id, product_name: i.product.name, quantity: i.quantity, price: i.product.price })))
     await supabase.from('order_status_log').insert({ order_id: order.id, status: 'placed', message: `Order placed via ${payMethod === 'cod' ? 'Cash on Delivery' : 'UPI'}`, created_by: user.id })
     cart.clear()
+    // Fire push notification to shopkeeper (best-effort, non-blocking)
+    fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-notification`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}` },
+      body: JSON.stringify({ type: 'order_placed', order_id: order.id, shop_id: cart.shop_id, customer_id: user.id })
+    }).catch(() => {})
     window.location.href = `/orders/${order.id}`
   }
 
@@ -203,24 +216,7 @@ export default function CheckoutPage() {
           ))}
 
           {payMethod === 'upi' && (
-            <div style={{ background: 'var(--blue-bg)', border: '1px solid rgba(59,130,246,0.2)', borderRadius: 14, padding: '14px 16px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                <p style={{ fontWeight: 800, fontSize: 14, color: '#1d4ed8' }}>Pay ₹{fees.total_amount} via UPI</p>
-                <span style={{ fontSize: 11, background: 'rgba(59,130,246,0.15)', color: '#2563eb', padding: '3px 8px', borderRadius: 8, fontWeight: 700 }}>Test mode</span>
-              </div>
-              <div style={{ background: 'var(--card-bg)', borderRadius: 12, padding: '12px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                <div>
-                  <p style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 2 }}>UPI ID</p>
-                  <p style={{ fontWeight: 900, fontSize: 15, fontFamily: 'monospace', color: 'var(--text)' }}>welokl@upi</p>
-                </div>
-                <button onClick={() => { navigator.clipboard.writeText('welokl@upi'); setCopied(true); setTimeout(() => setCopied(false), 2000) }}
-                  style={{ fontSize: 12, fontWeight: 800, padding: '6px 12px', borderRadius: 8, background: copied ? '#22c55e' : 'var(--brand-muted)', color: copied ? '#fff' : '#ff3008', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
-                  {copied ? '✓ Copied' : 'Copy'}
-                </button>
-              </div>
-              <input value={upiId} onChange={e => setUpiId(e.target.value)} placeholder="Enter UPI transaction ID after paying" style={{ ...s({ marginBottom: 8 }), width: '100%' }} />
-              <p style={{ fontSize: 12, color: '#2563eb' }}>Pay first using any UPI app, then enter the transaction ID here</p>
-            </div>
+            <UpiPaySection amount={fees.total_amount} merchantUpi={merchantUpi} upiId={upiId} setUpiId={setUpiId} copied={copied} setCopied={setCopied} />
           )}
         </div>
 
@@ -258,6 +254,91 @@ export default function CheckoutPage() {
           style={{ width: '100%', padding: '15px', borderRadius: 14, fontWeight: 900, fontSize: 16, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: '#ff3008', color: '#fff', boxShadow: '0 4px 16px rgba(255,48,8,0.3)', opacity: loading ? 0.7 : 1 }}>
           {loading ? 'Placing order…' : `Place Order — ₹${fees.total_amount} →`}
         </button>
+      </div>
+    </div>
+  )
+}
+
+// ── UPI Deep Link Payment Section ────────────────────────────────────────────
+// Replace YOUR_UPI_ID below with your actual UPI ID (e.g. yourname@ybl)
+const MERCHANT_NAME   = 'Welokl'
+
+function UpiPaySection({ amount, merchantUpi, upiId, setUpiId, copied, setCopied }: {
+  amount: number; merchantUpi: string; upiId: string; setUpiId: (v: string) => void
+  copied: boolean; setCopied: (v: boolean) => void
+}) {
+  const note = encodeURIComponent('Welokl Order Payment')
+  const name = encodeURIComponent(MERCHANT_NAME)
+  const base = `pa=${merchantUpi}&pn=${name}&am=${amount}&cu=INR&tn=${note}`
+
+  // Deep links — each app has its own scheme
+  const links = [
+    { label: 'GPay',     icon: '🟢', href: `gpay://upi/pay?${base}`,    fallback: `tez://upi/pay?${base}` },
+    { label: 'PhonePe',  icon: '🟣', href: `phonepe://pay?${base}`,      fallback: `intent://pay?${base}#Intent;scheme=upi;package=com.phonepe.app;end` },
+    { label: 'Paytm',    icon: '🔵', href: `paytmmp://pay?${base}`,      fallback: `intent://pay?${base}#Intent;scheme=upi;package=net.one97.paytm;end` },
+    { label: 'Any UPI',  icon: '💳', href: `upi://pay?${base}`,          fallback: `upi://pay?${base}` },
+  ]
+
+  function openUpi(href: string, fallback: string) {
+    // Try deep link — if app not installed browser will fail silently
+    window.location.href = href
+    // Fallback after 1.5s if app didn't open
+    setTimeout(() => { window.location.href = fallback }, 1500)
+  }
+
+  return (
+    <div style={{ background: 'rgba(37,99,235,.06)', border: '1px solid rgba(37,99,235,.15)', borderRadius: 14, padding: '16px' }}>
+      {/* Amount + UPI ID */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+        <div>
+          <p style={{ fontSize: 12, color: 'var(--text-3)', fontWeight: 600, marginBottom: 2 }}>Pay to</p>
+          <p style={{ fontWeight: 900, fontSize: 15, fontFamily: 'monospace', color: 'var(--text)' }}>{merchantUpi}</p>
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <p style={{ fontSize: 12, color: 'var(--text-3)', fontWeight: 600, marginBottom: 2 }}>Amount</p>
+          <p style={{ fontWeight: 900, fontSize: 20, color: '#1d4ed8' }}>₹{amount}</p>
+        </div>
+      </div>
+
+      {/* App buttons */}
+      <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-3)', marginBottom: 10 }}>OPEN YOUR UPI APP</p>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
+        {links.map(l => (
+          <button key={l.label} onClick={() => openUpi(l.href, l.fallback)}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '11px 14px', borderRadius: 12, background: 'var(--card-bg)', border: '1.5px solid var(--border)', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 13, color: 'var(--text)', transition: 'border-color .15s' }}
+            onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.borderColor = '#ff3008'}
+            onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border)'}>
+            <span style={{ fontSize: 18 }}>{l.icon}</span>
+            {l.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Copy UPI ID */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--card-bg)', borderRadius: 10, padding: '10px 12px', marginBottom: 14 }}>
+        <span style={{ fontSize: 12, color: 'var(--text-3)' }}>Can't open app? Copy UPI ID manually</span>
+        <button onClick={() => { navigator.clipboard.writeText(merchantUpi); setCopied(true); setTimeout(() => setCopied(false), 2000) }}
+          style={{ fontSize: 12, fontWeight: 800, padding: '5px 12px', borderRadius: 8, background: copied ? '#22c55e' : 'var(--brand-muted)', color: copied ? '#fff' : '#ff3008', border: 'none', cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0, marginLeft: 10 }}>
+          {copied ? '✓ Copied' : 'Copy ID'}
+        </button>
+      </div>
+
+      {/* Transaction ID input */}
+      <div style={{ background: 'rgba(255,48,8,.05)', border: '1.5px solid rgba(255,48,8,.2)', borderRadius: 12, padding: '12px 14px', marginTop: 4 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+          <span style={{ fontSize: 14 }}>🔴</span>
+          <p style={{ fontSize: 12, fontWeight: 800, color: '#ff3008' }}>REQUIRED — Enter UTR after paying</p>
+        </div>
+        <input
+          value={upiId}
+          onChange={e => setUpiId(e.target.value.replace(/\D/g, ''))}
+          placeholder="12-digit UTR number (e.g. 407311139279)"
+          maxLength={22}
+          style={{ width: '100%', padding: '11px 14px', borderRadius: 10, border: `1.5px solid ${upiId.trim().length >= 10 ? '#16a34a' : 'rgba(255,48,8,.3)'}`, background: 'var(--card-bg)', color: 'var(--text)', fontSize: 14, fontFamily: 'monospace', outline: 'none', boxSizing: 'border-box' as const, marginBottom: 8 }}
+        />
+        <p style={{ fontSize: 11, color: upiId.trim().length >= 10 ? '#16a34a' : 'var(--text-3)', fontWeight: 600 }}>
+          {upiId.trim().length >= 10 ? '✓ UTR looks valid' : 'Open your UPI app → Payment history → copy the 12-digit UTR'}
+        </p>
       </div>
     </div>
   )

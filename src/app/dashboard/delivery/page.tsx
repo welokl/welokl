@@ -1,7 +1,9 @@
 'use client'
+import { useFCM } from '@/hooks/useFCM'
 import { useEffect, useState, useCallback } from 'react'
 import { useDeliveryPartnerAlerts, useVisibilityReconnect, requestNotificationPermission } from '@/hooks/useOrderAlerts'
 import { createClient } from '@/lib/supabase/client'
+import ThemeToggle from '@/components/ThemeToggle'
 
 interface Order {
   id: string; order_number: string; status: string; total_amount: number
@@ -140,6 +142,12 @@ export default function DeliveryDashboard() {
       order_id: orderId, status: 'ready',
       message: 'Delivery partner accepted — waiting for shop to verify pickup code'
     })
+    // Notify customer a rider accepted their order
+    fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-notification`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}` },
+      body: JSON.stringify({ type: 'order_picked_up', order_id: orderId, customer_id: data.customer_id })
+    }).catch(() => {})
 
     setAccepting(null); loadData()
   }
@@ -240,6 +248,7 @@ export default function DeliveryDashboard() {
                 </button>
               )}
               {alertsOn && <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', fontWeight: 700 }}>🔔 Alerts ON</span>}
+              <ThemeToggle />
               <button onClick={async () => { await createClient().auth.signOut(); window.location.href = '/' }}
                 style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>Logout</button>
             </div>

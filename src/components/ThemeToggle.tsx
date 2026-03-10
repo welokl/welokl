@@ -1,23 +1,16 @@
-/**
- * ThemeToggle
- * Dark mode is the DEFAULT. Light mode is opt-in.
- * State stored in localStorage('welokl_theme'): 'dark' | 'light'
- * Layout anti-flash script reads the same key.
- */
 'use client'
 import { useEffect, useState } from 'react'
 
 type Theme = 'dark' | 'light'
 
 export default function ThemeToggle() {
-  const [isDark, setIsDark] = useState(true)   // default dark
+  const [isDark, setIsDark] = useState(false)  // default light
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
     setMounted(true)
-    // If no preference saved → dark by default
     const saved = localStorage.getItem('welokl_theme') as Theme | null
-    const dark = saved !== 'light'   // anything other than explicit 'light' → dark
+    const dark = saved === 'dark'  // only dark if explicitly chosen
     setIsDark(dark)
     applyTheme(dark ? 'dark' : 'light', false)
   }, [])
@@ -41,29 +34,16 @@ export default function ThemeToggle() {
     applyTheme(next)
   }
 
-  if (!mounted) {
-    return <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--bg-3)', flexShrink: 0 }} />
-  }
+  if (!mounted) return <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--bg-3)', flexShrink: 0 }} />
 
   return (
-    <button
-      onClick={toggle}
+    <button onClick={toggle}
       title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-      aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-      style={{
-        width: 36, height: 36, borderRadius: 10,
-        border: '1px solid var(--border-2)',
-        background: 'var(--bg-3)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        cursor: 'pointer', flexShrink: 0,
-        transition: 'background .15s, border-color .15s, transform .1s',
-        fontSize: 16,
-      }}
+      style={{ width: 36, height: 36, borderRadius: 10, border: '1px solid var(--border-2)', background: 'var(--bg-3)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, transition: 'background .15s, transform .1s', fontSize: 16 }}
       onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-4)')}
       onMouseLeave={e => (e.currentTarget.style.background = 'var(--bg-3)')}
       onMouseDown={e  => (e.currentTarget.style.transform = 'scale(0.92)')}
-      onMouseUp={e    => (e.currentTarget.style.transform = 'scale(1)')}
-    >
+      onMouseUp={e    => (e.currentTarget.style.transform = 'scale(1)')}>
       {isDark ? '☀️' : '🌙'}
     </button>
   )

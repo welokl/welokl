@@ -699,3 +699,34 @@ html.theme-ready * {
   overflow: hidden; position: relative;
   border: 1px solid rgba(255,48,8,.25);
 }
+
+/* ── Landing Page Design Tokens ── */
+:root {
+  --lp-bg:        #FFFBF5;
+  --lp-bg2:       #FFF7EE;
+  --lp-bg3:       #FFF0DC;
+  --lp-text:      #1C0A00;
+  --lp-text2:     #6B3A1F;
+  --lp-text3:     #A0714F;
+  --lp-border:    #F0D9C0;
+  --lp-card:      #FFFFFF;
+  --lp-red:       #FF3008;
+  --lp-amber:     #FF8C00;
+  --lp-green:     #1A7A4A;
+  --lp-shadow:    0 2px 16px rgba(255,120,0,.10);
+  --lp-shadow-lg: 0 8px 40px rgba(255,80,0,.13);
+  --lp-nav-bg:    rgba(255,251,245,.92);
+}
+html.dark {
+  --lp-bg:        #130800;
+  --lp-bg2:       #1A0C00;
+  --lp-bg3:       #221200;
+  --lp-text:      #FFF3E8;
+  --lp-text2:     #D4956A;
+  --lp-text3:     #8A6248;
+  --lp-border:    #3A2010;
+  --lp-card:      #1E0E04;
+  --lp-shadow:    0 2px 16px rgba(0,0,0,.4);
+  --lp-shadow-lg: 0 8px 40px rgba(0,0,0,.5);
+  --lp-nav-bg:    rgba(19,8,0,.92);
+}

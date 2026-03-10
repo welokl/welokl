@@ -32,7 +32,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/*
           ANTI-FLASH THEME SCRIPT
           Runs synchronously before any paint — zero flash.
-          Default: DARK. Only switches to light if user explicitly chose it.
+          Default: LIGHT. Only switches to dark if user explicitly chose it.
           Reads localStorage('welokl_theme'): 'dark' | 'light'
           Anything other than 'light' → dark mode.
         */}
@@ -42,14 +42,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 (function(){
   try{
     var t = localStorage.getItem('welokl_theme');
-    // Default is DARK. Only skip dark if user explicitly chose light.
-    if(t !== 'light'){
+    // Default is LIGHT. Only add dark if user explicitly chose dark.
+    if(t === 'dark'){
       document.documentElement.classList.add('dark');
     }
-  }catch(e){
-    // localStorage unavailable (e.g. private browsing) → default dark
-    document.documentElement.classList.add('dark');
-  }
+  }catch(e){}
 })();
             `.trim()
           }}

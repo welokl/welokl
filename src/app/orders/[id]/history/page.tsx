@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 interface Order {
   id: string; order_number: string; status: string
   total_amount: number; type: string; created_at: string
-  shop: { name: string; image_url: string | null } | null
+  shop: { name: string; image_url: string | null } | { name: string; image_url: string | null }[] | null
   items: { product_name: string; quantity: number }[]
 }
 
@@ -111,13 +111,13 @@ export default function OrdersHistoryPage() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
                   {/* Shop logo */}
                   <div style={{ width: 52, height: 52, borderRadius: 14, background: 'var(--bg-3)', border: '1px solid var(--border)', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    {order.shop?.image_url
+                    {(Array.isArray(order.shop) ? order.shop[0]?.image_url : order.shop?.image_url)
                       ? <img src={order.shop.image_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
                       : <span style={{ fontSize: 24 }}>🏪</span>}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-                      <p style={{ fontWeight: 800, fontSize: 15, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{order.shop?.name || 'Shop'}</p>
+                      <p style={{ fontWeight: 800, fontSize: 15, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{(Array.isArray(order.shop) ? order.shop[0]?.name : order.shop?.name) || 'Shop'}</p>
                       <span style={{ fontSize: 11, fontWeight: 700, color: STATUS_COLOR[order.status] || '#888', background: `${STATUS_COLOR[order.status]}18`, padding: '3px 8px', borderRadius: 999, flexShrink: 0, marginLeft: 8 }}>
                         {STATUS_LABEL[order.status] || order.status}
                       </span>

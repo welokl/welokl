@@ -59,14 +59,14 @@ export default function CartPage() {
               )}
               <div style={{ flex: 1, minWidth: 0 }}>
                 <p style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.product.name}</p>
-                <p style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>&#8377;{item.product.price} each</p>
+                <p style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>₹{item.product.price} each</p>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', background: '#ff3008', borderRadius: 12, overflow: 'hidden', flexShrink: 0 }}>
                 <button onClick={() => cart.updateQty(item.product.id, item.quantity - 1)} style={{ color: '#fff', padding: '7px 12px', border: 'none', background: 'none', cursor: 'pointer', fontWeight: 900, fontSize: 16 }}>-</button>
                 <span style={{ color: '#fff', fontWeight: 900, fontSize: 14, minWidth: 22, textAlign: 'center' }}>{item.quantity}</span>
                 <button onClick={() => cart.updateQty(item.product.id, item.quantity + 1)} style={{ color: '#fff', padding: '7px 12px', border: 'none', background: 'none', cursor: 'pointer', fontWeight: 900, fontSize: 16 }}>+</button>
               </div>
-              <span style={{ fontWeight: 800, fontSize: 14, color: 'var(--text)', minWidth: 56, textAlign: 'right' }}>&#8377;{item.product.price * item.quantity}</span>
+              <span style={{ fontWeight: 800, fontSize: 14, color: 'var(--text)', minWidth: 56, textAlign: 'right' }}>₹{item.product.price * item.quantity}</span>
             </div>
           ))}
         </div>
@@ -75,8 +75,8 @@ export default function CartPage() {
         {fees.delivery_fee > 0 && (
           <div style={{ background: 'var(--card-bg)', borderRadius: 16, border: '1px solid var(--border)', padding: '14px 16px', marginBottom: 14 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text-3)', marginBottom: 8 }}>
-              <span>Add &#8377;{FREE_DELIVERY_THRESHOLD - subtotal} more for free delivery</span>
-              <span>&#8377;{subtotal}/&#8377;{FREE_DELIVERY_THRESHOLD}</span>
+              <span>Add ₹{FREE_DELIVERY_THRESHOLD - subtotal} more for free delivery</span>
+              <span>₹{subtotal}/₹{FREE_DELIVERY_THRESHOLD}</span>
             </div>
             <div style={{ height: 6, background: 'var(--bg-3)', borderRadius: 999, overflow: 'hidden' }}>
               <div style={{ height: '100%', width: `${Math.min(100, (subtotal / FREE_DELIVERY_THRESHOLD) * 100)}%`, background: '#ff3008', borderRadius: 999, transition: 'width .3s' }} />
@@ -94,12 +94,12 @@ export default function CartPage() {
           ].map(r => (
             <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10, fontSize: 14 }}>
               <span style={{ color: r.label.includes('FREE') ? '#16a34a' : 'var(--text-2)' }}>{r.label}</span>
-              <span style={{ fontWeight: 700, color: r.value === 0 ? '#16a34a' : 'var(--text)' }}>{r.value === 0 ? 'FREE' : `&#8377;${r.value}`}</span>
+              <span style={{ fontWeight: 700, color: r.value === 0 ? '#16a34a' : 'var(--text)' }}>{r.value === 0 ? 'FREE' : `₹${r.value}`}</span>
             </div>
           ))}
           <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12, display: 'flex', justifyContent: 'space-between' }}>
             <span style={{ fontWeight: 900, fontSize: 15, color: 'var(--text)' }}>Total</span>
-            <span style={{ fontWeight: 900, fontSize: 15, color: 'var(--text)' }}>&#8377;{fees.total}</span>
+            <span style={{ fontWeight: 900, fontSize: 15, color: 'var(--text)' }}>₹{fees.total_amount}</span>
           </div>
         </div>
 
@@ -114,7 +114,7 @@ export default function CartPage() {
         <div style={{ maxWidth: 520, margin: '0 auto' }}>
           <Link href="/checkout" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#ff3008', color: '#fff', borderRadius: 16, padding: '16px 20px', textDecoration: 'none', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
             <span style={{ fontWeight: 800, fontSize: 15 }}>Proceed to checkout</span>
-            <span style={{ fontWeight: 900, fontSize: 15 }}>&#8377;{fees.total}</span>
+            <span style={{ fontWeight: 900, fontSize: 15 }}>₹{fees.total_amount}</span>
           </Link>
         </div>
       </div>
