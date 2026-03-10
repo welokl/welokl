@@ -1,6 +1,6 @@
 'use client'
-import { useFCM } from '@/hooks/useFCM'
 import { useEffect, useState, useCallback, useRef } from 'react'
+import { useFCM } from '@/hooks/useFCM'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import type { Order, Shop, Product, User } from '@/types'
@@ -15,6 +15,7 @@ type Tab = 'orders' | 'products' | 'analytics' | 'settings'
 
 export default function BusinessDashboard() {
   const [user, setUser] = useState<User | null>(null)
+  useFCM(user?.id ?? null)
   const [shop, setShop] = useState<Shop | null>(null)
   const [orders, setOrders] = useState<Order[]>([])
   const [products, setProducts] = useState<Product[]>([])
@@ -89,6 +90,20 @@ export default function BusinessDashboard() {
   }, [shop?.id, loadData])
 
   async function updateOrderStatus(orderId: string, status: string) {
+    // Notify customer on key transitions
+    const notifyMap: Record<string, string> = {
+      accepted: 'order_accepted',
+      ready: 'order_ready',
+    }
+    if (notifyMap[status]) {
+      const sb2 = createClient()
+      const { data: ord } = await sb2.from('orders').select('customer_id, shop_id').eq('id', orderId).single()
+      if (ord) fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-notification`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}` },
+        body: JSON.stringify({ type: notifyMap[status], order_id: orderId, customer_id: ord.customer_id, shop_id: ord.shop_id })
+      }).catch(() => {})
+    }
     const supabase = createClient()
     await supabase.from('orders').update({ status }).eq('id', orderId)
     await supabase.from('order_status_log').insert({ order_id: orderId, status, message: `Status: ${status}` })
@@ -530,9 +545,9 @@ function PickupCodeVerifier({
     const sb = createClient()
     await sb.from('orders').update({ status: nextStatus, pickup_code: null }).eq('id', orderId)
     await sb.from('order_status_log').insert({ order_id: orderId, status: nextStatus, message: logMsg })
-    // Push notification to customer on key status changes
-    const notifyType = nextStatus === 'accepted' ? 'order_accepted'
-      : nextStatus === 'ready' ? 'order_ready'
+    // Push notification based on what just happened
+    const notifyType = (nextStatus as string) === 'delivered' ? 'order_delivered'
+      : (nextStatus as string) === 'picked_up' ? 'order_picked_up'
       : null
     if (notifyType) {
       const { data: ord } = await sb.from('orders').select('customer_id, shop_id').eq('id', orderId).single()

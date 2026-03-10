@@ -1,6 +1,6 @@
 'use client'
-import { useFCM } from '@/hooks/useFCM'
 import { useEffect, useState, useCallback, useRef } from 'react'
+import { useFCM } from '@/hooks/useFCM'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import type { Order, User } from '@/types'
@@ -54,6 +54,7 @@ const PROMISES = [
 
 export default function CustomerHome() {
   const [user, setUser]                     = useState<User | null>(null)
+  useFCM(user?.id ?? null)
   const [orders, setOrders]                 = useState<Order[]>([])
   const [allShops, setAllShops]             = useState<Shop[]>([])
   const [products, setProducts]             = useState<Product[]>([])

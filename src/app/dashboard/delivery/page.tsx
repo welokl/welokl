@@ -1,6 +1,6 @@
 'use client'
-import { useFCM } from '@/hooks/useFCM'
 import { useEffect, useState, useCallback } from 'react'
+import { useFCM } from '@/hooks/useFCM'
 import { useDeliveryPartnerAlerts, useVisibilityReconnect, requestNotificationPermission } from '@/hooks/useOrderAlerts'
 import { createClient } from '@/lib/supabase/client'
 import ThemeToggle from '@/components/ThemeToggle'
@@ -27,6 +27,7 @@ function gen4() { return String(Math.floor(1000 + Math.random() * 9000)) }
 
 export default function DeliveryDashboard() {
   const [userId, setUserId]           = useState<string | null>(null)
+  useFCM(userId)
   const [partner, setPartner]         = useState<Partner | null>(null)
   const [wallet, setWallet]           = useState<Wallet | null>(null)
   const [userName, setUserName]       = useState('')
