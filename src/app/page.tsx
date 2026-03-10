@@ -73,7 +73,7 @@ export default function LandingPage() {
 
   return (
     <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", background: 'var(--lp-bg)', color: 'var(--lp-text)', minHeight: '100vh' }}>
-      <style>{`
+      <style suppressHydrationWarning>{`
         @keyframes floatA { 0%,100%{transform:translateY(0px) rotate(-1deg)} 50%{transform:translateY(-12px) rotate(1deg)} }
         @keyframes floatB { 0%,100%{transform:translateY(0px) rotate(2deg)} 50%{transform:translateY(-8px) rotate(-1deg)} }
         @keyframes floatC { 0%,100%{transform:translateY(-4px)} 50%{transform:translateY(6px)} }
@@ -104,7 +104,7 @@ export default function LandingPage() {
         .cat-pill.active{background:var(--lp-red);border-color:var(--lp-red)}
         .cat-pill:not(.active){background:var(--lp-card);border-color:var(--lp-border)}
         .cat-pill:not(.active):hover{border-color:var(--lp-amber);transform:translateY(-2px)}
-        .stat-num{font-family:'Syne',sans-serif;font-weight:800;font-size:clamp(2rem,4vw,3rem);color:var(--lp-red);letter-spacing:-.04em}
+        .stat-num{font-family:"Syne",sans-serif;font-weight:800;font-size:clamp(2rem,4vw,3rem);color:var(--lp-red);letter-spacing:-.04em}
         @media(max-width:768px){
           .hide-m{display:none!important}
           .lp-grid-2{grid-template-columns:1fr!important}
