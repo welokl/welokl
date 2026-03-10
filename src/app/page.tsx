@@ -13,8 +13,9 @@ const ROLE_HOME: Record<string, string> = {
 }
 
 export default function LandingPage() {
-  const [user, setUser] = useState<any>(undefined)
-  const [role, setRole] = useState<string>('')
+  const [user, setUser]   = useState<any>(undefined)
+  const [role, setRole]   = useState<string>('')
+  const [stats, setStats] = useState({ shops: 0, riders: 0, orders: 0 })
 
   useEffect(() => {
     async function init() {
@@ -36,6 +37,23 @@ export default function LandingPage() {
       if (!s?.user) setRole('')
     })
     return () => subscription.unsubscribe()
+  }, [])
+
+  useEffect(() => {
+    async function loadStats() {
+      const sb = createClient()
+      const [{ count: shopCount }, { count: riderCount }, { count: orderCount }] = await Promise.all([
+        sb.from('shops').select('*', { count: 'exact', head: true }).eq('is_active', true),
+        sb.from('users').select('*', { count: 'exact', head: true }).eq('role', 'delivery'),
+        sb.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'delivered'),
+      ])
+      setStats({
+        shops:  shopCount  || 0,
+        riders: riderCount || 0,
+        orders: orderCount || 0,
+      })
+    }
+    loadStats()
   }, [])
 
   const dashHref = ROLE_HOME[role] || '/dashboard/customer'
@@ -117,7 +135,12 @@ export default function LandingPage() {
       {/* STATS BAR */}
       <div style={{borderTop:'1px solid rgba(255,255,255,.06)',borderBottom:'1px solid rgba(255,255,255,.06)',background:'rgba(255,255,255,.02)'}}>
         <div className="stats-g" style={{maxWidth:960,margin:'0 auto',display:'grid',gridTemplateColumns:'repeat(4,1fr)'}}>
-          {[{val:'500+',label:'Local shops listed'},{val:'< 30',label:'Minutes avg delivery'},{val:'4.8★',label:'Avg shop rating'},{val:'₹0',label:'Signup fee for shops'}].map(s=>(
+          {[
+            {val: stats.shops  > 0 ? `${stats.shops}+`  : '—', label:'Local shops live'},
+            {val: stats.orders > 0 ? `${stats.orders}+` : '—', label:'Orders delivered'},
+            {val: stats.riders > 0 ? `${stats.riders}+` : '—', label:'Delivery riders'},
+            {val: '< 30',                                        label:'Minutes avg delivery'},
+          ].map(s=>(
             <div key={s.label} style={{textAlign:'center',padding:'24px 16px',borderRight:'1px solid rgba(255,255,255,.06)'}}>
               <div style={{fontWeight:900,fontSize:'clamp(1.6rem,3vw,2.2rem)',color:'#FF3008',letterSpacing:'-0.03em'}}>{s.val}</div>
               <div style={{fontSize:12,color:'rgba(255,255,255,.4)',fontWeight:600,marginTop:4}}>{s.label}</div>
@@ -143,8 +166,8 @@ export default function LandingPage() {
               {[
                 {bad:'Dark kitchens 15km away',good:'Your street-corner shop'},
                 {bad:'No local pharmacy delivery',good:'Medicine in 20 minutes'},
-                {bad:'Shops losing to big apps',good:'Shops keep 85% revenue'},
-                {bad:'Riders earn ₹5 per drop',good:'Riders earn ₹20+ per drop'},
+                {bad:'Shops losing to big apps',good:'Shops keep most of revenue'},
+                {bad:'Riders underpaid by big apps',good:'Riders earn fairly here'},
               ].map((row,i)=>(
                 <div key={i} style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
                   <div style={{background:'rgba(239,68,68,.07)',border:'1px solid rgba(239,68,68,.15)',borderRadius:12,padding:'11px 14px',fontSize:13,color:'rgba(255,255,255,.4)',fontWeight:600}}>❌ {row.bad}</div>
@@ -212,9 +235,9 @@ export default function LandingPage() {
             <div className="for-card" style={{background:'rgba(255,255,255,.04)',border:'1px solid rgba(255,255,255,.1)'}}>
               <div style={{fontSize:44,marginBottom:18}}>🏪</div>
               <h3 style={{fontWeight:900,fontSize:20,marginBottom:10}}>Shop Owners</h3>
-              <p style={{fontSize:14,color:'rgba(255,255,255,.5)',lineHeight:1.7,marginBottom:20}}>List free. We bring customers to you. You keep 85% of every order — the lowest commission in India.</p>
+              <p style={{fontSize:14,color:'rgba(255,255,255,.5)',lineHeight:1.7,marginBottom:20}}>List your shop free. We bring local customers to your door. You keep the bulk of every order — no hidden fees, ever.</p>
               <ul style={{listStyle:'none',display:'flex',flexDirection:'column',gap:8,marginBottom:24}}>
-                {['Free listing — zero setup cost','15% only on completed sales','Dashboard to manage orders','Accept pickup & delivery'].map(f=>(
+                {['Free listing — zero setup cost','Low commission on completed sales','Dashboard to manage orders','Accept pickup & delivery'].map(f=>(
                   <li key={f} style={{fontSize:13,color:'rgba(255,255,255,.6)',display:'flex',alignItems:'center',gap:8}}><span style={{color:'rgba(255,255,255,.3)',fontWeight:900}}>→</span>{f}</li>
                 ))}
               </ul>
@@ -226,9 +249,9 @@ export default function LandingPage() {
             <div className="for-card" style={{background:'rgba(34,197,94,.06)',border:'1px solid rgba(34,197,94,.15)'}}>
               <div style={{fontSize:44,marginBottom:18}}>🛵</div>
               <h3 style={{fontWeight:900,fontSize:20,marginBottom:10}}>Delivery Riders</h3>
-              <p style={{fontSize:14,color:'rgba(255,255,255,.5)',lineHeight:1.7,marginBottom:20}}>Earn ₹20+ per delivery in your own neighbourhood. Work whenever you want. Paid instantly.</p>
+              <p style={{fontSize:14,color:'rgba(255,255,255,.5)',lineHeight:1.7,marginBottom:20}}>Earn a solid income doing deliveries in your own neighbourhood. Work whenever you want. Get paid on time, every time.</p>
               <ul style={{listStyle:'none',display:'flex',flexDirection:'column',gap:8,marginBottom:24}}>
-                {['₹20+ per delivery','Instant wallet credit','Work your own hours','Short local distances only'].map(f=>(
+                {['Competitive pay per delivery','Instant wallet credit','Work your own hours','Short local distances only'].map(f=>(
                   <li key={f} style={{fontSize:13,color:'rgba(255,255,255,.6)',display:'flex',alignItems:'center',gap:8}}><span style={{color:'#22C55E',fontWeight:900}}>→</span>{f}</li>
                 ))}
               </ul>
@@ -251,7 +274,7 @@ export default function LandingPage() {
             Every order on Welokl keeps a local shopkeeper in business, puts fair wages in a rider's pocket, and gets fresh goods to a neighbour's door. Hyperlocal, honest, built to last.
           </p>
           <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:14,flexWrap:'wrap'}}>
-            {[{icon:'🌱',title:'Community first',sub:'No dark kitchens'},{icon:'⚡',title:'Under 30 minutes',sub:'Always'},{icon:'🤝',title:'Fair for all',sub:'Shops 85%, riders ₹20+'}].map(v=>(
+            {[{icon:'🌱',title:'Community first',sub:'No dark kitchens'},{icon:'⚡',title:'Under 30 minutes',sub:'Always'},{icon:'🤝',title:'Fair for all',sub:'Shops & riders paid well'}].map(v=>(
               <div key={v.title} style={{display:'flex',alignItems:'center',gap:10,background:'rgba(255,255,255,.04)',border:'1px solid rgba(255,255,255,.08)',borderRadius:14,padding:'14px 18px'}}>
                 <span style={{fontSize:22}}>{v.icon}</span>
                 <div style={{textAlign:'left'}}>
@@ -287,7 +310,7 @@ export default function LandingPage() {
             <div style={{width:28,height:28,borderRadius:8,background:'#FF3008',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:900,fontSize:13,color:'#fff'}}>W</div>
             <span style={{fontWeight:800,fontSize:16,letterSpacing:'-0.02em'}}>welokl</span>
           </div>
-          <p style={{fontSize:12,color:'rgba(255,255,255,.25)'}}>Your neighbourhood, on your phone · © {new Date().getFullYear()} Welokl</p>
+          <p style={{fontSize:12,color:'rgba(255,255,255,.25)'}}>Your neighbourhood, on your phone - © {new Date().getFullYear()} Welokl</p>
           <div style={{display:'flex',gap:24,fontSize:12}}>
             <a href="#" style={{textDecoration:'none',color:'rgba(255,255,255,.3)'}}>Privacy</a>
             <a href="#" style={{textDecoration:'none',color:'rgba(255,255,255,.3)'}}>Terms</a>

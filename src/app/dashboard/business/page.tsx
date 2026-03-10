@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useState, useCallback, useRef } from 'react'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import type { Order, Shop, Product, User } from '@/types'
 import { ORDER_STATUS_LABELS, ORDER_STATUS_ICONS } from '@/types'
@@ -7,6 +8,7 @@ import { useShopkeeperOrderAlerts, useVisibilityReconnect } from '@/hooks/useOrd
 import ThemeToggle from '@/components/ThemeToggle'
 import ImageUploader from '@/components/ImageUploader'
 import { uploadShopImage, deleteProductImages, imgUrl } from '@/lib/imageService'
+import BusinessAnalytics from '@/components/BusinessAnalytics'
 
 type Tab = 'orders' | 'products' | 'analytics' | 'settings'
 
@@ -18,6 +20,7 @@ export default function BusinessDashboard() {
   const [tab, setTab] = useState<Tab>('orders')
   const [loading, setLoading] = useState(true)
   const [showAddProduct, setShowAddProduct] = useState(false)
+  const [editingProduct, setEditingProduct] = useState<any>(null)
   const [verStatus, setVerStatus] = useState<'pending' | 'approved' | 'rejected' | null>(null)
   const [verNote, setVerNote] = useState<string | null>(null)
   const [logoProgress, setLogoProgress]     = useState(0)
@@ -233,6 +236,9 @@ export default function BusinessDashboard() {
               </div>
             ))}
           </div>
+          <Link href="/dashboard/business/sales" style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:8, margin:'12px 0 4px', padding:'10px', borderRadius:12, background:'var(--bg-3)', border:'1px solid var(--border)', textDecoration:'none', color:'var(--text-2)', fontWeight:700, fontSize:13 }}>
+            📊 View full sales analytics
+          </Link>
         </div>
       </div>
 
@@ -263,7 +269,7 @@ export default function BusinessDashboard() {
                       </div>
                       <div style={{fontSize:11, color:"var(--text-3)", marginBottom:12}}>
                         <div>{(order as any).items?.map((i: any) => `${i.product_name} ×${i.quantity}`).join(', ')}</div>
-                        <div className="mt-1">{order.payment_method === 'cod' ? '💵 COD' : '📲 UPI'} · {order.type === 'delivery' ? '🛵 Delivery' : '🏃 Pickup'}</div>
+                        <div className="mt-1">{order.payment_method === 'cod' ? '💵 COD' : '📲 UPI'} - {order.type === 'delivery' ? '🛵 Delivery' : '🏃 Pickup'}</div>
                         {order.delivery_address && <div>📍 {order.delivery_address}</div>}
                       </div>
                       <div className="flex gap-2">
@@ -387,7 +393,7 @@ export default function BusinessDashboard() {
                       <div className="flex items-center gap-2 mt-0.5">
                         <span className="text-sm font-bold text-brand-500">₹{p.price}</span>
                         {p.original_price && p.original_price > p.price && <span style={{fontSize:12, color:"var(--text-3)", textDecoration:"line-through"}}>₹{p.original_price}</span>}
-                        {p.category && <span style={{fontSize:11,color:"var(--text-3)"}}>· {p.category}</span>}
+                        {p.category && <span style={{fontSize:11,color:"var(--text-3)"}}>- {p.category}</span>}
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -395,6 +401,7 @@ export default function BusinessDashboard() {
                         style={{position:'relative', width:40, height:20, borderRadius:999, background:p.is_available?'#22c55e':'var(--bg-4)', border:'none', cursor:'pointer', transition:'background .2s', flexShrink:0}}>
                         <span style={{position:'absolute', top:2, left:2, width:16, height:16, borderRadius:'50%', background:'white', boxShadow:'0 1px 3px rgba(0,0,0,.2)', transition:'transform .2s', transform:p.is_available?'translateX(20px)':'none'}} />
                       </button>
+                      <button onClick={() => setEditingProduct(p)} style={{color:"var(--text-3)", background:"none", border:"none", cursor:"pointer", fontSize:15, padding:"0 4px", fontFamily:"inherit"}} title="Edit & add image">✏️</button>
                       <button onClick={() => deleteProduct(p.id)} style={{color:"var(--text-3)", background:"none", border:"none", cursor:"pointer", fontSize:16, padding:"0 4px", fontFamily:"inherit"}}>✕</button>
                     </div>
                   </div>
@@ -404,28 +411,8 @@ export default function BusinessDashboard() {
           </div>
         )}
 
-        {tab === 'analytics' && (
-          <div className="space-y-4">
-            <div className="grid sm:grid-cols-3 gap-4">
-              {[
-                { label: 'Total Orders', value: deliveredOrders.length, icon: '📦' },
-                { label: 'Gross Revenue', value: `₹${totalRevenue}`, icon: '💰' },
-                { label: 'Your Earnings', value: `₹${netEarnings}`, icon: '🏦' },
-              ].map(s => (
-                <div key={s.label} className="card p-5">
-                  <div className="text-2xl mb-2">{s.icon}</div>
-                  <div className="font-bold text-2xl">{s.value}</div>
-                  <div style={{fontSize:13, color:"var(--text-3)", marginTop:2}}>{s.label}</div>
-                </div>
-              ))}
-            </div>
-            <div className="card p-5 text-sm space-y-2">
-              <h3 className="font-bold mb-3">Breakdown</h3>
-              <div className="flex justify-between"><span>Gross Revenue</span><span className="font-semibold">₹{totalRevenue}</span></div>
-              <div className="flex justify-between text-red-500"><span>Commission ({shop?.commission_percent || 15}%)</span><span>-₹{commission}</span></div>
-              <div className="flex justify-between font-bold text-green-700 border-t pt-2"><span>Your earnings</span><span>₹{netEarnings}</span></div>
-            </div>
-          </div>
+        {tab === 'analytics' && shop && (
+          <BusinessAnalytics shopId={shop.id} />
         )}
 
         {tab === 'settings' && (
@@ -482,6 +469,9 @@ export default function BusinessDashboard() {
 
       {showAddProduct && shop && user && (
         <AddProductModal shopId={shop.id} userId={user.id} onClose={() => setShowAddProduct(false)} onSuccess={() => { setShowAddProduct(false); loadData() }} />
+      )}
+      {editingProduct && user && (
+        <EditProductModal product={editingProduct} userId={user.id} onClose={() => setEditingProduct(null)} onSuccess={() => { setEditingProduct(null); loadData() }} />
       )}
     </div>
   )
@@ -728,6 +718,125 @@ function AddProductModal({ shopId, userId, onClose, onSuccess }: { shopId: strin
             <button type="submit" disabled={loading} className="btn-primary flex-1 py-3">{loading ? 'Adding...' : 'Add product'}</button>
           </div>
         </form>
+      </div>
+    </div>
+  )
+}
+
+// ── Edit Product Modal ────────────────────────────────────────────────────────
+function EditProductModal({ product, userId, onClose, onSuccess }: {
+  product: any; userId: string; onClose: () => void; onSuccess: () => void
+}) {
+  const [form, setForm] = useState({
+    name: product.name || '',
+    description: product.description || '',
+    price: String(product.price || ''),
+    original_price: String(product.original_price || ''),
+    category: product.category || product.category_name || '',
+    is_veg: product.is_veg === true ? 'veg' : product.is_veg === false ? 'nonveg' : '',
+    is_available: product.is_available ?? true,
+  })
+  const [imgFile, setImgFile] = useState<File | null>(null)
+  const [imgPreview, setImgPreview] = useState<string | null>(product.image_url || null)
+  const [uploading, setUploading] = useState(false)
+  const [error, setError] = useState('')
+
+  function handleImgSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setImgFile(file)
+    setImgPreview(URL.createObjectURL(file))
+  }
+
+  async function handleSave() {
+    if (!form.name.trim()) { setError('Name required'); return }
+    if (!form.price || isNaN(Number(form.price))) { setError('Valid price required'); return }
+    setUploading(true); setError('')
+    const supabase = createClient()
+
+    // Update product fields
+    const { error: err } = await supabase.from('products').update({
+      name: form.name.trim(),
+      description: form.description.trim() || null,
+      price: parseInt(form.price),
+      original_price: form.original_price ? parseInt(form.original_price) : null,
+      category: form.category.trim() || null,
+      is_veg: form.is_veg === 'veg' ? true : form.is_veg === 'nonveg' ? false : null,
+      is_available: form.is_available,
+    }).eq('id', product.id)
+
+    if (err) { setError(err.message); setUploading(false); return }
+
+    // Upload new image if selected
+    if (imgFile) {
+      try {
+        const { uploadProductImage } = await import('@/lib/imageService')
+        const { url } = await uploadProductImage(imgFile, userId, product.id, 1, () => {})
+        await supabase.from('products').update({ image_url: url }).eq('id', product.id)
+      } catch (e: any) {
+        console.error('Image upload failed:', e.message)
+      }
+    }
+
+    setUploading(false)
+    onSuccess()
+  }
+
+  const inp = { background: 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 12px', fontSize: 14, color: 'var(--text)', width: '100%', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(0,0,0,.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div style={{ background: 'var(--card-bg)', borderRadius: 20, width: '100%', maxWidth: 460, maxHeight: '90vh', overflowY: 'auto', padding: '24px 20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+          <h2 style={{ fontWeight: 900, fontSize: 18, color: 'var(--text)' }}>Edit Product</h2>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: 'var(--text-3)' }}>✕</button>
+        </div>
+
+        {error && <p style={{ color: '#ef4444', fontSize: 13, marginBottom: 14, fontWeight: 600 }}>{error}</p>}
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {/* Image upload */}
+          <div>
+            <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-3)', marginBottom: 8 }}>PRODUCT IMAGE</p>
+            <label style={{ display: 'block', cursor: 'pointer' }}>
+              <div style={{ width: '100%', height: 160, borderRadius: 14, border: '2px dashed var(--border)', background: 'var(--bg-3)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', position: 'relative' }}>
+                {imgPreview
+                  ? <img src={imgPreview} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  : <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: 32, marginBottom: 8 }}>📷</div>
+                      <p style={{ fontSize: 13, color: 'var(--text-3)', fontWeight: 600 }}>Tap to add image</p>
+                    </div>}
+                {imgPreview && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0, transition: 'opacity .2s' }}
+                  onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.opacity = '1'}
+                  onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.opacity = '0'}>
+                  <span style={{ color: '#fff', fontWeight: 800, fontSize: 14 }}>Change image</span>
+                </div>}
+              </div>
+              <input type="file" accept="image/*" onChange={handleImgSelect} style={{ display: 'none' }} />
+            </label>
+          </div>
+
+          <input placeholder="Product name *" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} style={inp} />
+          <input placeholder="Description" value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} style={inp} />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <input placeholder="Price ₹ *" type="number" value={form.price} onChange={e => setForm(p => ({ ...p, price: e.target.value }))} style={inp} />
+            <input placeholder="Original ₹ (optional)" type="number" value={form.original_price} onChange={e => setForm(p => ({ ...p, original_price: e.target.value }))} style={inp} />
+          </div>
+          <input placeholder="Category (e.g. Snacks)" value={form.category} onChange={e => setForm(p => ({ ...p, category: e.target.value }))} style={inp} />
+          <select value={form.is_veg} onChange={e => setForm(p => ({ ...p, is_veg: e.target.value }))} style={{ ...inp, cursor: 'pointer' }}>
+            <option value="">Veg / Non-veg (optional)</option>
+            <option value="veg">🟢 Veg</option>
+            <option value="nonveg">🔴 Non-veg</option>
+          </select>
+
+          <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+            <button onClick={onClose} style={{ flex: 1, padding: 13, borderRadius: 12, background: 'var(--bg-3)', border: '1px solid var(--border)', color: 'var(--text-2)', fontWeight: 800, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
+            <button onClick={handleSave} disabled={uploading}
+              style={{ flex: 2, padding: 13, borderRadius: 12, background: uploading ? 'var(--bg-4)' : '#ff3008', color: '#fff', fontWeight: 800, fontSize: 14, cursor: uploading ? 'not-allowed' : 'pointer', fontFamily: 'inherit', border: 'none' }}>
+              {uploading ? 'Saving…' : 'Save changes'}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   )

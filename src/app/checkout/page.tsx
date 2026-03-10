@@ -24,6 +24,7 @@ export default function CheckoutPage() {
   const [upiId, setUpiId]           = useState('')
   const [loading, setLoading]       = useState(false)
   const [detecting, setDetecting]   = useState(false)
+  const [mounted, setMounted]       = useState(false)
   const [error, setError]           = useState('')
   const [savedAddresses, setSaved]  = useState<SavedAddress[]>([])
   const [selLat, setSelLat]         = useState<number | null>(null)
@@ -32,6 +33,8 @@ export default function CheckoutPage() {
 
   const subtotal = cart.subtotal()
   const fees = calculateFees(subtotal, 15, orderType)
+
+  useEffect(() => { setMounted(true) }, [])
 
   useEffect(() => {
     async function init() {
@@ -52,6 +55,13 @@ export default function CheckoutPage() {
     }
     init()
   }, [])
+
+  if (!mounted) return (
+    <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <style>{`@keyframes sp{to{transform:rotate(360deg)}}`}</style>
+      <div style={{ width: 36, height: 36, border: '3px solid var(--border)', borderTopColor: '#ff3008', borderRadius: '50%', animation: 'sp .7s linear infinite' }} />
+    </div>
+  )
 
   async function detectLocation() {
     if (!navigator.geolocation) { setError('Location not supported'); return }
