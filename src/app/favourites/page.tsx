@@ -27,8 +27,16 @@ export default function FavouritesPage() {
     cat?.includes('Food') ? '🍔' : cat?.includes('Grocery') ? '🛒' :
     cat?.includes('Pharmacy') ? '💊' : cat?.includes('Electronics') ? '📱' : '🏪'
 
+  const NAV = [
+    { icon: '🏠', label: 'Home',   href: '/dashboard/customer', on: false },
+    { icon: '🛍️', label: 'Shops',  href: '/stores',              on: false },
+    { icon: '❤️', label: 'Saved',  href: '/favourites',          on: true  },
+    { icon: '📦', label: 'Orders', href: '/orders/history',       on: false },
+  ]
+
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)', fontFamily: "'Plus Jakarta Sans', sans-serif", paddingBottom: 80 }}>
+
       {/* Header */}
       <div style={{ position: 'sticky', top: 0, zIndex: 40, background: 'var(--card-bg)', borderBottom: '1px solid var(--border)', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
         <button onClick={() => window.history.back()} style={{ padding: '6px 10px', borderRadius: 10, background: 'var(--bg-3)', border: 'none', cursor: 'pointer', fontSize: 18, color: 'var(--text)' }}>←</button>
@@ -52,7 +60,7 @@ export default function FavouritesPage() {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {shops.map(shop => (
-              <div key={shop.id} style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 14, boxShadow: 'var(--card-shadow)' }}>
+              <div key={shop.id} style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 14 }}>
                 <Link href={`/stores/${shop.id}`} style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 14, textDecoration: 'none' }}>
                   <div style={{ width: 52, height: 52, background: 'var(--bg-1)', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, flexShrink: 0 }}>
                     {catIcon(shop.category_name)}
@@ -75,17 +83,13 @@ export default function FavouritesPage() {
       </div>
 
       {/* Bottom nav */}
-      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: 'var(--card-bg)', borderTop: '1px solid var(--border)', zIndex: 50 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-around', padding: '8px 0', maxWidth: 480, margin: '0 auto' }}>
-          {[
-            { icon: '🏠', label: 'Home', href: '/' },
-            { icon: '🛍️', label: 'Shops', href: '/stores' },
-            { icon: '❤️', label: 'Saved', href: '/favourites', active: true },
-            { icon: '📦', label: 'Orders', href: '/dashboard/customer' },
-          ].map(item => (
-            <Link key={item.label} href={item.href} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: '6px 16px', borderRadius: 12, textDecoration: 'none', color: item.active ? '#ff3008' : 'var(--text-3)' }}>
-              <span style={{ fontSize: 20 }}>{item.icon}</span>
-              <span style={{ fontSize: 10, fontWeight: 700 }}>{item.label}</span>
+      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: 'var(--card-bg)', borderTop: '1px solid var(--border)', paddingBottom: 'env(safe-area-inset-bottom,0)', zIndex: 50 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-around', padding: '6px 0 8px', maxWidth: 480, margin: '0 auto' }}>
+          {NAV.map(item => (
+            <Link key={item.label} href={item.href}
+              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: '6px 18px', borderRadius: 14, textDecoration: 'none', color: item.on ? '#ff3008' : 'var(--text-3)', WebkitTapHighlightColor: 'transparent' }}>
+              <span style={{ fontSize: 22, lineHeight: 1 }}>{item.icon}</span>
+              <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.01em' }}>{item.label}</span>
             </Link>
           ))}
         </div>

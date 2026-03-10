@@ -692,12 +692,16 @@ html.theme-ready * {
 
 /* ── Promo banner ── */
 .cd-promo {
-  background: linear-gradient(135deg, #1a0600, #2d0e00);
+  background: var(--cd-promo-bg, linear-gradient(135deg, rgba(255,48,8,.08), rgba(255,90,30,.05)));
   border-radius: 18px;
   padding: 18px 20px;
   display: flex; align-items: center; justify-content: space-between;
   overflow: hidden; position: relative;
-  border: 1px solid rgba(255,48,8,.25);
+  border: 1px solid rgba(255,48,8,.18);
+}
+html.dark .cd-promo {
+  background: linear-gradient(135deg, #1a0600, #2d0e00);
+  border-color: rgba(255,48,8,.25);
 }
 
 /* ── Landing Page Design Tokens ── */

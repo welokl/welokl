@@ -451,7 +451,7 @@ function ShopCard({ shop, index, closed }: { shop: Shop & { km: number | null };
         }
         <div style={{ position:'absolute', bottom:7, left:7 }}>
           {shop.is_open
-            ? <span style={{ background:'rgba(22,163,74,.92)', color:'var(--text)', fontSize:9, fontWeight:800, padding:'2px 6px', borderRadius:6 }}>● OPEN</span>
+            ? <span style={{ background:'rgba(22,163,74,.92)', color:'#fff', fontSize:9, fontWeight:800, padding:'2px 6px', borderRadius:6 }}>OPEN</span>
             : <span style={{ background:'rgba(0,0,0,.6)', color:'rgba(255,255,255,.55)', fontSize:9, fontWeight:700, padding:'2px 6px', borderRadius:6 }}>CLOSED</span>
           }
         </div>

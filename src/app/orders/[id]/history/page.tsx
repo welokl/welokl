@@ -111,9 +111,12 @@ export default function OrdersHistoryPage() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
                   {/* Shop logo */}
                   <div style={{ width: 52, height: 52, borderRadius: 14, background: 'var(--bg-3)', border: '1px solid var(--border)', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    {(Array.isArray(order.shop) ? order.shop[0]?.image_url : order.shop?.image_url)
-                      ? <img src={order.shop.image_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
-                      : <span style={{ fontSize: 24 }}>🏪</span>}
+                    {(() => {
+                      const imgUrl = Array.isArray(order.shop) ? order.shop[0]?.image_url : order.shop?.image_url
+                      return imgUrl
+                        ? <img src={imgUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
+                        : <span style={{ fontSize: 24 }}>🏪</span>
+                    })()}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
@@ -127,7 +130,7 @@ export default function OrdersHistoryPage() {
                       {order.items.length > 3 && ` +${order.items.length - 3} more`}
                     </p>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <span style={{ fontWeight: 900, fontSize: 14, color: 'var(--text)' }}>&#8377;{order.total_amount}</span>
+                      <span style={{ fontWeight: 900, fontSize: 14, color: 'var(--text)' }}>₹{order.total_amount}</span>
                       <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{timeAgo(order.created_at)} · #{order.order_number}</span>
                     </div>
                   </div>
@@ -135,11 +138,29 @@ export default function OrdersHistoryPage() {
                 {/* Reorder button for delivered orders */}
                 {order.status === 'delivered' && (
                   <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end' }}>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: '#ff3008' }}>Reorder &#8594;</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: '#ff3008' }}>Reorder →</span>
                   </div>
                 )}
               </div>
             </Link>
+          ))}
+        </div>
+      </div>
+
+      {/* Bottom nav */}
+      <div style={{ position:'fixed', bottom:0, left:0, right:0, background:'var(--card-bg)', borderTop:'1px solid var(--border)', paddingBottom:'env(safe-area-inset-bottom,0)', zIndex:50 }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-around', padding:'6px 0 8px', maxWidth:480, margin:'0 auto' }}>
+          {([
+            { icon:'🏠', label:'Home',   href:'/dashboard/customer' },
+            { icon:'🛍️', label:'Shops',  href:'/stores'             },
+            { icon:'❤️', label:'Saved',  href:'/favourites'          },
+            { icon:'📦', label:'Orders', href:'/orders/history', on:true },
+          ] as {icon:string;label:string;href:string;on?:boolean}[]).map(item => (
+            <a key={item.label} href={item.href}
+              style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:2, padding:'6px 18px', borderRadius:14, textDecoration:'none', color: item.on ? '#ff3008' : 'var(--text-3)', WebkitTapHighlightColor:'transparent' as any }}>
+              <span style={{ fontSize:22, lineHeight:1 }}>{item.icon}</span>
+              <span style={{ fontSize:11, fontWeight:800, letterSpacing:'0.01em' }}>{item.label}</span>
+            </a>
           ))}
         </div>
       </div>
