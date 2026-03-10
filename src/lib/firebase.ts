@@ -9,31 +9,47 @@ const firebaseConfig = {
   storageBucket:     "welokl-b47d4.firebasestorage.app",
   messagingSenderId: "551056082419",
   appId:             "1:551056082419:web:b357bc92820ac8ff66fe86",
-  measurementId:     "G-JX7B2L5DK1",
 }
 
 const VAPID_KEY = "BOQv6ar8lwtXUX6z1kGERvkt3sT3sHF5TJc131aRmnZ_vnwxaa2dr1JF97dTPCvKOobGOaeOqIXGx4Njci3Odos"
 
-// Init app once
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0]
 
-/**
- * Request notification permission and return FCM token.
- * Returns null if not supported or denied.
- */
+// Register Firebase's OWN service worker explicitly
+// This is the critical fix — must NOT use the existing sw.js
+async function getFirebaseSWRegistration(): Promise<ServiceWorkerRegistration> {
+  // Check if firebase-messaging-sw.js is already registered
+  const registrations = await navigator.serviceWorker.getRegistrations()
+  const existing = registrations.find(r =>
+    r.active?.scriptURL.includes('firebase-messaging-sw') ||
+    r.installing?.scriptURL.includes('firebase-messaging-sw') ||
+    r.waiting?.scriptURL.includes('firebase-messaging-sw')
+  )
+  if (existing) return existing
+  // Register it fresh
+  return navigator.serviceWorker.register('/firebase-messaging-sw.js', {
+    scope: '/',
+  })
+}
+
 export async function getFCMToken(): Promise<string | null> {
   try {
+    if (typeof window === 'undefined') return null
     const supported = await isSupported()
     if (!supported) return null
-
-    const messaging = getMessaging(app)
+    if (!('serviceWorker' in navigator)) return null
 
     const permission = await Notification.requestPermission()
     if (permission !== 'granted') return null
 
+    // Register Firebase SW explicitly — do NOT use serviceWorker.ready
+    // because that returns sw.js, not firebase-messaging-sw.js
+    const swReg = await getFirebaseSWRegistration()
+
+    const messaging = getMessaging(app)
     const token = await getToken(messaging, {
       vapidKey: VAPID_KEY,
-      serviceWorkerRegistration: await navigator.serviceWorker.ready,
+      serviceWorkerRegistration: swReg,
     })
 
     return token || null
@@ -43,14 +59,11 @@ export async function getFCMToken(): Promise<string | null> {
   }
 }
 
-/**
- * Listen for foreground messages (app is open).
- * Background messages are handled by firebase-messaging-sw.js
- */
 export async function onForegroundMessage(
   handler: (payload: { title: string; body: string; url?: string }) => void
 ) {
   try {
+    if (typeof window === 'undefined') return
     const supported = await isSupported()
     if (!supported) return
     const messaging = getMessaging(app)
