@@ -1,11 +1,11 @@
 'use client'
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useFCM } from '@/hooks/useFCM'
+import { useCart } from '@/store/cart'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import type { Order, User } from '@/types'
 import { ORDER_STATUS_LABELS, ORDER_STATUS_ICONS } from '@/types'
-import NotificationSetup from '@/components/NotificationSetup'
 import { useCustomerOrderAlerts } from '@/hooks/useOrderAlerts'
 import ThemeToggle from '@/components/ThemeToggle'
 
@@ -55,6 +55,8 @@ const PROMISES = [
 export default function CustomerHome() {
   const [user, setUser]                     = useState<User | null>(null)
   useFCM(user?.id ?? null)
+  const cart = useCart() as any
+  const cartCount = (cart.count?.() ?? cart.itemCount?.() ?? 0) as number
   const [orders, setOrders]                 = useState<Order[]>([])
   const [allShops, setAllShops]             = useState<Shop[]>([])
   const [products, setProducts]             = useState<Product[]>([])
@@ -219,6 +221,12 @@ export default function CustomerHome() {
             <div style={{ display:'flex', alignItems:'center', gap:8 }}>
               <Link href="/favourites"   style={{ width:36, height:36, borderRadius:10, background:'var(--bg-3)', display:'flex', alignItems:'center', justifyContent:'center', textDecoration:'none', fontSize:18 }}>❤️</Link>
               <Link href="/orders/history" style={{ width:36, height:36, borderRadius:10, background:'var(--bg-3)', display:'flex', alignItems:'center', justifyContent:'center', textDecoration:'none', fontSize:18 }}>📦</Link>
+              <Link href="/cart" style={{ width:36, height:36, borderRadius:10, background: cartCount > 0 ? '#ff3008' : 'var(--bg-3)', display:'flex', alignItems:'center', justifyContent:'center', textDecoration:'none', fontSize:16, position:'relative', flexShrink:0 }}>
+                🛒
+                {cartCount > 0 && (
+                  <span style={{ position:'absolute', top:-4, right:-4, width:17, height:17, borderRadius:'50%', background:'#ff3008', border:'2px solid var(--card-bg)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:9, fontWeight:900, color:'#fff', lineHeight:1 }}>{cartCount > 9 ? '9+' : cartCount}</span>
+                )}
+              </Link>
               <ThemeToggle />
             </div>
           </div>
@@ -414,8 +422,6 @@ export default function CustomerHome() {
       </div>
 
 
-      {user?.id && <NotificationSetup userId={user.id} />}
-
       {/* ══ BOTTOM NAV ═══════════════════════════════════════════ */}
       <div className="cd-bottom-nav">
         <div className="cd-bottom-nav-inner">
@@ -424,10 +430,14 @@ export default function CustomerHome() {
             { icon:'🛍️', label:'Shops',  href:'/stores',              on:false },
             { icon:'❤️', label:'Saved',  href:'/favourites',           on:false },
             { icon:'📦', label:'Orders', href:'/orders/history',       on:false },
+            { icon:'🛒', label:'Cart',   href:'/cart',                 on:false, badge: cartCount },
           ].map(item => (
-            <Link key={item.label} href={item.href} className={`cd-nav-item${item.on ? ' on' : ''}`}>
-              <span style={{ fontSize:23, lineHeight:1 }}>{item.icon}</span>
-              <span style={{ fontSize:11, fontWeight:800, marginTop:2, letterSpacing:'0.01em' }}>{item.label}</span>
+            <Link key={item.label} href={item.href} className={`cd-nav-item${item.on ? ' on' : ''}`} style={{ position:'relative' }}>
+              <span style={{ fontSize:21, lineHeight:1 }}>{item.icon}</span>
+              {(item as any).badge > 0 && (
+                <span style={{ position:'absolute', top:2, right:8, width:16, height:16, borderRadius:'50%', background:'#ff3008', display:'flex', alignItems:'center', justifyContent:'center', fontSize:9, fontWeight:900, color:'#fff' }}>{(item as any).badge > 9 ? '9+' : (item as any).badge}</span>
+              )}
+              <span style={{ fontSize:10, fontWeight:800, marginTop:2, letterSpacing:'0.01em' }}>{item.label}</span>
             </Link>
           ))}
         </div>

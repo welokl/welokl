@@ -44,7 +44,7 @@ export async function getFCMToken(): Promise<string | null> {
 
     // Register Firebase SW explicitly — do NOT use serviceWorker.ready
     // because that returns sw.js, not firebase-messaging-sw.js
-    const swReg = await getFirebaseSWRegistration()
+    const swReg = await navigator.serviceWorker.ready
 
     const messaging = getMessaging(app)
     const token = await getToken(messaging, {

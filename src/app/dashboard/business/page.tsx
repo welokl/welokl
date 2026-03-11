@@ -56,6 +56,7 @@ export default function BusinessDashboard() {
   }, [])
 
   // 🔔 Sound + push notifications — safe to call here, after loadData is declared
+  const [alertsOn, setAlertsOn] = useState(() => { try { return localStorage.getItem('welokl_alerts_on') === '1' } catch { return false } })
   useShopkeeperOrderAlerts(shop?.id)
 
   // Auto-refresh when phone brings app back from background (> 30s)
@@ -234,6 +235,16 @@ export default function BusinessDashboard() {
                 className={`text-xs font-bold px-3 py-1.5 rounded-full border ${shop?.is_open ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-600 border-red-200'}`}>
                 {shop?.is_open ? '● Open' : '● Closed'}
               </button>
+              {!alertsOn ? (
+                <button onClick={() => {
+                  try { const A = window.AudioContext || (window as any).webkitAudioContext; if (A) { const c = new A(); c.resume(); c.close() } } catch {}
+                  setAlertsOn(true); try { localStorage.setItem('welokl_alerts_on','1') } catch {}
+                }} style={{ fontSize:11, fontWeight:700, padding:'5px 10px', borderRadius:8, background:'rgba(255,48,8,.1)', color:'#ff3008', border:'1px solid rgba(255,48,8,.2)', cursor:'pointer', fontFamily:'inherit', whiteSpace:'nowrap' }}>
+                  🔔 Enable Alerts
+                </button>
+              ) : (
+                <span style={{ fontSize:11, fontWeight:700, color:'#16a34a' }}>🔔 Alerts ON</span>
+              )}
               <ThemeToggle />
               <button onClick={async () => { const s = createClient(); await s.auth.signOut(); window.location.href = '/' }}
                 style={{fontSize:12, color:"var(--text-3)", background:"none", border:"none", cursor:"pointer", fontFamily:"inherit", padding:"0 8px"}}>Logout</button>

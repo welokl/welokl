@@ -37,7 +37,13 @@ export default function DeliveryDashboard() {
   const [loading, setLoading]         = useState(true)
   const [toggling, setToggling]       = useState(false)
   const [accepting, setAccepting]     = useState<string | null>(null)
-  const [alertsOn, setAlertsOn]       = useState(false)
+  const [alertsOn, setAlertsOn]       = useState(() => {
+    // Check both localStorage AND the browser's persistent Notification.permission
+    try {
+      if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') return true
+      return localStorage.getItem('welokl_alerts_on') === '1'
+    } catch { return false }
+  })
 
   // 🔔 Sounds + SW notifications
   useDeliveryPartnerAlerts(userId, partner?.is_online ?? false)
@@ -243,7 +249,7 @@ export default function DeliveryDashboard() {
               {!alertsOn && (
                 <button onClick={() => {
                   try { const A = window.AudioContext || (window as any).webkitAudioContext; if (A) { const c = new A(); c.resume(); c.close() } } catch {}
-                  requestNotificationPermission(); setAlertsOn(true)
+                  requestNotificationPermission().then(() => { try { localStorage.setItem('welokl_alerts_on','1') } catch {}; setAlertsOn(true) })
                 }} style={{ fontSize: 11, fontWeight: 700, padding: '6px 10px', borderRadius: 10, background: 'rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.9)', border: '1px solid rgba(255,255,255,0.2)', cursor: 'pointer', fontFamily: 'inherit' }}>
                   🔔 Enable Alerts
                 </button>

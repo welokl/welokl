@@ -6,8 +6,8 @@ import { createClient } from '@/lib/supabase/client'
 
 interface Order {
   id: string; order_number: string; status: string
-  total_amount: number; type: string; created_at: string
-  shop: { name: string; image_url: string | null } | { name: string; image_url: string | null }[] | null
+  total_amount: number; type: string; payment_method?: string; created_at: string
+  shop: { id?: string; name: string; image_url: string | null } | { id?: string; name: string; image_url: string | null }[] | null
   items: { product_name: string; quantity: number }[]
 }
 
@@ -31,15 +31,21 @@ export default function OrdersHistoryPage() {
   useEffect(() => { load() }, [])
 
   async function load() {
-    const sb = createClient()
-    const { data: { user } } = await sb.auth.getUser()
-    if (!user) { window.location.href = '/auth/login'; return }
-    const { data } = await sb.from('orders')
-      .select('id, order_number, status, total_amount, type, created_at, shop:shops(name, image_url), items:order_items(product_name, quantity)')
-      .eq('customer_id', user.id)
-      .order('created_at', { ascending: false })
-    setOrders((data || []) as Order[])
-    setLoading(false)
+    try {
+      const sb = createClient()
+      const { data: { user } } = await sb.auth.getUser()
+      if (!user) { window.location.href = '/auth/login'; return }
+      const { data, error } = await sb.from('orders')
+        .select('id, order_number, status, total_amount, type, payment_method, created_at, shop:shops(id, name, image_url), items:order_items(product_name, quantity)')
+        .eq('customer_id', user.id)
+        .order('created_at', { ascending: false })
+      if (error) console.error('[orders] load error:', error.message)
+      setOrders((data || []) as Order[])
+    } catch (e) {
+      console.error('[orders] unexpected error:', e)
+    } finally {
+      setLoading(false)
+    }
   }
 
   const filtered = orders.filter(o => {
@@ -61,7 +67,7 @@ export default function OrdersHistoryPage() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg)', fontFamily: "'Plus Jakarta Sans', sans-serif", paddingBottom: 40 }}>
+    <div style={{ minHeight: '100vh', background: 'var(--bg)', fontFamily: "'Plus Jakarta Sans', sans-serif", paddingBottom: 80 }}>
       <style>{`@keyframes sp{to{transform:rotate(360deg)}}@keyframes sh{0%{background-position:-400px 0}100%{background-position:400px 0}}.sk{background:linear-gradient(90deg,var(--bg-3) 25%,var(--bg-2) 50%,var(--bg-3) 75%);background-size:400px 100%;animation:sh 1.4s infinite;border-radius:14px;}`}</style>
 
       {/* Header */}
