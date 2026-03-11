@@ -15,10 +15,12 @@ interface Shop {
 interface Product {
   id: string; name: string; description?: string | null
   price: number; original_price?: number | null
-  image_url: string | null   // explicitly NOT optional — always present from DB
+  image_url?: string | null
   is_veg?: boolean | null
-  is_available: boolean; category?: string | null; category_name?: string | null
-  sort_order?: number; shop_id: string
+  is_available?: boolean
+  category?: string | null; category_name?: string | null
+  sort_order?: number; shop_id?: string
+  [key: string]: unknown  // allow any extra DB columns
 }
 
 export default function StorePage() {
@@ -32,23 +34,43 @@ export default function StorePage() {
   const [diffWarn, setDiffWarn] = useState(false)
   const [activeCat, setActiveCat] = useState('all')
 
+  // Hydrate cart from localStorage (avoids Web Locks AbortError from zustand persist)
+  useEffect(() => { cart._hydrate?.() }, [])
   useEffect(() => { load() }, [id])
 
   async function load() {
+    if (!id) return
     const sb = createClient()
-    const [{ data: s }, { data: p, error: pe }] = await Promise.all([
-      sb.from('shops').select('*').eq('id', id).single(),
-      sb.from('products')
-        .select('id, name, description, price, original_price, image_url, is_veg, is_available, category, category_name, sort_order, shop_id')
+    try {
+      // Load shop
+      const { data: s, error: se } = await sb.from('shops').select('*').eq('id', id).single()
+      if (se) console.error('[store] shop error:', se.message)
+
+      // Load products — use only safe columns that definitely exist
+      const { data: p, error: pe } = await sb
+        .from('products')
+        .select('id, name, description, price, original_price, image_url, is_veg, is_available, shop_id')
         .eq('shop_id', id)
-        .eq('is_available', true)
-        .order('sort_order'),
-    ])
-    if (pe) console.error('[store] products error:', pe.message)
-    console.log('[store] products:', p?.map(x => ({ name: x.name, image_url: x.image_url })))
-    setShop(s)
-    setProducts((p ?? []) as Product[])
-    setLoading(false)
+        .order('name')
+
+      if (pe) {
+        console.error('[store] products error:', pe.message, 'shop_id:', id)
+        // Try minimal fallback query
+        const { data: p2 } = await sb
+          .from('products')
+          .select('*')
+          .eq('shop_id', id)
+        console.log('[store] fallback loaded', p2?.length ?? 0, 'products')
+        setProducts((p2 ?? []) as Product[])
+      } else {
+        console.log('[store] loaded', p?.length ?? 0, 'products for shop', id)
+        setProducts((p ?? []) as Product[])
+      }
+
+      setShop(s)
+    } finally {
+      setLoading(false)
+    }
   }
 
   function handleAdd(product: Product) {
@@ -57,7 +79,7 @@ export default function StorePage() {
   }
 
   const grouped = products.reduce<Record<string, Product[]>>((acc, p) => {
-    const cat = p.category ?? p.category_name ?? 'Other'
+    const cat = (p as any).category ?? (p as any).category_name ?? 'Items'
     ;(acc[cat] ??= []).push(p)
     return acc
   }, {})

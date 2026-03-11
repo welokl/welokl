@@ -188,6 +188,9 @@ export default function LandingPage() {
           .lp-grid-4    { grid-template-columns:1fr 1fr!important }
           .lp-grid-steps{ grid-template-columns:1fr!important }
           .lp-stats-grid{ grid-template-columns:1fr 1fr!important }
+          .lp-vs-row    { grid-template-columns:1fr!important }
+          .lp-cta-btns  { flex-direction:column!important;align-items:stretch!important }
+          .lp-cta-btns a{ text-align:center!important;justify-content:center!important }
         }
 
         /* Mobile stat borders */
@@ -235,7 +238,7 @@ export default function LandingPage() {
               Live near you — Jaipur &amp; expanding
             </div>
 
-            <h1 className="lp-fu1" style={{ fontFamily:"'Syne',sans-serif", fontSize:'clamp(2.4rem,6vw,4rem)', fontWeight:800, lineHeight:1.06, letterSpacing:'-.04em', color:'var(--lp-text)', marginBottom:18 }}>
+            <h1 className="lp-fu1" style={{ fontFamily:"'Syne',sans-serif", fontSize:'clamp(1.75rem,6vw,4rem)', fontWeight:800, lineHeight:1.06, letterSpacing:'-.04em', color:'var(--lp-text)', marginBottom:18 }}>
               Your neighbourhood<br />
               <span style={{ color:'var(--lp-red)', position:'relative', display:'inline-block' }}>
                 delivered fresh
@@ -412,7 +415,7 @@ export default function LandingPage() {
               { bad:'📉 Shops losing to big apps',      good:'📈 Shops keep most revenue'  },
               { bad:'😔 Riders underpaid',               good:'🤑 Riders earn fairly here'  },
             ].map((row,i) => (
-              <div key={i} style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+              <div key={i} className="lp-vs-row" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
                 <div style={{ background:'rgba(239,68,68,.06)', border:'1px solid rgba(239,68,68,.15)', borderRadius:12, padding:'10px 13px', fontSize:13, color:'#B03030', fontWeight:600 }}>{row.bad}</div>
                 <div style={{ background:'rgba(26,122,74,.07)', border:'1px solid rgba(26,122,74,.2)', borderRadius:12, padding:'10px 13px', fontSize:13, color:'#1A7A4A', fontWeight:700 }}>{row.good}</div>
               </div>
@@ -517,7 +520,7 @@ export default function LandingPage() {
             Your neighbourhood is waiting
           </h2>
           <p style={{ fontSize:15, color:'rgba(255,255,255,.78)', marginBottom:32, fontWeight:500 }}>Free to join. No minimum order. Local shops open right now.</p>
-          <div style={{ display:'flex', gap:12, justifyContent:'center', flexWrap:'wrap' }}>
+          <div className="lp-cta-btns" style={{ display:'flex', gap:12, justifyContent:'center', flexWrap:'wrap' }}>
             <Link href="/auth/signup" style={{ display:'inline-flex', alignItems:'center', gap:8, padding:'14px 32px', borderRadius:14, background:'#fff', color:'#FF3008', fontWeight:900, fontSize:15, textDecoration:'none', boxShadow:'0 4px 20px rgba(0,0,0,.15)', transition:'transform .15s' }}
               onMouseEnter={e => { (e.currentTarget as HTMLAnchorElement).style.transform='translateY(-2px)' }}
               onMouseLeave={e => { (e.currentTarget as HTMLAnchorElement).style.transform='translateY(0)' }}>

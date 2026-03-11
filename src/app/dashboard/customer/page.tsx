@@ -57,6 +57,8 @@ export default function CustomerHome() {
   useFCM(user?.id ?? null)
   const cart = useCart() as any
   const cartCount = (cart.count?.() ?? cart.itemCount?.() ?? 0) as number
+  // Hydrate cart from localStorage on client (no Web Locks AbortError)
+  useEffect(() => { cart._hydrate?.() }, [])
   const [orders, setOrders]                 = useState<Order[]>([])
   const [allShops, setAllShops]             = useState<Shop[]>([])
   const [products, setProducts]             = useState<Product[]>([])

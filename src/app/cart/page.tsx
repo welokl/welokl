@@ -10,7 +10,10 @@ export default function CartPage() {
   const cart = useCart()
   // Hydration guard — cart is in zustand/localStorage, avoid SSR mismatch
   const [mounted, setMounted] = useState(false)
-  useEffect(() => setMounted(true), [])
+  useEffect(() => {
+    cart._hydrate?.()
+    setMounted(true)
+  }, [])
 
   if (!mounted) return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
