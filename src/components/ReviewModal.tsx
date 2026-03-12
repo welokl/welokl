@@ -2,140 +2,133 @@
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
-interface ReviewModalProps {
+interface Props {
   orderId: string
   shopId: string
   shopName: string
-  deliveryPartnerId?: string
+  deliveryPartnerId: string | null
   onClose: () => void
 }
 
-export default function ReviewModal({ orderId, shopId, shopName, deliveryPartnerId, onClose }: ReviewModalProps) {
-  const [shopRating, setShopRating] = useState(0)
+export default function ReviewModal({ orderId, shopId, shopName, deliveryPartnerId, onClose }: Props) {
+  const [shopRating, setShopRating]         = useState(0)
   const [deliveryRating, setDeliveryRating] = useState(0)
-  const [comment, setComment] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [done, setDone] = useState(false)
+  const [comment, setComment]               = useState('')
+  const [loading, setLoading]               = useState(false)
+  const [done, setDone]                     = useState(false)
 
-  async function submitReview() {
-    if (shopRating === 0) return
+  async function submit() {
+    if (!shopRating) return
     setLoading(true)
+    try {
+      const sb = createClient()
+      const { data: { user } } = await sb.auth.getUser()
+      if (!user) return
 
-    const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
+      await sb.from('reviews').upsert({
+        order_id: orderId,
+        shop_id: shopId,
+        customer_id: user.id,
+        shop_rating: shopRating,
+        delivery_rating: deliveryRating || null,
+        comment: comment.trim() || null,
+      }, { onConflict: 'order_id' })
 
-    await supabase.from('reviews').upsert({
-      order_id: orderId,
-      customer_id: user.id,
-      shop_id: shopId,
-      delivery_partner_id: deliveryPartnerId || null,
-      shop_rating: shopRating,
-      delivery_rating: deliveryRating || null,
-      comment: comment.trim() || null,
-    }, { onConflict: 'order_id' })
+      // Update shop average rating
+      const { data: reviews } = await sb.from('reviews').select('shop_rating').eq('shop_id', shopId)
+      if (reviews && reviews.length > 0) {
+        const avg = reviews.reduce((s, r) => s + (r.shop_rating || 0), 0) / reviews.length
+        await sb.from('shops').update({ rating: Math.round(avg * 10) / 10 }).eq('id', shopId)
+      }
 
-    // Update shop average rating
-    const { data: reviews } = await supabase
-      .from('reviews')
-      .select('shop_rating')
-      .eq('shop_id', shopId)
+      // Update delivery partner rating if applicable
+      if (deliveryPartnerId && deliveryRating) {
+        const { data: dReviews } = await sb.from('reviews').select('delivery_rating').eq('delivery_partner_id', deliveryPartnerId).not('delivery_rating', 'is', null)
+        if (dReviews && dReviews.length > 0) {
+          const davg = dReviews.reduce((s, r) => s + (r.delivery_rating || 0), 0) / dReviews.length
+          await sb.from('delivery_partners').update({ rating: Math.round(davg * 10) / 10 }).eq('user_id', deliveryPartnerId)
+        }
+      }
 
-    if (reviews && reviews.length > 0) {
-      const avg = reviews.reduce((s, r) => s + r.shop_rating, 0) / reviews.length
-      await supabase.from('shops').update({ rating: Math.round(avg * 10) / 10 }).eq('id', shopId)
+      setDone(true)
+      setTimeout(onClose, 1600)
+    } catch (e) {
+      console.error('[review] submit error:', e)
+    } finally {
+      setLoading(false)
     }
-
-    setDone(true)
-    setLoading(false)
-    setTimeout(onClose, 1500)
   }
 
-  if (done) {
-    return (
-      <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl p-8 text-center max-w-sm w-full">
-          <div className="text-5xl mb-3">🙏</div>
-          <h3 className="font-bold text-lg">Thanks for your feedback!</h3>
-          <p className="text-gray-400 text-sm mt-1">Your review helps others make better choices.</p>
-        </div>
-      </div>
-    )
-  }
+  const Star = ({ n, val, set }: { n: number; val: number; set: (v: number) => void }) => (
+    <button onClick={() => set(n)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', fontSize: 30, lineHeight: 1, filter: n <= val ? 'none' : 'grayscale(1) opacity(0.3)', transition: 'transform .1s', transform: n <= val ? 'scale(1.15)' : 'scale(1)' }}>
+      ⭐
+    </button>
+  )
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center">
-      <div className="bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl">
-        <div className="flex justify-center pt-3 pb-1 sm:hidden">
-          <div className="w-10 h-1 bg-gray-200 rounded-full" />
-        </div>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 999, background: 'rgba(0,0,0,.55)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }} onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div style={{ background: 'var(--card-bg)', borderRadius: '24px 24px 0 0', padding: '24px 20px 40px', width: '100%', maxWidth: 480, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
 
-        <div className="px-5 py-4">
-          <div className="flex items-center justify-between mb-5">
-            <h2 className="font-bold text-lg">Rate your order</h2>
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+        {done ? (
+          <div style={{ textAlign: 'center', padding: '24px 0' }}>
+            <div style={{ fontSize: 52, marginBottom: 12 }}>🎉</div>
+            <h2 style={{ fontWeight: 900, fontSize: 20, color: 'var(--text)', marginBottom: 6 }}>Thanks for the review!</h2>
+            <p style={{ fontSize: 14, color: 'var(--text-3)' }}>It helps local shops improve.</p>
           </div>
+        ) : (
+          <>
+            {/* Handle */}
+            <div style={{ width: 36, height: 4, borderRadius: 2, background: 'var(--border)', margin: '0 auto 20px' }} />
 
-          {/* Shop rating */}
-          <div className="mb-5">
-            <p className="font-semibold text-sm mb-3">How was {shopName}?</p>
-            <div className="flex gap-2 justify-center">
-              {[1, 2, 3, 4, 5].map(star => (
-                <button key={star} onClick={() => setShopRating(star)}
-                  className={`text-3xl transition-all active:scale-90 ${star <= shopRating ? 'opacity-100' : 'opacity-30'}`}>
-                  ⭐
-                </button>
-              ))}
-            </div>
-            <div className="text-center mt-2 text-sm text-gray-500">
-              {shopRating === 1 ? 'Poor' : shopRating === 2 ? 'Fair' : shopRating === 3 ? 'Good' : shopRating === 4 ? 'Very Good' : shopRating === 5 ? 'Excellent!' : 'Tap to rate'}
-            </div>
-          </div>
+            <h2 style={{ fontWeight: 900, fontSize: 18, color: 'var(--text)', marginBottom: 4 }}>Rate your order</h2>
+            <p style={{ fontSize: 13, color: 'var(--text-3)', marginBottom: 20 }}>from {shopName}</p>
 
-          {/* Delivery rating */}
-          {deliveryPartnerId && (
-            <div className="mb-5">
-              <p className="font-semibold text-sm mb-3">How was the delivery?</p>
-              <div className="flex gap-2 justify-center">
-                {[1, 2, 3, 4, 5].map(star => (
-                  <button key={star} onClick={() => setDeliveryRating(star)}
-                    className={`text-3xl transition-all active:scale-90 ${star <= deliveryRating ? 'opacity-100' : 'opacity-30'}`}>
-                    ⭐
-                  </button>
-                ))}
+            {/* Shop rating */}
+            <div style={{ marginBottom: 20 }}>
+              <p style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-2)', marginBottom: 8 }}>Shop & food quality</p>
+              <div style={{ display: 'flex', gap: 2 }}>
+                {[1,2,3,4,5].map(n => <Star key={n} n={n} val={shopRating} set={setShopRating} />)}
               </div>
+              {shopRating > 0 && (
+                <p style={{ fontSize: 12, color: '#FF3008', fontWeight: 700, marginTop: 4 }}>
+                  {['','😞 Poor','😐 Average','🙂 Good','😊 Great','🤩 Excellent!'][shopRating]}
+                </p>
+              )}
             </div>
-          )}
 
-          {/* Comment */}
-          <div className="mb-5">
-            <textarea
-              value={comment}
-              onChange={e => setComment(e.target.value)}
-              className="input-field resize-none text-sm"
-              rows={3}
-              placeholder="Tell us more about your experience... (optional)"
-            />
-          </div>
+            {/* Delivery rating */}
+            {deliveryPartnerId && (
+              <div style={{ marginBottom: 20 }}>
+                <p style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-2)', marginBottom: 8 }}>Delivery experience</p>
+                <div style={{ display: 'flex', gap: 2 }}>
+                  {[1,2,3,4,5].map(n => <Star key={n} n={n} val={deliveryRating} set={setDeliveryRating} />)}
+                </div>
+              </div>
+            )}
 
-          {/* Quick tags */}
-          <div className="flex flex-wrap gap-2 mb-5">
-            {['Great taste!', 'Fast delivery', 'Good packaging', 'Fresh items', 'Value for money'].map(tag => (
-              <button key={tag} onClick={() => setComment(prev => prev ? `${prev}, ${tag}` : tag)}
-                className="text-xs bg-gray-100 hover:bg-brand-50 hover:text-brand-600 px-3 py-1.5 rounded-full transition-all font-medium">
-                + {tag}
-              </button>
-            ))}
-          </div>
+            {/* Comment */}
+            <div style={{ marginBottom: 24 }}>
+              <p style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-2)', marginBottom: 8 }}>Add a comment <span style={{ fontWeight: 400, color: 'var(--text-3)' }}>(optional)</span></p>
+              <textarea
+                value={comment}
+                onChange={e => setComment(e.target.value)}
+                placeholder="What did you like or dislike?"
+                maxLength={300}
+                rows={3}
+                style={{ width: '100%', borderRadius: 14, border: '1.5px solid var(--border)', background: 'var(--bg-2)', color: 'var(--text)', padding: '12px 14px', fontSize: 14, fontFamily: 'inherit', resize: 'none', outline: 'none', boxSizing: 'border-box' }}
+              />
+            </div>
 
-          <button
-            onClick={submitReview}
-            disabled={shopRating === 0 || loading}
-            className={`btn-primary w-full py-3 ${shopRating === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
-          >
-            {loading ? 'Submitting...' : 'Submit Review'}
-          </button>
-        </div>
+            {/* Submit */}
+            <button
+              onClick={submit}
+              disabled={!shopRating || loading}
+              style={{ width: '100%', padding: '16px', borderRadius: 16, border: 'none', background: shopRating ? '#FF3008' : 'var(--bg-3)', color: shopRating ? '#fff' : 'var(--text-3)', fontWeight: 900, fontSize: 15, fontFamily: 'inherit', cursor: shopRating ? 'pointer' : 'not-allowed', transition: 'background .2s' }}
+            >
+              {loading ? 'Submitting…' : 'Submit Review'}
+            </button>
+          </>
+        )}
       </div>
     </div>
   )

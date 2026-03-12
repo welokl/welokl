@@ -274,7 +274,7 @@ export default function BusinessDashboard() {
           {(['orders','products','analytics','settings'] as Tab[]).map(t => (
             <button key={t} onClick={() => setTab(t)}
               style={{padding:'12px 20px', fontSize:13, fontWeight:700, textTransform:'capitalize', borderBottom:`2px solid ${tab===t?'#FF3008':'transparent'}`, color:tab===t?'#FF3008':'var(--text-3)', background:'none', cursor:'pointer', fontFamily:'inherit', transition:'all .15s'}}>
-              {t === 'settings' ? '⚙ Images' : t}{t === 'orders' && newOrders.length > 0 && <span className="ml-1.5 bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5">{newOrders.length}</span>}
+              {t === 'settings' ? '⚙ Settings' : t}{t === 'orders' && newOrders.length > 0 && <span className="ml-1.5 bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5">{newOrders.length}</span>}
             </button>
           ))}
         </div>
@@ -442,55 +442,8 @@ export default function BusinessDashboard() {
           <BusinessAnalytics shopId={shop.id} />
         )}
 
-        {tab === 'settings' && (
-          <div style={{ maxWidth: 520 }}>
-            <h2 style={{ fontWeight: 900, fontSize: 18, color: 'var(--text)', marginBottom: 4 }}>Shop Images</h2>
-            <p style={{ fontSize: 13, color: 'var(--text-3)', marginBottom: 24 }}>
-              Images are automatically compressed to WebP (max 300 KB) before upload. Served at optimal size for fast loading.
-            </p>
-
-            {imgError && (
-              <div style={{ background: 'rgba(239,68,68,.1)', border: '1px solid rgba(239,68,68,.25)', borderRadius: 12, padding: '10px 14px', fontSize: 13, color: '#ef4444', marginBottom: 16 }}>
-                ⚠ {imgError}
-              </div>
-            )}
-
-            {/* Logo */}
-            <div style={{ marginBottom: 28 }}>
-              <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: 'var(--text-2)', marginBottom: 8 }}>
-                Shop Logo <span style={{ color: 'var(--text-4)', fontWeight: 500 }}>(1 : 1, shown in shop cards)</span>
-              </label>
-              <div style={{ width: 160 }}>
-                <ImageUploader
-                  label="Upload logo"
-                  currentUrl={(shop as any)?.image_url || null}
-                  aspectRatio="1:1"
-                  progress={logoProgress}
-                  onUpload={(file: File) => handleShopImageUpload(file, 'logo')}
-                  hint="Square image, min 200×200px"
-                />
-              </div>
-            </div>
-
-            {/* Banner */}
-            <div style={{ marginBottom: 28 }}>
-              <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: 'var(--text-2)', marginBottom: 8 }}>
-                Shop Banner <span style={{ color: 'var(--text-4)', fontWeight: 500 }}>(16 : 9, shown at top of store page)</span>
-              </label>
-              <ImageUploader
-                label="Upload banner"
-                currentUrl={(shop as any)?.banner_url || null}
-                aspectRatio="16:9"
-                progress={bannerProgress}
-                onUpload={(file: File) => handleShopImageUpload(file, 'banner')}
-                hint="Wide image, min 800×450px"
-              />
-            </div>
-
-            <div style={{ background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 14, padding: '14px 16px', fontSize: 12, color: 'var(--text-3)', lineHeight: 1.7 }}>
-              <strong style={{ color: 'var(--text-2)' }}>How it works:</strong> Files are compressed client-side to WebP before upload. Images are served dynamically at the right size (200px for thumbnails, 800px for banners). Product images upload inside the product modal — max 2 per product.
-            </div>
-          </div>
+        {tab === 'settings' && shop && (
+          <ShopSettings shop={shop} onSaved={loadData} />
         )}
       </div>
 
@@ -500,6 +453,271 @@ export default function BusinessDashboard() {
       {editingProduct && user && (
         <EditProductModal product={editingProduct} userId={user.id} onClose={() => setEditingProduct(null)} onSuccess={() => { setEditingProduct(null); loadData() }} />
       )}
+    </div>
+  )
+}
+
+// ── ShopSettings — complete control panel ────────────────────────────────
+const SHOP_CATEGORIES = [
+  'Food & Restaurants','Grocery','Pharmacy & Health','Electronics',
+  'Fashion','Stationery','Hardware','Salon & Beauty','Pet Supplies','Flowers & Gifts',
+]
+
+function ShopSettings({ shop, onSaved }: { shop: any; onSaved: () => void }) {
+  const [section, setSection] = useState<'info'|'hours'|'delivery'|'images'|'offers'>('info')
+  const [saving, setSaving]   = useState(false)
+  const [saved, setSaved]     = useState('')
+  const [err, setErr]         = useState('')
+
+  // Info form
+  const [name, setName]             = useState(shop.name || '')
+  const [description, setDesc]      = useState(shop.description || '')
+  const [category, setCategory]     = useState(shop.category_name || '')
+  const [phone, setPhone]           = useState(shop.phone || '')
+  const [address, setAddress]       = useState(shop.address || '')
+  const [area, setArea]             = useState(shop.area || '')
+
+  // Hours
+  const [openTime, setOpenTime]     = useState(shop.opening_time || '09:00')
+  const [closeTime, setCloseTime]   = useState(shop.closing_time || '21:00')
+
+  // Delivery
+  const [deliveryEnabled, setDelivery] = useState(shop.delivery_enabled ?? true)
+  const [pickupEnabled, setPickup]     = useState(shop.pickup_enabled ?? true)
+  const [minOrder, setMinOrder]        = useState(String(shop.min_order_amount || 0))
+  const [avgTime, setAvgTime]          = useState(String(shop.avg_delivery_time || 30))
+  const [deliveryFee, setDeliveryFee]  = useState(String(shop.delivery_fee || 0))
+
+  // Offers
+  const [offerText, setOfferText]        = useState(shop.offer_text || '')
+  const [freeDeliveryAbove, setFreeD]    = useState(String(shop.free_delivery_above || ''))
+
+  // Images
+  const [logoProgress, setLogoProg]      = useState(0)
+  const [bannerProgress, setBannerProg]  = useState(0)
+  const [imgError, setImgError]          = useState('')
+
+  const sb = createClient()
+
+  async function saveInfo() {
+    if (!name.trim()) { setErr('Shop name is required'); return }
+    setSaving(true); setErr('')
+    try {
+      await sb.from('shops').update({ name: name.trim(), description: description.trim() || null, category_name: category, phone: phone.trim() || null, address: address.trim() || null, area: area.trim() || null }).eq('id', shop.id)
+      setSaved('info'); setTimeout(() => setSaved(''), 2200); onSaved()
+    } catch(e) { setErr('Save failed — please try again') } finally { setSaving(false) }
+  }
+
+  async function saveHours() {
+    setSaving(true)
+    try {
+      await sb.from('shops').update({ opening_time: openTime, closing_time: closeTime }).eq('id', shop.id)
+      setSaved('hours'); setTimeout(() => setSaved(''), 2200); onSaved()
+    } finally { setSaving(false) }
+  }
+
+  async function saveDelivery() {
+    setSaving(true)
+    try {
+      await sb.from('shops').update({ delivery_enabled: deliveryEnabled, pickup_enabled: pickupEnabled, min_order_amount: parseInt(minOrder) || 0, avg_delivery_time: parseInt(avgTime) || 30, delivery_fee: parseInt(deliveryFee) || 0 }).eq('id', shop.id)
+      setSaved('delivery'); setTimeout(() => setSaved(''), 2200); onSaved()
+    } finally { setSaving(false) }
+  }
+
+  async function saveOffers() {
+    setSaving(true)
+    try {
+      await sb.from('shops').update({ offer_text: offerText.trim() || null, free_delivery_above: freeDeliveryAbove ? parseInt(freeDeliveryAbove) : null }).eq('id', shop.id)
+      setSaved('offers'); setTimeout(() => setSaved(''), 2200); onSaved()
+    } finally { setSaving(false) }
+  }
+
+  async function handleImg(file: File, type: 'logo' | 'banner') {
+    setImgError('')
+    try {
+      const { uploadShopImage } = await import('@/lib/imageService')
+      const url = await uploadShopImage(file, shop.id, type, type === 'logo' ? setLogoProg : setBannerProg)
+      if (url) { await sb.from('shops').update(type === 'logo' ? { image_url: url } : { banner_url: url }).eq('id', shop.id); onSaved() }
+    } catch(e: any) { setImgError(e.message || 'Upload failed') }
+  }
+
+  const sections = [
+    { id: 'info',     icon: '🏪', label: 'Shop info'   },
+    { id: 'hours',    icon: '🕐', label: 'Hours'        },
+    { id: 'delivery', icon: '🛵', label: 'Delivery'     },
+    { id: 'images',   icon: '🖼️', label: 'Images'       },
+    { id: 'offers',   icon: '🏷️', label: 'Offers'       },
+  ]
+
+  const inp: React.CSSProperties = { width: '100%', padding: '11px 14px', borderRadius: 12, border: '1.5px solid var(--border)', background: 'var(--bg-2)', color: 'var(--text)', fontSize: 14, fontFamily: 'inherit', boxSizing: 'border-box', outline: 'none' }
+  const SaveBtn = ({ id }: { id: string }) => (
+    <button onClick={id === 'info' ? saveInfo : id === 'hours' ? saveHours : id === 'delivery' ? saveDelivery : saveOffers} disabled={saving}
+      style={{ width: '100%', padding: '14px', borderRadius: 14, border: 'none', background: saved === id ? '#16a34a' : '#FF3008', color: '#fff', fontWeight: 900, fontSize: 15, fontFamily: 'inherit', cursor: 'pointer', marginTop: 8, transition: 'background .2s' }}>
+      {saving ? 'Saving…' : saved === id ? '✓ Saved!' : 'Save changes'}
+    </button>
+  )
+
+  return (
+    <div style={{ maxWidth: 520 }}>
+
+      {/* Section nav */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 24 }}>
+        {sections.map(s => (
+          <button key={s.id} onClick={() => setSection(s.id as any)}
+            style={{ padding: '8px 16px', borderRadius: 999, border: `1.5px solid ${section === s.id ? '#FF3008' : 'var(--border)'}`, background: section === s.id ? 'rgba(255,48,8,.07)' : 'var(--card-bg)', color: section === s.id ? '#FF3008' : 'var(--text-2)', fontWeight: 800, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span>{s.icon}</span>{s.label}
+          </button>
+        ))}
+      </div>
+
+      {err && <div style={{ background: 'rgba(239,68,68,.1)', border: '1px solid rgba(239,68,68,.25)', borderRadius: 12, padding: '10px 14px', fontSize: 13, color: '#ef4444', marginBottom: 16 }}>⚠ {err}</div>}
+
+      {/* ── Info ── */}
+      {section === 'info' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-2)', marginBottom: 6 }}>Shop name *</label>
+            <input value={name} onChange={e => setName(e.target.value)} style={inp} placeholder="Your shop name" />
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-2)', marginBottom: 6 }}>Description</label>
+            <textarea value={description} onChange={e => setDesc(e.target.value)} rows={3} style={{ ...inp, resize: 'none' }} placeholder="What does your shop sell?" />
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-2)', marginBottom: 8 }}>Category</label>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {SHOP_CATEGORIES.map(cat => (
+                <button key={cat} onClick={() => setCategory(cat)}
+                  style={{ padding: '7px 14px', borderRadius: 999, border: `1.5px solid ${category === cat ? '#FF3008' : 'var(--border)'}`, background: category === cat ? 'rgba(255,48,8,.08)' : 'var(--card-bg)', color: category === cat ? '#FF3008' : 'var(--text-2)', fontWeight: 700, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  {cat}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-2)', marginBottom: 6 }}>Phone number</label>
+            <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} style={inp} placeholder="10-digit number" />
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-2)', marginBottom: 6 }}>Address</label>
+            <input value={address} onChange={e => setAddress(e.target.value)} style={inp} placeholder="Shop no., building, street" />
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-2)', marginBottom: 6 }}>Area / locality</label>
+            <input value={area} onChange={e => setArea(e.target.value)} style={inp} placeholder="Bandra, Koramangala, etc." />
+          </div>
+          <SaveBtn id="info" />
+        </div>
+      )}
+
+      {/* ── Hours ── */}
+      {section === 'hours' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ background: 'rgba(255,48,8,.06)', border: '1px solid rgba(255,48,8,.15)', borderRadius: 14, padding: '14px 16px', fontSize: 13, color: 'var(--text-2)', lineHeight: 1.6 }}>
+            💡 These are your default hours. You can still toggle Open/Closed anytime from the header.
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-2)', marginBottom: 6 }}>Opening time</label>
+            <input type="time" value={openTime} onChange={e => setOpenTime(e.target.value)} style={inp} />
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-2)', marginBottom: 6 }}>Closing time</label>
+            <input type="time" value={closeTime} onChange={e => setCloseTime(e.target.value)} style={inp} />
+          </div>
+          <div style={{ background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 14, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{ fontSize: 20 }}>⏰</span>
+            <div>
+              <p style={{ fontSize: 13, fontWeight: 800, color: 'var(--text)', marginBottom: 2 }}>Current hours</p>
+              <p style={{ fontSize: 13, color: 'var(--text-3)' }}>{openTime} – {closeTime}</p>
+            </div>
+          </div>
+          <SaveBtn id="hours" />
+        </div>
+      )}
+
+      {/* ── Delivery ── */}
+      {section === 'delivery' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {/* Toggles */}
+          {[
+            { label: '🛵 Delivery', sub: 'Riders deliver to customers', val: deliveryEnabled, set: setDelivery },
+            { label: '🏪 Pickup', sub: 'Customers come to your shop', val: pickupEnabled, set: setPickup },
+          ].map(item => (
+            <div key={item.label} onClick={() => item.set(!item.val)}
+              style={{ display: 'flex', alignItems: 'center', gap: 14, background: 'var(--card-bg)', border: `1.5px solid ${item.val ? '#FF3008' : 'var(--border)'}`, borderRadius: 16, padding: '14px 16px', cursor: 'pointer', transition: 'border .2s' }}>
+              <div style={{ flex: 1 }}>
+                <p style={{ fontWeight: 800, fontSize: 14, color: 'var(--text)', marginBottom: 2 }}>{item.label}</p>
+                <p style={{ fontSize: 12, color: 'var(--text-3)' }}>{item.sub}</p>
+              </div>
+              <div style={{ width: 44, height: 26, borderRadius: 999, background: item.val ? '#FF3008' : 'var(--bg-3)', position: 'relative', transition: 'background .2s', flexShrink: 0 }}>
+                <div style={{ position: 'absolute', top: 3, left: item.val ? 21 : 3, width: 20, height: 20, borderRadius: '50%', background: '#fff', transition: 'left .2s', boxShadow: '0 1px 4px rgba(0,0,0,.2)' }} />
+              </div>
+            </div>
+          ))}
+          <div>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-2)', marginBottom: 6 }}>Minimum order amount (₹)</label>
+            <input type="number" value={minOrder} onChange={e => setMinOrder(e.target.value)} min="0" style={inp} placeholder="0 = no minimum" />
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-2)', marginBottom: 6 }}>Delivery fee (₹)</label>
+            <input type="number" value={deliveryFee} onChange={e => setDeliveryFee(e.target.value)} min="0" style={inp} placeholder="0 = free delivery" />
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-2)', marginBottom: 6 }}>Avg delivery time (minutes)</label>
+            <input type="number" value={avgTime} onChange={e => setAvgTime(e.target.value)} min="5" max="120" style={inp} placeholder="e.g. 30" />
+          </div>
+          <SaveBtn id="delivery" />
+        </div>
+      )}
+
+      {/* ── Images ── */}
+      {section === 'images' && (
+        <div>
+          {imgError && <div style={{ background: 'rgba(239,68,68,.1)', border: '1px solid rgba(239,68,68,.25)', borderRadius: 12, padding: '10px 14px', fontSize: 13, color: '#ef4444', marginBottom: 16 }}>⚠ {imgError}</div>}
+          <div style={{ marginBottom: 28 }}>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-2)', marginBottom: 8 }}>Shop logo <span style={{ color: 'var(--text-4)', fontWeight: 500 }}>(square, shown in shop cards)</span></label>
+            <div style={{ width: 160 }}>
+              <ImageUploader label="Upload logo" currentUrl={shop?.image_url || null} aspectRatio="1:1" progress={logoProgress} onUpload={(f: File) => handleImg(f, 'logo')} hint="Min 200×200px" />
+            </div>
+          </div>
+          <div style={{ marginBottom: 28 }}>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-2)', marginBottom: 8 }}>Shop banner <span style={{ color: 'var(--text-4)', fontWeight: 500 }}>(wide, shown at top of store page)</span></label>
+            <ImageUploader label="Upload banner" currentUrl={shop?.banner_url || null} aspectRatio="16:9" progress={bannerProgress} onUpload={(f: File) => handleImg(f, 'banner')} hint="Min 800×450px" />
+          </div>
+          <div style={{ background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 14, padding: '14px 16px', fontSize: 12, color: 'var(--text-3)', lineHeight: 1.7 }}>
+            Images are automatically compressed to WebP before upload. Max 300 KB per image.
+          </div>
+        </div>
+      )}
+
+      {/* ── Offers ── */}
+      {section === 'offers' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ background: 'rgba(255,48,8,.06)', border: '1px solid rgba(255,48,8,.15)', borderRadius: 14, padding: '14px 16px', fontSize: 13, color: 'var(--text-2)', lineHeight: 1.6 }}>
+            🏷️ Offer badges show up on your shop card on the home screen — customers see them before tapping in.
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-2)', marginBottom: 6 }}>Offer text</label>
+            <input value={offerText} onChange={e => setOfferText(e.target.value)} maxLength={60} style={inp} placeholder="e.g. 20% off today · Free biryani above ₹300" />
+            <p style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 4 }}>{offerText.length}/60</p>
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-2)', marginBottom: 6 }}>Free delivery above (₹)</label>
+            <input type="number" value={freeDeliveryAbove} onChange={e => setFreeD(e.target.value)} min="0" style={inp} placeholder="e.g. 199 (leave empty to disable)" />
+          </div>
+          {(offerText || freeDeliveryAbove) && (
+            <div style={{ background: 'var(--bg-2)', borderRadius: 12, padding: '12px 14px' }}>
+              <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', marginBottom: 8 }}>Preview on shop card:</p>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {offerText && <span style={{ fontSize: 11, fontWeight: 800, color: '#FF3008', background: 'rgba(255,48,8,.1)', padding: '3px 10px', borderRadius: 8 }}>🏷️ {offerText}</span>}
+                {freeDeliveryAbove && <span style={{ fontSize: 11, fontWeight: 800, color: '#16a34a', background: 'rgba(22,163,74,.1)', padding: '3px 10px', borderRadius: 8 }}>🚚 Free above ₹{freeDeliveryAbove}</span>}
+              </div>
+            </div>
+          )}
+          <SaveBtn id="offers" />
+        </div>
+      )}
+
     </div>
   )
 }

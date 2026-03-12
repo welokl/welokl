@@ -31,6 +31,24 @@ export default function CheckoutPage() {
   const [selLng, setSelLng]         = useState<number | null>(null)
   const [copied, setCopied]         = useState(false)
   const [merchantUpi, setMerchantUpi] = useState('welokl@upi')
+  const [saveLabel, setSaveLabel]   = useState('')
+  const [addressSaved, setAddrSaved] = useState(false)
+
+  function persistAddress(addr: string, lat: number | null, lng: number | null, label?: string) {
+    try {
+      const current = { address: addr, lat, lng, area: '', city: '' }
+      localStorage.setItem('welokl_location', JSON.stringify(current))
+      if (label) {
+        const existing: SavedAddress[] = JSON.parse(localStorage.getItem('welokl_addresses') || '[]')
+        const filtered = existing.filter(a => a.label !== label)
+        filtered.unshift({ label, address: addr, area: '', city: '', lat: lat || undefined, lng: lng || undefined })
+        localStorage.setItem('welokl_addresses', JSON.stringify(filtered.slice(0, 5)))
+        setSaved(filtered.slice(0, 5))
+        setAddrSaved(true)
+        setTimeout(() => setAddrSaved(false), 2000)
+      }
+    } catch {}
+  }
 
   const subtotal = cart.subtotal()
   const fees = calculateFees(subtotal, 15, orderType)
@@ -78,7 +96,9 @@ export default function CheckoutPage() {
         const data = await res.json()
         const a = data.address || {}
         const parts = [a.house_number, a.building, a.road, a.suburb || a.neighbourhood, a.city || a.town || a.village].filter(Boolean)
-        setAddress(parts.join(', ') || data.display_name?.split(',').slice(0,4).join(',') || '')
+        const fullAddr = parts.join(', ') || data.display_name?.split(',').slice(0,4).join(',') || ''
+        setAddress(fullAddr)
+        persistAddress(fullAddr, lat, lng)
       } catch { setAddress(`${lat.toFixed(5)}, ${lng.toFixed(5)}`) }
       setDetecting(false)
     }, () => { setError('Could not detect location. Please type your address.'); setDetecting(false) }, { timeout: 10000, enableHighAccuracy: true })
@@ -177,10 +197,6 @@ export default function CheckoutPage() {
                     {addr.label === 'home' ? '🏠' : addr.label === 'work' ? '💼' : '📌'} {addr.label === 'home' ? 'Home' : addr.label === 'work' ? 'Work' : addr.label}
                   </button>
                 ))}
-                <Link href={`/location?return=${encodeURIComponent('/checkout')}`}
-                  style={{ flexShrink: 0, display: 'flex', alignItems: 'center', padding: '6px 12px', borderRadius: 10, border: '2px dashed var(--border-2)', fontSize: 12, fontWeight: 700, color: 'var(--text-3)', textDecoration: 'none' }}>
-                  + Add new
-                </Link>
               </div>
             )}
 
@@ -191,8 +207,24 @@ export default function CheckoutPage() {
                : '📍 Detect my current location'}
             </button>
 
-            <textarea value={address} onChange={e => setAddress(e.target.value)} rows={2} placeholder="Your full address — flat no., building, street, area…"
+            <textarea value={address} onChange={e => { setAddress(e.target.value); persistAddress(e.target.value, selLat, selLng) }} rows={2} placeholder="Your full address — flat no., building, street, area…"
               style={{ ...s({ resize: 'none', marginBottom: 10 }), width: '100%' }} />
+
+            {/* Save address shortcut */}
+            {address.trim().length > 8 && (
+              <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+                <span style={{ fontSize: 12, color: 'var(--text-3)', fontWeight: 700 }}>Save as:</span>
+                {['home', 'work', 'other'].map(lbl => (
+                  <button key={lbl} onClick={() => persistAddress(address, selLat, selLng, lbl)}
+                    style={{ padding: '5px 14px', borderRadius: 999, border: `1.5px solid ${addressSaved && saveLabel === lbl ? '#16a34a' : 'var(--border)'}`, background: addressSaved && saveLabel === lbl ? 'rgba(22,163,74,.1)' : 'var(--card-bg)', color: addressSaved && saveLabel === lbl ? '#16a34a' : 'var(--text-2)', fontWeight: 800, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}
+                    onClickCapture={() => setSaveLabel(lbl)}>
+                    {lbl === 'home' ? '🏠 Home' : lbl === 'work' ? '💼 Work' : '📌 Other'}
+                    {addressSaved && saveLabel === lbl ? ' ✓' : ''}
+                  </button>
+                ))}
+              </div>
+            )}
+
             <input value={instructions} onChange={e => setInstr(e.target.value)} placeholder="Delivery instructions — Ring bell, leave at door…"
               style={{ ...s(), width: '100%' }} />
           </div>

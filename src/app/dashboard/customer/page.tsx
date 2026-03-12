@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useFCM } from '@/hooks/useFCM'
 import { useCart } from '@/store/cart'
 import Link from 'next/link'
@@ -71,9 +71,7 @@ export default function CustomerHome() {
   const [areaName, setAreaName]             = useState('')
   const [radius, setRadius]                 = useState(10)
   const [activeCategory, setActiveCategory] = useState<string | null>(null)
-  const [searchVal, setSearchVal]           = useState('')
   const [greeting, setGreeting]             = useState('Hey')
-  const searchRef                           = useRef<HTMLInputElement>(null)
 
   useCustomerOrderAlerts(user?.id)
 
@@ -179,7 +177,6 @@ export default function CustomerHome() {
     }))
     if (userLat && userLng) shops = shops.filter(s => s.km !== null && s.km <= radius)
     if (activeCategory)     shops = shops.filter(s => s.category_name?.toLowerCase().includes(activeCategory))
-    if (searchVal.trim()) { const q = searchVal.toLowerCase(); shops = shops.filter(s => s.name.toLowerCase().includes(q) || s.area?.toLowerCase().includes(q) || s.category_name?.toLowerCase().includes(q)) }
     shops.sort((a, b) => { if (a.is_open !== b.is_open) return a.is_open ? -1 : 1; if (a.km !== null && b.km !== null) return a.km - b.km; return b.rating - a.rating })
     setDisplayShops(shops)
     // Only load products from nearby shops — don't show random city products when location unknown
@@ -192,7 +189,7 @@ export default function CustomerHome() {
       loadLocalProducts(openShopIds.slice(0, 20))
     }
     // If locStatus is 'idle' or 'detecting' — wait, show nothing until we know location
-  }, [allShops, userLat, userLng, radius, activeCategory, searchVal, locStatus, loadLocalProducts])
+  }, [allShops, userLat, userLng, radius, activeCategory, locStatus, loadLocalProducts])
 
   const activeOrders     = orders.filter(o => !['delivered','cancelled','rejected'].includes(o.status))
   const pastOrders       = orders.filter(o =>  ['delivered','cancelled','rejected'].includes(o.status))
@@ -233,19 +230,15 @@ export default function CustomerHome() {
             </div>
           </div>
 
-          {/* Search bar */}
-          <div style={{ position:'relative' }}>
-            <span style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', fontSize:15, color:'var(--text-3)', pointerEvents:'none' }}>🔍</span>
-            <input
-              ref={searchRef} value={searchVal}
-              onChange={e => setSearchVal(e.target.value)}
-              placeholder={`Search shops, food, medicine in ${areaName || 'your area'}…`}
-              className="cd-search" style={{ paddingLeft:38 }}
-            />
-            {searchVal && (
-              <button onClick={() => setSearchVal('')} style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', color:'var(--text-3)', cursor:'pointer', fontSize:14, display:'flex', alignItems:'center' }}>✕</button>
-            )}
-          </div>
+          {/* Search bar — tapping opens product search page */}
+          <Link href="/search" style={{ textDecoration:'none', display:'block' }}>
+            <div style={{ position:'relative', pointerEvents:'none' }}>
+              <span style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', fontSize:15, color:'var(--text-3)' }}>🔍</span>
+              <div className="cd-search" style={{ paddingLeft:38, display:'flex', alignItems:'center', color:'var(--text-3)', cursor:'pointer' }}>
+                Search products, shops, medicine…
+              </div>
+            </div>
+          </Link>
         </div>
 
         {/* Greeting strip */}
@@ -292,27 +285,25 @@ export default function CustomerHome() {
       )}
 
       {/* ══ CATEGORY GRID ════════════════════════════════════════ */}
-      {!searchVal && (
-        <div className="cd-cat-grid">
-          {CATS.map(cat => (
-            <button
-              key={cat.q}
-              onClick={() => setActiveCategory(activeCategory === cat.q ? null : cat.q)}
-              className={`cd-cat-card${activeCategory === cat.q ? ' active' : ''}`}
-              style={{
-                background: activeCategory === cat.q ? cat.grad : 'var(--card-bg)',
-                border: `2px solid ${activeCategory === cat.q ? 'transparent' : 'var(--border)'}`,
-              }}
-            >
-              <span style={{ fontSize:30, lineHeight:1, filter: activeCategory && activeCategory !== cat.q ? 'grayscale(0.6)' : 'none', transition:'filter .15s' }}>{cat.icon}</span>
-              <span style={{ fontSize:11, fontWeight:800, color: activeCategory === cat.q ? '#fff' : 'var(--text-2)', letterSpacing:'0.01em', lineHeight:1.2 }}>{cat.label}</span>
-            </button>
-          ))}
-        </div>
-      )}
+      <div className="cd-cat-grid">
+        {CATS.map(cat => (
+          <button
+            key={cat.q}
+            onClick={() => setActiveCategory(activeCategory === cat.q ? null : cat.q)}
+            className={`cd-cat-card${activeCategory === cat.q ? ' active' : ''}`}
+            style={{
+              background: activeCategory === cat.q ? cat.grad : 'var(--card-bg)',
+              border: `2px solid ${activeCategory === cat.q ? 'transparent' : 'var(--border)'}`,
+            }}
+          >
+            <span style={{ fontSize:30, lineHeight:1, filter: activeCategory && activeCategory !== cat.q ? 'grayscale(0.6)' : 'none', transition:'filter .15s' }}>{cat.icon}</span>
+            <span style={{ fontSize:11, fontWeight:800, color: activeCategory === cat.q ? '#fff' : 'var(--text-2)', letterSpacing:'0.01em', lineHeight:1.2 }}>{cat.label}</span>
+          </button>
+        ))}
+      </div>
 
       {/* ══ PROMO BANNER ═════════════════════════════════════════ */}
-      {!searchVal && !activeCategory && (
+      {!activeCategory && (
         <div style={{ maxWidth:980, margin:'18px auto 0', padding:'0 clamp(16px,4vw,40px)' }}>
           <div className="cd-promo">
             <div style={{ position:'relative', zIndex:1 }}>
@@ -368,7 +359,7 @@ export default function CustomerHome() {
         <div className="cd-section-head">
           <div>
             <div className="cd-section-title">
-              {searchVal ? `Results for "${searchVal}"` : activeCategory ? `${CATS.find(c => c.q === activeCategory)?.icon} ${CATS.find(c => c.q === activeCategory)?.label} near you` : locStatus === 'granted' ? `Open near ${areaName || 'you'}` : 'Shops near you'}
+              {activeCategory ? `${CATS.find(c => c.q === activeCategory)?.icon} ${CATS.find(c => c.q === activeCategory)?.label} near you` : locStatus === 'granted' ? `Open near ${areaName || 'you'}` : 'Shops near you'}
             </div>
             <div className="cd-section-sub">
               {shopsLoaded ? `${openShops.length} open - ${closedShops.length} closed` : 'Loading shops…'}
@@ -429,9 +420,10 @@ export default function CustomerHome() {
         <div className="cd-bottom-nav-inner">
           {[
             { icon:'🏠', label:'Home',   href:'/dashboard/customer', on:true  },
-            { icon:'🛍️', label:'Shops',  href:'/stores',              on:false },
+            { icon:'🔍', label:'Search', href:'/search',              on:false },
             { icon:'❤️', label:'Saved',  href:'/favourites',           on:false },
             { icon:'📦', label:'Orders', href:'/orders/history',       on:false },
+            { icon:'💰', label:'Wallet', href:'/wallet',               on:false },
             { icon:'🛒', label:'Cart',   href:'/cart',                 on:false, badge: cartCount },
           ].map(item => (
             <Link key={item.label} href={item.href} className={`cd-nav-item${item.on ? ' on' : ''}`} style={{ position:'relative' }}>
@@ -471,6 +463,17 @@ function ShopCard({ shop, index, closed }: { shop: Shop & { km: number | null };
       <div className="cd-shop-body">
         <div className="cd-shop-name">{shop.name}</div>
         <div className="cd-shop-desc">{shop.description || `${shop.category_name?.split(' ')[0]} - ${shop.area}`}</div>
+        {/* Offer badges */}
+        {((shop as any).offer_text || (shop as any).free_delivery_above) && (
+          <div style={{ display:'flex', flexWrap:'wrap', gap:4, marginBottom:4 }}>
+            {(shop as any).offer_text && (
+              <span style={{ fontSize:10, fontWeight:800, color:'#FF3008', background:'rgba(255,48,8,.08)', padding:'2px 8px', borderRadius:6 }}>🏷️ {(shop as any).offer_text}</span>
+            )}
+            {(shop as any).free_delivery_above && (
+              <span style={{ fontSize:10, fontWeight:800, color:'#16a34a', background:'rgba(22,163,74,.08)', padding:'2px 8px', borderRadius:6 }}>🚚 Free above ₹{(shop as any).free_delivery_above}</span>
+            )}
+          </div>
+        )}
         <div className="cd-shop-meta">
           <span className="cd-shop-pill">⏱ {shop.avg_delivery_time}min</span>
           {shop.min_order_amount > 0 && <span className="cd-shop-pill">₹{shop.min_order_amount} min</span>}

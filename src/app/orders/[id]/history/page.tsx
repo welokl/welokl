@@ -3,12 +3,13 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
+import { useCart } from '@/store/cart'
 
 interface Order {
   id: string; order_number: string; status: string
   total_amount: number; type: string; payment_method?: string; created_at: string
   shop: { id?: string; name: string; image_url: string | null } | { id?: string; name: string; image_url: string | null }[] | null
-  items: { product_name: string; quantity: number }[]
+  items: { product_id: string; product_name: string; quantity: number; price: number }[]
 }
 
 const STATUS_COLOR: Record<string, string> = {
@@ -24,9 +25,11 @@ const STATUS_LABEL: Record<string, string> = {
 
 export default function OrdersHistoryPage() {
   const router = useRouter()
+  const cart = useCart()
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<'all' | 'active' | 'delivered' | 'cancelled'>('all')
+  const [reordering, setReordering] = useState<string | null>(null)
 
   useEffect(() => { load() }, [])
 
@@ -36,7 +39,7 @@ export default function OrdersHistoryPage() {
       const { data: { user } } = await sb.auth.getUser()
       if (!user) { window.location.href = '/auth/login'; return }
       const { data, error } = await sb.from('orders')
-        .select('id, order_number, status, total_amount, type, payment_method, created_at, shop:shops(id, name, image_url), items:order_items(product_name, quantity)')
+        .select('id, order_number, status, total_amount, type, payment_method, created_at, shop:shops(id, name, image_url), items:order_items(product_id, product_name, quantity, price)')
         .eq('customer_id', user.id)
         .order('created_at', { ascending: false })
       if (error) console.error('[orders] load error:', error.message)
@@ -45,6 +48,41 @@ export default function OrdersHistoryPage() {
       console.error('[orders] unexpected error:', e)
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function handleReorder(order: Order) {
+    setReordering(order.id)
+    try {
+      const sb = createClient()
+      const shop = Array.isArray(order.shop) ? order.shop[0] : order.shop
+      if (!shop?.id) return
+
+      // Fetch fresh product data to get current prices
+      const productIds = order.items.map(i => i.product_id).filter(Boolean)
+      const { data: products } = await sb.from('products').select('id, name, price, image_url, is_available').in('id', productIds)
+
+      cart.clear()
+      let addedCount = 0
+      for (const item of order.items) {
+        const freshProduct = products?.find(p => p.id === item.product_id)
+        if (freshProduct && freshProduct.is_available !== false) {
+          for (let q = 0; q < item.quantity; q++) {
+            cart.addItem({ id: freshProduct.id, name: freshProduct.name, price: freshProduct.price, image_url: freshProduct.image_url }, shop.id, shop.name)
+          }
+          addedCount++
+        }
+      }
+
+      if (addedCount > 0) {
+        router.push('/cart')
+      } else {
+        alert('Sorry, the items from this order are no longer available.')
+      }
+    } catch (e) {
+      console.error('[reorder] error:', e)
+    } finally {
+      setReordering(null)
     }
   }
 
@@ -144,7 +182,13 @@ export default function OrdersHistoryPage() {
                 {/* Reorder button for delivered orders */}
                 {order.status === 'delivered' && (
                   <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end' }}>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: '#ff3008' }}>Reorder →</span>
+                    <button
+                      onClick={e => { e.preventDefault(); handleReorder(order) }}
+                      disabled={reordering === order.id}
+                      style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 12, background: reordering === order.id ? 'var(--bg-3)' : 'rgba(255,48,8,0.08)', border: '1.5px solid rgba(255,48,8,0.2)', color: '#FF3008', fontWeight: 800, fontSize: 13, fontFamily: 'inherit', cursor: 'pointer' }}
+                    >
+                      {reordering === order.id ? '⏳ Adding…' : '🔁 Reorder'}
+                    </button>
                   </div>
                 )}
               </div>

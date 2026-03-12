@@ -1,0 +1,20 @@
+<svg width="720" height="220" viewBox="0 0 720 220" xmlns="http://www.w3.org/2000/svg">
+
+  <!-- Pin Icon -->
+  <g transform="translate(20,10)">
+    <path d="M90 0
+             C45 0 10 35 10 80
+             C10 140 90 210 90 210
+             C90 210 170 140 170 80
+             C170 35 135 0 90 0Z" fill="#ff5a1f"></path>
+
+    <!-- Lightning -->
+    <polygon points="85,40 60,100 90,100 75,150 125,80 95,80 115,40" fill="white"></polygon>
+  </g>
+
+  <!-- Brand Name -->
+  <text x="220" y="130" font-family="Inter, Arial, Helvetica, sans-serif" font-size="110" font-weight="700" fill="#ff5a1f">
+        welokl
+  </text>
+
+</svg>

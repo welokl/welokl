@@ -1,0 +1,23 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+
+  <!-- Background -->
+  <rect width="1024" height="1024" rx="220" fill="#0f223a"></rect>
+
+  <!-- Location Pin -->
+  <g transform="translate(312,140) scale(1.4)">
+    <path d="M150 0
+             C70 0 10 60 10 140
+             C10 250 150 420 150 420
+             C150 420 290 250 290 140
+             C290 60 230 0 150 0Z" fill="#ff5a1f"></path>
+
+    <!-- Lightning -->
+    <polygon points="145,70 100,180 150,180 130,260 210,140 160,140 185,70" fill="white"></polygon>
+  </g>
+
+  <!-- Brand Name -->
+  <text x="512" y="870" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="140" font-weight="700" fill="#ffffff" letter-spacing="2">
+        welokl
+  </text>
+
+</svg>

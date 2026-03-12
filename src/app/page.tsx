@@ -227,7 +227,7 @@ export default function LandingPage() {
         <div style={{ position:'absolute', top:-80, right:-60, width:480, height:480, borderRadius:'50%', background:'radial-gradient(circle,rgba(255,140,0,.13) 0%,transparent 70%)', pointerEvents:'none' }} />
         <div style={{ position:'absolute', bottom:-60, left:-40, width:360, height:360, borderRadius:'50%', background:'radial-gradient(circle,rgba(255,48,8,.08) 0%,transparent 70%)', pointerEvents:'none' }} />
         {/* Dot grid */}
-        <div style={{ position:'absolute', inset:0, backgroundImage:'radial-gradient(var(--lp-border) 1.5px,transparent 1.5px)', backgroundSize:'26px 26px', opacity:.5, pointerEvents:'none' }} />
+        <div style={{ position:'absolute', inset:0, backgroundImage:'radial-gradient(circle, rgba(0,0,0,.35) 2px, transparent 2px)', backgroundSize:'28px 28px', pointerEvents:'none' }} />
 
         <div className="lp-hero-grid" style={{ maxWidth:1120, margin:'0 auto', display:'grid', gridTemplateColumns:'1fr 320px', gap:48, alignItems:'center', position:'relative' }}>
 
@@ -544,7 +544,7 @@ export default function LandingPage() {
           </div>
           <p style={{ fontSize:12, color:'var(--lp-text3)', fontWeight:600 }}>Your neighbourhood on your phone · © {new Date().getFullYear()} Welokl</p>
           <div style={{ display:'flex', gap:20, fontSize:12 }}>
-            <a href="/privacy" style={{ textDecoration:'none', color:'var(--lp-text3)', fontWeight:600 }}>Privacy</a>
+            <a href="#" style={{ textDecoration:'none', color:'var(--lp-text3)', fontWeight:600 }}>Privacy</a>
             <a href="#" style={{ textDecoration:'none', color:'var(--lp-text3)', fontWeight:600 }}>Terms</a>
           </div>
         </div>
