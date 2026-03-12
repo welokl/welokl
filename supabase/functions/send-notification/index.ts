@@ -144,10 +144,10 @@ serve(async (req: Request) => {
 
       case 'order_placed': {
         console.log('[notify] looking up shop:', shop_id)
-        const { data: shop, error: se } = await sb.from('shops').select('user_id,name').eq('id', shop_id).single()
+        const { data: shop, error: se } = await sb.from('shops').select('owner_id,name').eq('id', shop_id).single()
         if (se || !shop) { console.error('[notify] shop not found:', se?.message); break }
-        console.log('[notify] shop owner user_id:', shop.user_id)
-        const token = await getToken(shop.user_id)
+        console.log('[notify] shop owner_id:', shop.owner_id)
+        const token = await getToken(shop.owner_id)
         if (!token) break
         await sendPush(token, '🛒 New Order!', 'A customer just placed an order. Tap to review.',
           { url: '/dashboard/business', tag: 'new-order', order_id })
