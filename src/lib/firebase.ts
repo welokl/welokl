@@ -15,21 +15,21 @@ const VAPID_KEY = "BOQv6ar8lwtXUX6z1kGERvkt3sT3sHF5TJc131aRmnZ_vnwxaa2dr1JF97dTP
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0]
 
-// Register Firebase's OWN service worker explicitly
-// This is the critical fix — must NOT use the existing sw.js
-async function getFirebaseSWRegistration(): Promise<ServiceWorkerRegistration> {
-  // Check if firebase-messaging-sw.js is already registered
+// ── Get the ONE sw.js registration ───────────────────────────
+// We use a single sw.js that handles BOTH caching AND FCM.
+// firebase-messaging-sw.js should be DELETED from /public.
+async function getSWRegistration(): Promise<ServiceWorkerRegistration> {
+  // If already registered, return it
   const registrations = await navigator.serviceWorker.getRegistrations()
   const existing = registrations.find(r =>
-    r.active?.scriptURL.includes('firebase-messaging-sw') ||
-    r.installing?.scriptURL.includes('firebase-messaging-sw') ||
-    r.waiting?.scriptURL.includes('firebase-messaging-sw')
+    r.active?.scriptURL.includes('/sw.js') ||
+    r.installing?.scriptURL.includes('/sw.js') ||
+    r.waiting?.scriptURL.includes('/sw.js')
   )
   if (existing) return existing
-  // Register it fresh
-  return navigator.serviceWorker.register('/firebase-messaging-sw.js', {
-    scope: '/',
-  })
+
+  // Register fresh
+  return navigator.serviceWorker.register('/sw.js', { scope: '/' })
 }
 
 export async function getFCMToken(): Promise<string | null> {
@@ -42,10 +42,7 @@ export async function getFCMToken(): Promise<string | null> {
     const permission = await Notification.requestPermission()
     if (permission !== 'granted') return null
 
-    // Register Firebase SW explicitly — do NOT use serviceWorker.ready
-    // because that returns sw.js, not firebase-messaging-sw.js
-    const swReg = await navigator.serviceWorker.ready
-
+    const swReg = await getSWRegistration()
     const messaging = getMessaging(app)
     const token = await getToken(messaging, {
       vapidKey: VAPID_KEY,
