@@ -544,7 +544,7 @@ export default function LandingPage() {
           </div>
           <p style={{ fontSize:12, color:'var(--lp-text3)', fontWeight:600 }}>Your neighbourhood on your phone · © {new Date().getFullYear()} Welokl</p>
           <div style={{ display:'flex', gap:20, fontSize:12 }}>
-            <a href="#" style={{ textDecoration:'none', color:'var(--lp-text3)', fontWeight:600 }}>Privacy</a>
+            <a href="/privacy" style={{ textDecoration:'none', color:'var(--lp-text3)', fontWeight:600 }}>Privacy</a>
             <a href="#" style={{ textDecoration:'none', color:'var(--lp-text3)', fontWeight:600 }}>Terms</a>
           </div>
         </div>
