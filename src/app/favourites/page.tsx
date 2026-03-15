@@ -2,17 +2,31 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
+import BottomNav from '@/components/BottomNav'
 import type { Shop } from '@/types'
 
+const CAT_COLOR: Record<string,string> = {
+  food:'#FF3008', grocery:'#16a34a', pharmacy:'#4f46e5',
+  electronics:'#7c3aed', salon:'#db2777', hardware:'#d97706', pet:'#ea580c', default:'#FF3008',
+}
+const CAT_ICON: Record<string,string> = {
+  food:'🍔', grocery:'🛒', pharmacy:'💊', electronics:'📱',
+  salon:'💇', hardware:'🔧', pet:'🐾', default:'🏪',
+}
+
+function getCatKey(cat?: string | null) {
+  return Object.keys(CAT_ICON).find(k => cat?.toLowerCase().includes(k)) || 'default'
+}
+
 export default function FavouritesPage() {
-  const [shops, setShops]     = useState<Shop[]>([])
+  const [shops,   setShops]   = useState<Shop[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => { loadFavourites() }, [])
 
   async function loadFavourites() {
     const ids: string[] = JSON.parse(localStorage.getItem('welokl_favourites') || '[]')
-    if (ids.length === 0) { setLoading(false); return }
+    if (!ids.length) { setLoading(false); return }
     const { data } = await createClient().from('shops').select('*').in('id', ids).eq('is_active', true)
     setShops(data || []); setLoading(false)
   }
@@ -23,77 +37,106 @@ export default function FavouritesPage() {
     setShops(shops.filter(s => s.id !== shopId))
   }
 
-  const catIcon = (cat?: string | null) =>
-    cat?.includes('Food') ? '🍔' : cat?.includes('Grocery') ? '🛒' :
-    cat?.includes('Pharmacy') ? '💊' : cat?.includes('Electronics') ? '📱' : '🏪'
-
-  const NAV = [
-    { icon: '🏠', label: 'Home',   href: '/dashboard/customer', on: false },
-    { icon: '🛍️', label: 'Shops',  href: '/stores',              on: false },
-    { icon: '❤️', label: 'Saved',  href: '/favourites',          on: true  },
-    { icon: '📦', label: 'Orders', href: '/orders/history',       on: false },
-  ]
-
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg)', fontFamily: "'Plus Jakarta Sans', sans-serif", paddingBottom: 80 }}>
+    <div style={{ minHeight:'100vh', background:'var(--page-bg)', fontFamily:"'Plus Jakarta Sans',sans-serif", paddingBottom:80 }}>
+      <style>{`@keyframes sh{0%{background-position:-400px 0}100%{background-position:400px 0}}.sk{background:linear-gradient(90deg,#f0f0f0 25%,#e8e8e8 50%,#f0f0f0 75%);background-size:400px 100%;animation:sh 1.4s infinite;border-radius:16px;}`}</style>
 
       {/* Header */}
-      <div style={{ position: 'sticky', top: 0, zIndex: 40, background: 'var(--card-bg)', borderBottom: '1px solid var(--border)', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
-        <button onClick={() => window.history.back()} style={{ padding: '6px 10px', borderRadius: 10, background: 'var(--bg-3)', border: 'none', cursor: 'pointer', fontSize: 18, color: 'var(--text)' }}>←</button>
-        <h1 style={{ fontWeight: 900, fontSize: 16, color: 'var(--text)' }}>Saved Shops ❤️</h1>
+      <div style={{ position:'sticky', top:0, zIndex:40, background:'var(--card-white)', borderBottom:'1px solid var(--divider)', padding:'0 16px' }}>
+        <div style={{ maxWidth:640, margin:'0 auto', display:'flex', alignItems:'center', gap:12, height:56 }}>
+          <button onClick={() => window.history.back()} style={{ width:36, height:36, borderRadius:12, background:'var(--page-bg)', border:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+            <svg viewBox="0 0 24 24" fill="none" width={20} height={20}>
+              <path d="M19 12H5M5 12l7 7M5 12l7-7" stroke="#111" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
+          <h1 style={{ fontWeight:900, fontSize:17, color:'var(--text-primary)', flex:1, letterSpacing:'-0.02em' }}>Saved Shops</h1>
+          {shops.length > 0 && (
+            <span style={{ fontSize:12, fontWeight:700, color:'var(--text-muted)', background:'var(--page-bg)', borderRadius:999, padding:'4px 12px' }}>
+              {shops.length} saved
+            </span>
+          )}
+        </div>
       </div>
 
-      <div style={{ maxWidth: 640, margin: '0 auto', padding: '20px 16px' }}>
-        {loading ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {[1,2,3].map(i => <div key={i} className="shimmer" style={{ height: 88, borderRadius: 16 }} />)}
+      <div style={{ maxWidth:640, margin:'0 auto', padding:'16px 12px' }}>
+
+        {/* Skeletons */}
+        {loading && (
+          <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+            {[1,2,3].map(i => <div key={i} className="sk" style={{ height:90 }} />)}
           </div>
-        ) : shops.length === 0 ? (
-          <div style={{ textAlign: 'center', paddingTop: 60 }}>
-            <div style={{ fontSize: 56, marginBottom: 14 }}>❤️</div>
-            <p style={{ fontWeight: 900, fontSize: 18, color: 'var(--text)', marginBottom: 8 }}>No saved shops yet</p>
-            <p style={{ fontSize: 14, color: 'var(--text-3)', marginBottom: 24 }}>Tap the heart icon on any shop to save it here</p>
-            <Link href="/stores" style={{ display: 'inline-block', padding: '11px 28px', borderRadius: 12, background: '#ff3008', color: '#fff', fontWeight: 800, fontSize: 14, textDecoration: 'none' }}>
-              Browse shops
+        )}
+
+        {/* Empty */}
+        {!loading && shops.length === 0 && (
+          <div style={{ textAlign:'center', padding:'60px 20px' }}>
+            <div style={{ width:80, height:80, background:'var(--red-light)', borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 20px' }}>
+              <svg viewBox="0 0 24 24" fill="none" width={36} height={36}>
+                <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"
+                  stroke="#FF3008" strokeWidth="2" fill="rgba(255,48,8,.1)" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </div>
+            <p style={{ fontWeight:900, fontSize:18, color:'var(--text-primary)', marginBottom:8, letterSpacing:'-0.02em' }}>No saved shops yet</p>
+            <p style={{ fontSize:14, color:'var(--text-muted)', marginBottom:24, lineHeight:1.6 }}>Tap the heart on any shop to save it here for quick access</p>
+            <Link href="/stores" style={{ display:'inline-block', padding:'13px 28px', borderRadius:16, background:'#FF3008', color:'#fff', fontWeight:800, fontSize:15, textDecoration:'none' }}>
+              Browse shops →
             </Link>
           </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {shops.map(shop => (
-              <div key={shop.id} style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 14 }}>
-                <Link href={`/stores/${shop.id}`} style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 14, textDecoration: 'none' }}>
-                  <div style={{ width: 52, height: 52, background: 'var(--bg-1)', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, flexShrink: 0 }}>
-                    {catIcon(shop.category_name)}
-                  </div>
-                  <div>
-                    <p style={{ fontWeight: 800, fontSize: 15, color: 'var(--text)', marginBottom: 3 }}>{shop.name}</p>
-                    <p style={{ fontSize: 12, color: 'var(--text-3)' }}>{shop.category_name?.split(' ')[0]} · {shop.area} · ★ {shop.rating}</p>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: shop.is_open ? '#16a34a' : 'var(--text-3)' }}>{shop.is_open ? 'Open' : 'Closed'}</span>
-                      {shop.delivery_enabled && <span style={{ fontSize: 11, color: 'var(--text-3)' }}>🛵 {shop.avg_delivery_time}min</span>}
+        )}
+
+        {/* Shop cards */}
+        {!loading && shops.length > 0 && (
+          <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+            {shops.map(shop => {
+              const catKey = getCatKey(shop.category_name)
+              const color  = CAT_COLOR[catKey]
+              const icon   = CAT_ICON[catKey]
+              return (
+                <div key={shop.id} style={{ background:'var(--card-white)', borderRadius:20, overflow:'hidden', display:'flex', alignItems:'center', boxShadow:'0 2px 8px rgba(0,0,0,.05)' }}>
+                  <Link href={`/stores/${shop.id}`} style={{ flex:1, display:'flex', alignItems:'center', gap:0, textDecoration:'none' }}>
+                    {/* Image / icon */}
+                    <div style={{ width:90, height:90, flexShrink:0, background:`${color}15`, display:'flex', alignItems:'center', justifyContent:'center', position:'relative', overflow:'hidden' }}>
+                      {(shop as any).image_url
+                        ? <img src={(shop as any).image_url} alt={shop.name} style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+                        : <span style={{ fontSize:36 }}>{icon}</span>
+                      }
+                      <div style={{ position:'absolute', bottom:5, left:5 }}>
+                        <span style={{ fontSize:8, fontWeight:800, padding:'2px 5px', borderRadius:4, background: shop.is_open ? '#16a34a' : 'rgba(0,0,0,.55)', color:'#fff' }}>
+                          {shop.is_open ? 'OPEN' : 'CLOSED'}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                </Link>
-                <button onClick={() => removeFavourite(shop.id)}
-                  style={{ fontSize: 22, background: 'none', border: 'none', cursor: 'pointer', padding: 6, flexShrink: 0, opacity: 0.8 }}>❤️</button>
-              </div>
-            ))}
+
+                    {/* Info */}
+                    <div style={{ flex:1, padding:'12px 12px', minWidth:0 }}>
+                      <p style={{ fontWeight:800, fontSize:14, color:'var(--text-primary)', marginBottom:3, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{shop.name}</p>
+                      <p style={{ fontSize:11, color:'var(--text-muted)', marginBottom:6 }}>{shop.category_name?.split(' ')[0]} · {(shop as any).area}</p>
+                      <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                        <span style={{ display:'flex', alignItems:'center', gap:3, fontSize:12, fontWeight:700, color:'var(--text-primary)' }}>
+                          <span style={{ color:'#f59e0b' }}>★</span>{shop.rating?.toFixed(1) || '4.0'}
+                        </span>
+                        <span style={{ width:3, height:3, borderRadius:'50%', background:'var(--text-faint)' }} />
+                        <span style={{ fontSize:11, color:'var(--text-muted)' }}>⏱ {(shop as any).avg_delivery_time}min</span>
+                      </div>
+                    </div>
+                  </Link>
+
+                  {/* Remove heart */}
+                  <button onClick={() => removeFavourite(shop.id)}
+                    style={{ width:48, height:90, border:'none', background:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                    <svg viewBox="0 0 24 24" fill="none" width={22} height={22}>
+                      <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"
+                        stroke="#FF3008" strokeWidth="2" fill="rgba(255,48,8,.15)" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </button>
+                </div>
+              )
+            })}
           </div>
         )}
       </div>
 
-      {/* Bottom nav */}
-      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: 'var(--card-bg)', borderTop: '1px solid var(--border)', paddingBottom: 'env(safe-area-inset-bottom,0)', zIndex: 50 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-around', padding: '6px 0 8px', maxWidth: 480, margin: '0 auto' }}>
-          {NAV.map(item => (
-            <Link key={item.label} href={item.href}
-              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: '6px 18px', borderRadius: 14, textDecoration: 'none', color: item.on ? '#ff3008' : 'var(--text-3)', WebkitTapHighlightColor: 'transparent' }}>
-              <span style={{ fontSize: 22, lineHeight: 1 }}>{item.icon}</span>
-              <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.01em' }}>{item.label}</span>
-            </Link>
-          ))}
-        </div>
-      </div>
+      <BottomNav active="saved" />
     </div>
   )
 }

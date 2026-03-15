@@ -2,7 +2,8 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import type { Shop, Category } from '@/types'
+import type { Shop } from '@/types'
+import BottomNav from '@/components/BottomNav'
 
 function haversine(lat1: number, lng1: number, lat2: number, lng2: number) {
   const R = 6371
@@ -20,14 +21,14 @@ const CAT_ICONS: Record<string,string> = {
 
 export default function StoresPage() {
   const [shops, setShops]               = useState<Shop[]>([])
-  const [categories, setCategories]     = useState<Category[]>([])
+  const [categories, setCategories]     = useState<{id:string;name:string;icon?:string}[]>([])
   const [activeCategory, setActiveCat]  = useState('all')
   const [search, setSearch]             = useState('')
   const [loading, setLoading]           = useState(true)
   const [userLat, setUserLat]           = useState<number|null>(null)
   const [userLng, setUserLng]           = useState<number|null>(null)
   const [locStatus, setLocStatus]       = useState<'idle'|'asking'|'granted'|'denied'>('idle')
-  const [radius, setRadius]             = useState(10)
+  const [radius, setRadius]             = useState(5)
   const [sortBy, setSortBy]             = useState<'distance'|'rating'|'open'>('open')
 
   useEffect(() => {
@@ -111,7 +112,7 @@ export default function StoresPage() {
           color:var(--text-2); cursor:pointer; font-family:inherit;
           transition:all .14s; -webkit-tap-highlight-color:transparent;
         }
-        .st-cat-pill.active { background:#ff3008; border-color:#ff3008; color:#fff; }
+        .st-cat-pill.active { background:#FF3008; border-color:#FF3008; color:#fff; }
         .st-cat-pill:not(.active):active { background:var(--bg-3); }
         .st-sort-btn {
           padding:7px 14px; border-radius:999px; font-size:12px; font-weight:700;
@@ -143,7 +144,7 @@ export default function StoresPage() {
             </div>
             {locStatus !== 'granted' && (
               <button onClick={askLocation}
-                style={{ fontSize:12, fontWeight:700, padding:'6px 14px', borderRadius:10, background:'rgba(255,48,8,.1)', color:'#ff3008', border:'none', cursor:'pointer', fontFamily:'inherit', flexShrink:0 }}>
+                style={{ fontSize:12, fontWeight:700, padding:'6px 14px', borderRadius:10, background:'rgba(255,48,8,.1)', color:'#FF3008', border:'none', cursor:'pointer', fontFamily:'inherit', flexShrink:0 }}>
                 {locStatus === 'asking' ? '📍…' : '📍 Set location'}
               </button>
             )}
@@ -189,7 +190,7 @@ export default function StoresPage() {
             <>
               <div style={{ width:1, height:16, background:'var(--border)', flexShrink:0, marginLeft:4 }} />
               <span style={{ fontSize:11, fontWeight:700, color:'var(--text-3)', flexShrink:0 }}>Radius:</span>
-              {[2,5,10,25,50].map(r => (
+              {[1,2,5,7].map(r => (
                 <button key={r}
                   className={`st-sort-btn${radius === r ? ' on' : ''}`}
                   onClick={() => setRadius(r)}>
@@ -225,7 +226,7 @@ export default function StoresPage() {
             </p>
             <div style={{ display:'flex', gap:10, justifyContent:'center', flexWrap:'wrap' }}>
               {search && <button onClick={() => setSearch('')} style={{ padding:'10px 22px', borderRadius:12, background:'var(--bg-3)', color:'var(--text)', fontWeight:800, fontSize:13, border:'none', cursor:'pointer', fontFamily:'inherit' }}>Clear search</button>}
-              {locStatus === 'granted' && <button onClick={() => setRadius(999)} style={{ padding:'10px 22px', borderRadius:12, background:'#ff3008', color:'#fff', fontWeight:800, fontSize:13, border:'none', cursor:'pointer', fontFamily:'inherit' }}>Show all shops</button>}
+              {locStatus === 'granted' && <button onClick={() => setRadius(999)} style={{ padding:'10px 22px', borderRadius:12, background:'#FF3008', color:'#fff', fontWeight:800, fontSize:13, border:'none', cursor:'pointer', fontFamily:'inherit' }}>Show all shops</button>}
             </div>
           </div>
         )}
@@ -264,22 +265,7 @@ export default function StoresPage() {
       </div>
 
       {/* ── Bottom nav ─────────────────────────────────────────── */}
-      <div style={{ position:'fixed', bottom:0, left:0, right:0, background:'var(--card-bg)', borderTop:'1px solid var(--border)', paddingBottom:'env(safe-area-inset-bottom,0)', zIndex:50 }}>
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-around', padding:'6px 0 8px', maxWidth:480, margin:'0 auto' }}>
-          {[
-            { icon:'🏠', label:'Home',   href:'/dashboard/customer', on:false },
-            { icon:'🛍️', label:'Shops',  href:'/stores',              on:true  },
-            { icon:'❤️', label:'Saved',  href:'/favourites',           on:false },
-            { icon:'📦', label:'Orders', href:'/orders/history',       on:false },
-          ].map(item => (
-            <Link key={item.label} href={item.href}
-              style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:2, padding:'6px 18px', borderRadius:14, textDecoration:'none', color: item.on ? '#ff3008' : 'var(--text-3)', WebkitTapHighlightColor:'transparent' }}>
-              <span style={{ fontSize:22, lineHeight:1 }}>{item.icon}</span>
-              <span style={{ fontSize:11, fontWeight:800, letterSpacing:'0.01em' }}>{item.label}</span>
-            </Link>
-          ))}
-        </div>
-      </div>
+      <BottomNav active="shops" />
     </div>
   )
 }
@@ -288,7 +274,7 @@ const CAT_ICON_MAP: Record<string,string> = {
   food:'🍔',grocery:'🛒',pharmacy:'💊',electronics:'📱',salon:'💇',hardware:'🔧',pet:'🐾',flower:'🌸',bakery:'🥐',default:'🏪'
 }
 const CAT_COLOR_MAP: Record<string,string> = {
-  food:'#FF3008',grocery:'#00b874',pharmacy:'#2563eb',electronics:'#7c3aed',salon:'#db2777',hardware:'#b45309',pet:'#ea580c',default:'#FF5A1F'
+  food:'#FF3008',grocery:'#00b874',pharmacy:'#2563eb',electronics:'#7c3aed',salon:'#db2777',hardware:'#b45309',pet:'#ea580c',default:'#FF3008'
 }
 
 function ShopCard({ shop, index, closed }: { shop: any; index: number; closed?: boolean }) {

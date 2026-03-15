@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import ThemeToggle from '@/components/ThemeToggle'
 
 const ROLE_DEST: Record<string, string> = {
-  customer: '/dashboard/customer', shopkeeper: '/dashboard/business',
+  customer: '/stores', shopkeeper: '/dashboard/business',
   business: '/dashboard/business', delivery: '/dashboard/delivery', admin: '/dashboard/admin',
 }
 
@@ -21,10 +21,10 @@ const CATS = [
 ]
 
 const STEPS = [
-  { n:'01', icon:'📍', title:'Share location',    desc:'We show every open shop within your colony — not a dark kitchen 15 km away.' },
+  { n:'01', icon:'📍', title:'Share location',    desc:'We show every open shop within 5km of you — your street, your colony, your neighbourhood.' },
   { n:'02', icon:'🛒', title:'Pick what you need', desc:'Food, grocery, medicine, bakery — browse live menus with real stock.' },
   { n:'03', icon:'🛵', title:'Rider picks it up',  desc:'A local rider accepts in seconds. Track them live on the map.' },
-  { n:'04', icon:'🎉', title:'At your door',        desc:'Under 30 minutes. Pay UPI or cash. No surprises.' },
+  { n:'04', icon:'🎉', title:'At your door',        desc:'Under 30 minutes — because all our riders deliver within 5km only. Pay UPI or cash.' },
 ]
 
 export default function LandingPage() {
@@ -216,7 +216,7 @@ export default function LandingPage() {
           <div style={{ display:'flex', alignItems:'center', gap:8 }}>
             <ThemeToggle />
             <Link href="/auth/login"  className="lp-nav-link lp-desktop" style={{ padding:'8px 10px' }}>Log in</Link>
-            <Link href="/auth/signup" className="lp-btn-red" style={{ padding:'9px 18px', fontSize:13 }}>Get started</Link>
+            <Link href="/auth/signup" className="lp-btn-red" style={{ padding:'9px 18px', fontSize:13 }}>Sign up free</Link>
           </div>
         </div>
       </nav>
@@ -224,7 +224,7 @@ export default function LandingPage() {
       {/* ── HERO ─────────────────────────────────── */}
       <section style={{ padding:'clamp(32px,6vw,96px) 16px clamp(28px,5vw,80px)', position:'relative', overflow:'hidden', background:'var(--lp-bg)' }}>
         {/* Blobs */}
-        <div style={{ position:'absolute', top:-80, right:-60, width:480, height:480, borderRadius:'50%', background:'radial-gradient(circle,rgba(255,140,0,.13) 0%,transparent 70%)', pointerEvents:'none' }} />
+        <div style={{ position:'absolute', top:-80, right:-60, width:480, height:480, borderRadius:'50%', background:'radial-gradient(circle,rgba(255,48,8,.15) 0%,transparent 70%)', pointerEvents:'none' }} />
         <div style={{ position:'absolute', bottom:-60, left:-40, width:360, height:360, borderRadius:'50%', background:'radial-gradient(circle,rgba(255,48,8,.08) 0%,transparent 70%)', pointerEvents:'none' }} />
         {/* Dot grid */}
         <div style={{ position:'absolute', inset:0, backgroundImage:'radial-gradient(circle, rgba(0,0,0,.35) 2px, transparent 2px)', backgroundSize:'28px 28px', pointerEvents:'none' }} />
@@ -233,7 +233,7 @@ export default function LandingPage() {
 
           {/* Copy */}
           <div>
-            <div className="lp-fu0" style={{ display:'inline-flex', alignItems:'center', gap:8, background:'rgba(255,140,0,.1)', border:'1px solid rgba(255,140,0,.3)', borderRadius:999, padding:'6px 14px', marginBottom:20, fontSize:12, fontWeight:700, color:'#B05A00' }}>
+            <div className="lp-fu0" style={{ display:'inline-flex', alignItems:'center', gap:8, background:'rgba(255,48,8,.1)', border:'1px solid rgba(255,48,8,.3)', borderRadius:999, padding:'6px 14px', marginBottom:20, fontSize:12, fontWeight:700, color:'#E02800' }}>
               <span style={{ width:7, height:7, borderRadius:'50%', background:'#FF8C00', display:'inline-block', animation:'lpPulse 1.8s infinite' }} />
               Live near you — Jaipur &amp; expanding
             </div>
@@ -253,12 +253,17 @@ export default function LandingPage() {
             </p>
 
             <div className="lp-fu3 lp-hero-btns" style={{ display:'flex', gap:12, alignItems:'center', marginBottom:28, flexWrap:'wrap' }}>
-              <Link href="/auth/signup" className="lp-btn-red">Order from nearby shops 🛵</Link>
-              <Link href="/auth/signup?role=business" className="lp-btn-outline">List your shop 🏪</Link>
+              <Link href="/stores" className="lp-btn-red">Browse shops near me 🛍️</Link>
+              <Link href="/auth/signup?role=business" className="lp-btn-outline" style={{ borderColor:'#7850DC', color:'#7850DC' }}>List your shop 🏪</Link>
+            </div>
+
+            <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:28 }}>
+              <span style={{ fontSize:12, color:'var(--lp-text3)' }}>Already have an account?</span>
+              <Link href="/auth/login" style={{ fontSize:12, fontWeight:800, color:'var(--lp-red)', textDecoration:'none' }}>Sign in →</Link>
             </div>
 
             <div className="lp-fu4" style={{ display:'flex', flexWrap:'wrap', gap:14 }}>
-              {['No minimum order','UPI & Cash','Live tracking','Real local shops'].map(t => (
+              {['No login to browse','UPI & Cash','Live tracking','Real local shops'].map(t => (
                 <div key={t} style={{ display:'flex', alignItems:'center', gap:6, fontSize:13, color:'var(--lp-text2)', fontWeight:600 }}>
                   <span style={{ width:16, height:16, borderRadius:'50%', background:'rgba(255,48,8,.1)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:9, color:'var(--lp-red)', fontWeight:900, flexShrink:0 }}>✓</span>
                   {t}
@@ -271,7 +276,7 @@ export default function LandingPage() {
           <div className="lp-desktop lp-si" style={{ display:'flex', flexDirection:'column', gap:12 }}>
             <div className="lp-hero-card lp-float-a">
               <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10 }}>
-                <div style={{ width:40, height:40, borderRadius:10, background:'rgba(255,140,0,.12)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:20 }}>🏪</div>
+                <div style={{ width:40, height:40, borderRadius:10, background:'rgba(255,48,8,.12)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:20 }}>🏪</div>
                 <div>
                   <div style={{ fontWeight:800, fontSize:13, color:'var(--lp-text)' }}>Sharma Kirana</div>
                   <div style={{ fontSize:11, color:'var(--lp-text3)' }}>0.4 km · Open now</div>
@@ -283,7 +288,7 @@ export default function LandingPage() {
               </div>
             </div>
 
-            <div className="lp-float-b" style={{ background:'linear-gradient(135deg,#FF3008,#FF6B35)', borderRadius:18, padding:'14px 16px', boxShadow:'0 6px 24px rgba(255,48,8,.35)' }}>
+            <div className="lp-float-b" style={{ background:'linear-gradient(135deg,#FF3008,#E02800)', borderRadius:18, padding:'14px 16px', boxShadow:'0 6px 24px rgba(255,48,8,.35)' }}>
               <div style={{ fontSize:11, fontWeight:700, color:'rgba(255,255,255,.7)', marginBottom:5 }}>LIVE ORDER 🛵</div>
               <div style={{ fontWeight:800, fontSize:14, color:'#fff', marginBottom:10 }}>Rider 2 min away</div>
               <div style={{ height:5, background:'rgba(255,255,255,.25)', borderRadius:999 }}>
@@ -298,7 +303,7 @@ export default function LandingPage() {
           </div>
 
           {/* Mobile — single social proof card instead */}
-          <div className="lp-mobile lp-fu4" style={{ background:'linear-gradient(135deg,#FF3008,#FF6B35)', borderRadius:20, padding:'18px 20px', display:'flex', alignItems:'center', justifyContent:'space-between', boxShadow:'0 8px 28px rgba(255,48,8,.35)' }}>
+          <div className="lp-mobile lp-fu4" style={{ background:'linear-gradient(135deg,#FF3008,#E02800)', borderRadius:20, padding:'18px 20px', display:'flex', alignItems:'center', justifyContent:'space-between', boxShadow:'0 8px 28px rgba(255,48,8,.35)' }}>
             <div>
               <div style={{ fontSize:11, fontWeight:700, color:'rgba(255,255,255,.75)', marginBottom:5, letterSpacing:'.04em' }}>LIVE ORDER</div>
               <div style={{ fontWeight:800, fontSize:15, color:'#fff', marginBottom:8 }}>Rider 2 min away 🛵</div>
@@ -390,7 +395,7 @@ export default function LandingPage() {
           </div>
 
           <div style={{ textAlign:'center', marginTop:36 }}>
-            <Link href="/auth/signup" className="lp-btn-red">Start ordering free →</Link>
+            <Link href="/stores" className="lp-btn-red">Browse shops near me →</Link>
           </div>
         </div>
       </section>
@@ -436,7 +441,7 @@ export default function LandingPage() {
 
           <div className="lp-grid-3" style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:18 }}>
             {/* Customers */}
-            <div className="lp-for-card" style={{ background:'linear-gradient(145deg,var(--lp-bg2),var(--lp-bg3))', border:'1.5px solid rgba(255,140,0,.2)' }}>
+            <div className="lp-for-card" style={{ background:'linear-gradient(145deg,var(--lp-bg2),var(--lp-bg3))', border:'1.5px solid rgba(255,48,8,.2)' }}>
               <div style={{ fontSize:44, marginBottom:14 }}>🛍️</div>
               <h3 style={{ fontFamily:"'Syne',sans-serif", fontWeight:800, fontSize:20, color:'var(--lp-text)', marginBottom:8 }}>Customers</h3>
               <p style={{ fontSize:13, color:'var(--lp-text3)', lineHeight:1.75, marginBottom:18 }}>Every kind of local shop at your fingertips. Delivered in under 30 minutes.</p>
@@ -447,7 +452,7 @@ export default function LandingPage() {
                   </div>
                 ))}
               </div>
-              <Link href="/auth/signup" className="lp-btn-red" style={{ display:'block', textAlign:'center' }}>Order now — free →</Link>
+              <Link href="/stores" className="lp-btn-red" style={{ display:'block', textAlign:'center' }}>Browse shops — no login needed →</Link>
             </div>
 
             {/* Shop owners */}
@@ -512,24 +517,24 @@ export default function LandingPage() {
       </section>
 
       {/* ── BOTTOM CTA ──────────────────────── */}
-      <section style={{ padding:'clamp(52px,7vw,90px) 16px', background:'linear-gradient(135deg,#FF3008 0%,#FF6B00 100%)', position:'relative', overflow:'hidden' }}>
+      <section style={{ padding:'clamp(52px,7vw,90px) 16px', background:'linear-gradient(135deg,#FF3008 0%,#E02800 100%)', position:'relative', overflow:'hidden' }}>
         <div style={{ position:'absolute', top:-50, right:-50, width:380, height:380, borderRadius:'50%', background:'rgba(255,255,255,.06)', pointerEvents:'none' }} />
         <div style={{ position:'absolute', bottom:-60, left:-30, width:280, height:280, borderRadius:'50%', background:'rgba(0,0,0,.08)', pointerEvents:'none' }} />
         <div style={{ maxWidth:600, margin:'0 auto', textAlign:'center', position:'relative' }}>
           <h2 style={{ fontFamily:"'Syne',sans-serif", fontWeight:800, fontSize:'clamp(1.9rem,5vw,3rem)', letterSpacing:'-.04em', color:'#fff', marginBottom:14, lineHeight:1.1 }}>
             Your neighbourhood is waiting
           </h2>
-          <p style={{ fontSize:15, color:'rgba(255,255,255,.78)', marginBottom:32, fontWeight:500 }}>Free to join. No minimum order. Local shops open right now.</p>
+          <p style={{ fontSize:15, color:'rgba(255,255,255,.78)', marginBottom:32, fontWeight:500 }}>Browse shops freely. Sign up only when you want to order.</p>
           <div className="lp-cta-btns" style={{ display:'flex', gap:12, justifyContent:'center', flexWrap:'wrap' }}>
-            <Link href="/auth/signup" style={{ display:'inline-flex', alignItems:'center', gap:8, padding:'14px 32px', borderRadius:14, background:'#fff', color:'#FF3008', fontWeight:900, fontSize:15, textDecoration:'none', boxShadow:'0 4px 20px rgba(0,0,0,.15)', transition:'transform .15s' }}
+            <Link href="/stores" style={{ display:'inline-flex', alignItems:'center', gap:8, padding:'14px 32px', borderRadius:14, background:'#fff', color:'#FF3008', fontWeight:900, fontSize:15, textDecoration:'none', boxShadow:'0 4px 20px rgba(0,0,0,.15)', transition:'transform .15s' }}
               onMouseEnter={e => { (e.currentTarget as HTMLAnchorElement).style.transform='translateY(-2px)' }}
               onMouseLeave={e => { (e.currentTarget as HTMLAnchorElement).style.transform='translateY(0)' }}>
-              Create free account →
+              Browse shops near me 🛍️
             </Link>
-            <Link href="/auth/login" style={{ display:'inline-flex', alignItems:'center', gap:8, padding:'14px 32px', borderRadius:14, background:'rgba(255,255,255,.15)', color:'#fff', fontWeight:800, fontSize:15, textDecoration:'none', border:'1.5px solid rgba(255,255,255,.3)', transition:'transform .15s' }}
+            <Link href="/auth/signup" style={{ display:'inline-flex', alignItems:'center', gap:8, padding:'14px 32px', borderRadius:14, background:'rgba(255,255,255,.15)', color:'#fff', fontWeight:800, fontSize:15, textDecoration:'none', border:'1.5px solid rgba(255,255,255,.3)', transition:'transform .15s' }}
               onMouseEnter={e => { (e.currentTarget as HTMLAnchorElement).style.background='rgba(255,255,255,.22)' }}
               onMouseLeave={e => { (e.currentTarget as HTMLAnchorElement).style.background='rgba(255,255,255,.15)' }}>
-              Sign in
+              Create free account →
             </Link>
           </div>
         </div>

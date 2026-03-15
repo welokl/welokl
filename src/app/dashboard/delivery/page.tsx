@@ -361,7 +361,7 @@ export default function DeliveryDashboard() {
 
               {activeOrder.delivery_lat && activeOrder.delivery_lng && (
                 <a href={`https://maps.google.com/?q=${activeOrder.delivery_lat},${activeOrder.delivery_lng}`} target="_blank" rel="noopener"
-                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '10px', borderRadius: 12, background: 'rgba(59,130,246,0.1)', color: '#3b82f6', fontWeight: 700, fontSize: 13, textDecoration: 'none', marginBottom: 10 }}>
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '10px', borderRadius: 12, background: 'rgba(8,145,178,0.1)', color: '#0891B2', fontWeight: 700, fontSize: 13, textDecoration: 'none', marginBottom: 10 }}>
                   🗺️ Open in Maps
                 </a>
               )}
@@ -406,6 +406,10 @@ export default function DeliveryDashboard() {
                     <p style={{ fontWeight: 900, fontSize: 15, color: 'var(--text)' }}>#{order.order_number}</p>
                     <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-2)', marginTop: 2 }}>{order.shop?.name}</p>
                     <p style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 1 }}>{order.shop?.address}</p>
+                    {order.shop?.address && (
+                      <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(order.shop.address)}`} target="_blank" rel="noopener"
+                        style={{ fontSize: 11, color: '#0891B2', fontWeight: 700, textDecoration: 'none' }}>🗺️ Pickup location →</a>
+                    )}
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <p style={{ fontWeight: 900, fontSize: 20, color: 'var(--brand)' }}>₹{order.total_amount}</p>

@@ -49,6 +49,8 @@ interface CartStore {
   clear: () => void
   count: () => number
   subtotal: () => number
+  itemCount: () => number
+  total: () => number
 }
 
 const STORAGE_KEY = 'welokl_cart_v3'
@@ -142,9 +144,12 @@ export const useCart = create<CartStore>((set, get) => ({
     writeStorage(state)
   },
 
-  count: () => get().items.reduce((s, i) => s + i.quantity, 0),
+  count:     () => get().items.reduce((s, i) => s + i.quantity, 0),
+  subtotal:  () => get().items.reduce((s, i) => s + i.product.price * i.quantity, 0),
 
-  subtotal: () => get().items.reduce((s, i) => s + i.product.price * i.quantity, 0),
+  // ── Backward compat aliases for old Navbar / CartDrawer ──────────────
+  itemCount: () => get().items.reduce((s, i) => s + i.quantity, 0),
+  total:     () => get().items.reduce((s, i) => s + i.product.price * i.quantity, 0),
 }))
 
 // ── Backwards-compat alias ─────────────────────────────────────────────────────

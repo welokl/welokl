@@ -1,291 +1,340 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import type { Order, OrderStatus } from '@/types'
-import { ORDER_STATUS_LABELS, ORDER_STATUS_ICONS } from '@/types'
-import ReviewModal from '@/components/ReviewModal'
-import { DeliveryCountdown, OrderAgainButton } from '@/components/helpers'
+import { useCart } from '@/store/cart'
+import FavouriteButton from '@/components/FavouriteButton'
 
-const STATUS_FLOW: OrderStatus[] = ['placed','accepted','preparing','ready','picked_up','delivered']
+interface Shop {
+  id: string; name: string; description: string | null; category_name: string
+  is_open: boolean; rating: number; avg_delivery_time: number
+  delivery_enabled: boolean; pickup_enabled: boolean; min_order_amount: number
+  area: string; image_url: string | null; banner_url?: string | null
+  offer_text?: string | null; free_delivery_above?: number | null
+}
+interface Product {
+  id: string; name: string; description?: string | null
+  price: number; original_price?: number | null
+  image_url?: string | null; is_veg?: boolean | null
+  is_available?: boolean; category?: string | null; category_name?: string | null
+  shop_id?: string; [key: string]: unknown
+}
 
-export default function OrderPage() {
-  const { id } = useParams<{ id: string }>()
-  const [order, setOrder]         = useState<Order | null>(null)
-  const [partner, setPartner]     = useState<any>(null)
-  const [loading, setLoading]     = useState(true)
-  const [showReview, setShowReview] = useState(false)
-  const [hasReviewed, setHasReviewed] = useState(false)
+export default function StorePage() {
+  const { id }   = useParams<{ id: string }>()
+  const router   = useRouter()
+  const cart     = useCart() as any
+  const [shop,       setShop]      = useState<Shop | null>(null)
+  const [products,   setProducts]  = useState<Product[]>([])
+  const [loading,    setLoading]   = useState(true)
+  const [diffWarn,   setDiffWarn]  = useState(false)
+  const [activeCat,  setActiveCat] = useState('all')
+  const [search,     setSearch]    = useState('')
 
-  useEffect(() => {
-    loadOrder()
-    const supabase = createClient()
-    const ch = supabase.channel(`order-track:${id}`)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders', filter: `id=eq.${id}` }, () => loadOrder())
-      .subscribe()
-    return () => { supabase.removeChannel(ch) }
-  }, [id])
+  useEffect(() => { cart._hydrate?.() }, [])
+  useEffect(() => { load() }, [id])
 
-  async function loadOrder() {
-    const supabase = createClient()
-    const { data } = await supabase.from('orders').select('*, pickup_code, shop:shops(*), items:order_items(*)').eq('id', id).single()
-    setOrder(data)
-    if (data?.delivery_partner_id) {
-      const [{ data: pu }, { data: pp }] = await Promise.all([
-        supabase.from('users').select('id,name,phone').eq('id', data.delivery_partner_id).single(),
-        supabase.from('delivery_partners').select('rating,total_deliveries,vehicle_type,current_lat,current_lng').eq('user_id', data.delivery_partner_id).single(),
-      ])
-      if (pu) setPartner({ ...pu, ...pp })
-    } else { setPartner(null) }
-    if (data?.status === 'delivered') {
-      const { data: review } = await supabase.from('reviews').select('id').eq('order_id', id).single()
-      setHasReviewed(!!review)
+  async function load() {
+    if (!id) return
+    const sb = createClient()
+    const [{ data: s }, { data: p, error: pe }] = await Promise.all([
+      sb.from('shops').select('*').eq('id', id).single(),
+      sb.from('products').select('id,name,description,price,original_price,image_url,is_veg,is_available,shop_id,category,category_name').eq('shop_id', id).order('name'),
+    ])
+    if (pe) {
+      const { data: p2 } = await sb.from('products').select('*').eq('shop_id', id)
+      setProducts((p2 ?? []) as Product[])
+    } else {
+      setProducts((p ?? []) as Product[])
     }
+    setShop(s)
     setLoading(false)
   }
 
+  function handleAdd(product: Product) {
+    if (cart.shop_id && cart.shop_id !== id && cart.count() > 0) { setDiffWarn(true); return }
+    cart.addItem(product, id, shop?.name ?? '')
+  }
+
+  const grouped = products.reduce<Record<string, Product[]>>((acc, p) => {
+    const cat = (p as any).category ?? (p as any).category_name ?? 'Items'
+    ;(acc[cat] ??= []).push(p)
+    return acc
+  }, {})
+  const categories  = Object.keys(grouped)
+  const cartCount   = cart.count?.() ?? 0
+  const cartTotal   = cart.subtotal?.() ?? 0
+  const showCartBar = cartCount > 0 && cart.shop_id === id
+
+  const filteredGroups = Object.entries(grouped).reduce<Record<string, Product[]>>((acc, [cat, items]) => {
+    if (activeCat !== 'all' && cat !== activeCat) return acc
+    const filtered = search ? items.filter(p => p.name.toLowerCase().includes(search.toLowerCase())) : items
+    if (filtered.length) acc[cat] = filtered
+    return acc
+  }, {})
+
   if (loading) return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg)', padding: 24, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-      <div style={{ maxWidth: 480, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 14 }}>
-        {[1,2,3,4].map(i => <div key={i} className="shimmer" style={{ height: 80, borderRadius: 16 }} />)}
-      </div>
-    </div>
-  )
-  if (!order) return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-      <div style={{ textAlign: 'center' }}>
-        <p style={{ fontWeight: 800, fontSize: 16, color: 'var(--text)', marginBottom: 8 }}>Order not found</p>
-        <Link href="/dashboard/customer" style={{ color: '#ff3008', fontSize: 14, textDecoration: 'none' }}>Go to dashboard</Link>
+    <div style={{ minHeight:'100vh', background:'var(--page-bg)', padding:16 }}>
+      <style>{`@keyframes sh{0%{background-position:-400px 0}100%{background-position:400px 0}}.sk{background:linear-gradient(90deg,#f0f0f0 25%,#e8e8e8 50%,#f0f0f0 75%);background-size:400px 100%;animation:sh 1.4s infinite;border-radius:16px;}`}</style>
+      <div style={{ maxWidth:760, margin:'0 auto', display:'flex', flexDirection:'column', gap:12 }}>
+        <div className="sk" style={{ height:200, borderRadius:24 }} />
+        {[1,2,3,4].map(i => <div key={i} className="sk" style={{ height:90 }} />)}
       </div>
     </div>
   )
 
-  const currentStep = STATUS_FLOW.indexOf(order.status as OrderStatus)
-  const isCancelled = ['cancelled','rejected'].includes(order.status)
-  const isDelivered = order.status === 'delivered'
-  const isPickedUp  = order.status === 'picked_up'
-  const isActive    = !isCancelled && !isDelivered
-
-  const card = { background: 'var(--card-bg)', borderRadius: 18, border: '1px solid var(--border)', boxShadow: 'var(--card-shadow)' } as React.CSSProperties
+  if (!shop) return (
+    <div style={{ minHeight:'100vh', background:'var(--page-bg)', display:'flex', alignItems:'center', justifyContent:'center', fontFamily:"'Plus Jakarta Sans',sans-serif" }}>
+      <div style={{ textAlign:'center' }}>
+        <div style={{ fontSize:52, marginBottom:14 }}>🏪</div>
+        <p style={{ fontWeight:800, fontSize:17, color:'var(--text-primary)', marginBottom:10 }}>Shop not found</p>
+        <Link href="/stores" style={{ color:'#FF3008', fontSize:14, textDecoration:'none', fontWeight:700 }}>Browse all shops →</Link>
+      </div>
+    </div>
+  )
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg)', fontFamily: "'Plus Jakarta Sans', sans-serif", paddingBottom: 80 }}>
-      {/* Header */}
-      <div style={{ position: 'sticky', top: 0, zIndex: 40, background: 'var(--card-bg)', borderBottom: '1px solid var(--border)', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
-        <button onClick={() => window.history.back()} style={{ padding: '6px 10px', borderRadius: 10, background: 'var(--bg-3)', border: 'none', cursor: 'pointer', fontSize: 18, color: 'var(--text)' }}>←</button>
-        <div style={{ flex: 1 }}>
-          <h1 style={{ fontWeight: 900, fontSize: 14, color: 'var(--text)' }}>#{order.order_number}</h1>
-          <p style={{ fontSize: 12, color: 'var(--text-3)' }}>{(order as any).shop?.name}</p>
-        </div>
-        <span style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 999, background: isDelivered ? 'rgba(34,197,94,0.15)' : isCancelled ? 'var(--red-bg)' : 'var(--brand-muted)', color: isDelivered ? '#16a34a' : isCancelled ? '#ef4444' : '#ff3008' }}>
-          {ORDER_STATUS_ICONS[order.status as keyof typeof ORDER_STATUS_ICONS]} {ORDER_STATUS_LABELS[order.status as keyof typeof ORDER_STATUS_LABELS]}
-        </span>
-      </div>
+    <div style={{ minHeight:'100vh', background:'var(--page-bg)', fontFamily:"'Plus Jakarta Sans',sans-serif", paddingBottom:120 }}>
+      <style>{`
+        @keyframes sh{0%{background-position:-400px 0}100%{background-position:400px 0}}
+        .sk{background:linear-gradient(90deg,#f0f0f0 25%,#e8e8e8 50%,#f0f0f0 75%);background-size:400px 100%;animation:sh 1.4s infinite;}
+        .pcard{background:#fff;border-radius:18px;overflow:hidden;display:flex;gap:0;transition:transform .15s;}
+        .pcard:active{transform:scale(.98);}
+        .cat-tab{padding:10px 18px;font-weight:700;font-size:13px;background:none;border:none;cursor:pointer;font-family:inherit;white-space:nowrap;transition:color .15s,border-color .15s;border-bottom:2.5px solid transparent;}
+        .tab-scroll::-webkit-scrollbar{display:none;}
+      `}</style>
 
-      <div style={{ maxWidth: 480, margin: '0 auto', padding: '20px 16px' }}>
-
-        {/* Delivered banner */}
-        {isDelivered && (
-          <div style={{ background: '#16a34a', borderRadius: 18, padding: '24px 20px', textAlign: 'center', marginBottom: 14 }}>
-            <div style={{ fontSize: 40, marginBottom: 8 }}>🎉</div>
-            <h2 style={{ fontWeight: 900, fontSize: 18, color: '#fff', marginBottom: 4 }}>Order Delivered!</h2>
-            <p style={{ color: 'rgba(255,255,255,0.75)', fontSize: 13 }}>Enjoy your order from {(order as any).shop?.name}</p>
-            {!hasReviewed && (
-              <button onClick={() => setShowReview(true)}
-                style={{ marginTop: 14, background: '#fff', color: '#16a34a', fontWeight: 800, fontSize: 13, padding: '8px 20px', borderRadius: 12, border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
-                ⭐ Rate your experience
-              </button>
-            )}
-          </div>
-        )}
-
-        {/* Cancelled banner */}
-        {isCancelled && (
-          <div style={{ background: 'var(--red-bg)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 18, padding: '24px 20px', textAlign: 'center', marginBottom: 14 }}>
-            <div style={{ fontSize: 40, marginBottom: 8 }}>❌</div>
-            <h2 style={{ fontWeight: 900, fontSize: 18, color: '#ef4444', marginBottom: 4 }}>Order {order.status === 'rejected' ? 'Rejected' : 'Cancelled'}</h2>
-            <p style={{ fontSize: 13, color: '#ef4444', opacity: 0.8 }}>No charge was made for this order</p>
-          </div>
-        )}
-
-        {/* Countdown */}
-        {isPickedUp && order.picked_up_at && (
-          <DeliveryCountdown pickedUpAt={order.picked_up_at} estimatedMinutes={order.estimated_delivery || 20} />
-        )}
-
-        {/* Partner card */}
-        {partner && ['picked_up','delivered','ready','accepted','preparing'].includes(order.status) && (
-          <div style={{ ...card, padding: '16px', marginBottom: 14 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-              <div style={{ width: 48, height: 48, background: '#ff3008', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 900, fontSize: 20, flexShrink: 0 }}>
-                {partner.name?.charAt(0).toUpperCase()}
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
-                  <p style={{ fontWeight: 800, fontSize: 15, color: 'var(--text)' }}>{partner.name}</p>
-                  {order.status === 'picked_up' && (
-                    <span style={{ fontSize: 11, fontWeight: 700, background: 'rgba(34,197,94,0.15)', color: '#16a34a', padding: '2px 8px', borderRadius: 999, animation: 'pulseDot 2s infinite' }}>On the way 🛵</span>
-                  )}
-                </div>
-                <div style={{ display: 'flex', gap: 10, fontSize: 12, color: 'var(--text-3)' }}>
-                  {partner.rating && <span>★ {partner.rating}</span>}
-                  {partner.total_deliveries && <span>{partner.total_deliveries} deliveries</span>}
-                  {partner.vehicle_type && <span>{partner.vehicle_type === 'bike' ? '🏍️' : '🛵'} {partner.vehicle_type}</span>}
-                </div>
-              </div>
-              {partner.phone && (
-                <a href={`tel:${partner.phone}`}
-                  style={{ width: 44, height: 44, background: '#22c55e', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, textDecoration: 'none', flexShrink: 0, boxShadow: '0 4px 12px rgba(34,197,94,0.3)' }}>
-                  📞
-                </a>
-              )}
-            </div>
-            {order.status === 'picked_up' && (
-              <p style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)', fontSize: 12, color: 'var(--text-3)' }}>
-                📍 {partner.name} has picked up your order and is heading your way
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* ── PICKUP ORDER: show 4-digit code to present at shop ──────────────────
-             Shown for any non-cancelled, non-delivered pickup order.
-             Code was generated at checkout. Shop enters it to confirm handover.  */}
-        {order.type === 'pickup' && !isCancelled && !isDelivered && (order as any).pickup_code && (
-          <div style={{ background: 'linear-gradient(135deg, #1a1a2e, #16213e)', borderRadius: 20, padding: '22px 20px', marginBottom: 14, textAlign: 'center' }}>
-            <p style={{ fontSize: 11, fontWeight: 800, color: 'rgba(255,255,255,0.5)', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 14 }}>
-              🏪 Show this code at the shop
-            </p>
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginBottom: 14 }}>
-              {String((order as any).pickup_code).split('').map((d: string, i: number) => (
-                <div key={i} style={{ width: 56, height: 72, background: 'rgba(255,255,255,0.08)', border: '2px solid rgba(255,48,8,0.6)', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 36, fontWeight: 900, color: '#ff3008', fontFamily: 'monospace', backdropFilter: 'blur(8px)' }}>
-                  {d}
-                </div>
-              ))}
-            </div>
-            <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.55)', lineHeight: 1.6 }}>
-              Tell this code to the shopkeeper when you arrive.<br />
-              <strong style={{ color: 'rgba(255,255,255,0.8)' }}>Don't share it before you're at the shop.</strong>
-            </p>
-          </div>
-        )}
-
-        {/* Pickup order delivered — no code needed */}
-        {order.type === 'pickup' && isDelivered && (
-          <div style={{ background: '#16a34a', borderRadius: 18, padding: '18px 20px', textAlign: 'center', marginBottom: 14 }}>
-            <p style={{ fontSize: 15, fontWeight: 900, color: '#fff' }}>✅ Picked up successfully!</p>
-            <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.7)', marginTop: 4 }}>Hope you enjoy your order from {(order as any).shop?.name}</p>
-          </div>
-        )}
-
-        {/* Waiting states */}
-        {!partner && ['accepted','preparing'].includes(order.status) && order.type === 'delivery' && (
-          <div style={{ ...card, padding: '16px', display: 'flex', alignItems: 'center', gap: 14, marginBottom: 14 }}>
-            <div style={{ width: 40, height: 40, background: 'var(--bg-3)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>🛵</div>
-            <div>
-              <p style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)' }}>Shop is preparing your order</p>
-              <p style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>A rider will accept once order is ready for pickup</p>
-            </div>
-          </div>
-        )}
-        {!partner && order.status === 'ready' && order.type === 'delivery' && (
-          <div style={{ ...card, padding: '16px', display: 'flex', alignItems: 'center', gap: 14, marginBottom: 14, border: '2px solid rgba(234,88,12,0.3)', background: 'rgba(234,88,12,0.06)' }}>
-            <div style={{ width: 40, height: 40, background: 'rgba(234,88,12,0.12)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>🛵</div>
-            <div>
-              <p style={{ fontWeight: 800, fontSize: 14, color: '#c2410c' }}>Looking for a rider…</p>
-              <p style={{ fontSize: 12, color: '#ea580c', opacity: 0.8, marginTop: 2 }}>Your order is packed and ready</p>
-            </div>
-          </div>
-        )}
-
-        {/* Status tracker */}
-        {!isCancelled && (
-          <div style={{ ...card, padding: '18px 16px', marginBottom: 14 }}>
-            <p style={{ fontWeight: 800, fontSize: 14, color: 'var(--text)', marginBottom: 16 }}>
-              {isActive ? '📡 Live Tracking' : '✅ Order Journey'}
-            </p>
-            {STATUS_FLOW.map((status, i) => {
-              const done   = i <= currentStep
-              const active = i === currentStep && !isDelivered
-              return (
-                <div key={status} style={{ display: 'flex', alignItems: 'center', gap: 14, paddingBottom: i < STATUS_FLOW.length - 1 ? 14 : 0, position: 'relative' }}>
-                  {i < STATUS_FLOW.length - 1 && (
-                    <div style={{ position: 'absolute', left: 14, top: 34, width: 2, height: 'calc(100% - 6px)', background: done && i < currentStep ? '#ff3008' : 'var(--border-2)', borderRadius: 99 }} />
-                  )}
-                  <div style={{ width: 30, height: 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, flexShrink: 0, zIndex: 1,
-                    background: done ? '#ff3008' : 'var(--bg-3)', color: done ? '#fff' : 'var(--text-3)',
-                    outline: active ? '3px solid rgba(255,48,8,0.25)' : 'none', outlineOffset: 2 }}>
-                    {done && !active ? '✓' : ORDER_STATUS_ICONS[status]}
-                  </div>
-                  <div>
-                    <p style={{ fontSize: 14, fontWeight: 700, color: done ? 'var(--text)' : 'var(--text-4)' }}>{ORDER_STATUS_LABELS[status]}</p>
-                    {active && <p style={{ fontSize: 11, color: '#ff3008', fontWeight: 700, animation: 'pulseDot 2s infinite' }}>In progress…</p>}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        )}
-
-        {/* Delivery address */}
-        {order.delivery_address && (
-          <div style={{ ...card, padding: '16px', display: 'flex', gap: 14, marginBottom: 14 }}>
-            <span style={{ fontSize: 20, marginTop: 2 }}>📍</span>
-            <div>
-              <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Delivering to</p>
-              <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{order.delivery_address}</p>
-              {order.delivery_instructions && <p style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 4 }}>💬 {order.delivery_instructions}</p>}
-            </div>
-          </div>
-        )}
-
-        {/* Order details */}
-        <div style={{ ...card, padding: '18px 16px', marginBottom: 14 }}>
-          <p style={{ fontWeight: 800, fontSize: 14, color: 'var(--text)', marginBottom: 14 }}>Order Details</p>
-          {order.items?.map(item => (
-            <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--text-2)', marginBottom: 6 }}>
-              <span>{item.product_name} × {item.quantity}</span><span>₹{item.price * item.quantity}</span>
-            </div>
-          ))}
-          <div style={{ borderTop: '1px solid var(--border)', marginTop: 10, paddingTop: 10 }}>
-            {[
-              { l: 'Subtotal', v: `₹${order.subtotal}` },
-              { l: 'Delivery', v: order.delivery_fee === 0 ? 'FREE 🎉' : `₹${order.delivery_fee}`, green: order.delivery_fee === 0 },
-              { l: 'Platform fee', v: `₹${order.platform_fee}` },
-            ].map(r => (
-              <div key={r.l} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: r.green ? '#16a34a' : 'var(--text-3)', marginBottom: 6 }}>
-                <span>{r.l}</span><span style={{ fontWeight: r.green ? 700 : 400 }}>{r.v}</span>
-              </div>
-            ))}
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 900, fontSize: 16, color: 'var(--text)', borderTop: '1px solid var(--border)', paddingTop: 10, marginTop: 4 }}>
-              <span>Total</span><span>₹{order.total_amount}</span>
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: 12, fontSize: 12, color: 'var(--text-3)', marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
-            <span>{order.payment_method === 'cod' ? '💵 Cash on Delivery' : '📲 UPI'}</span>
-            <span>·</span>
-            <span>{order.type === 'delivery' ? '🛵 Delivery' : '🏪 Self Pickup'}</span>
-          </div>
-        </div>
-
-        {/* Actions */}
-        <div style={{ display: 'flex', gap: 10 }}>
-          {isDelivered && order.items && (
-            <OrderAgainButton shopId={order.shop_id} items={order.items.map(i => ({ product_id: i.product_id || '', quantity: i.quantity }))} />
+      {/* Sticky header */}
+      <div style={{ position:'sticky', top:0, zIndex:100, background:'var(--card-white)', borderBottom:'1px solid var(--divider)' }}>
+        <div style={{ maxWidth:760, margin:'0 auto', display:'flex', alignItems:'center', gap:10, height:56, padding:'0 16px' }}>
+          <button onClick={() => router.back()} style={{ width:36, height:36, borderRadius:12, background:'var(--page-bg)', border:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+            <svg viewBox="0 0 24 24" fill="none" width={20} height={20}><path d="M19 12H5M5 12l7 7M5 12l7-7" stroke="#111" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          </button>
+          <span style={{ fontWeight:800, fontSize:15, flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', color:'var(--text-primary)' }}>{shop.name}</span>
+          <FavouriteButton shopId={id} />
+          {showCartBar && (
+            <Link href="/cart" style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 16px', borderRadius:12, background:'#FF3008', color:'#fff', fontWeight:800, fontSize:13, textDecoration:'none', flexShrink:0 }}>
+              <svg viewBox="0 0 24 24" fill="none" width={16} height={16}><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z" stroke="#fff" strokeWidth="2"/><line x1="3" y1="6" x2="21" y2="6" stroke="#fff" strokeWidth="2"/></svg>
+              {cartCount} · ₹{cartTotal}
+            </Link>
           )}
-          <Link href="/stores" style={{ flex: 1, textAlign: 'center', padding: '12px', borderRadius: 13, background: 'var(--bg-3)', border: '1px solid var(--border-2)', color: 'var(--text-2)', fontWeight: 800, fontSize: 14, textDecoration: 'none' }}>
-            Browse shops
-          </Link>
-          <Link href="/dashboard/customer" style={{ flex: 1, textAlign: 'center', padding: '12px', borderRadius: 13, background: '#ff3008', color: '#fff', fontWeight: 800, fontSize: 14, textDecoration: 'none' }}>
-            My orders
-          </Link>
         </div>
       </div>
 
-      {showReview && order && (
-        <ReviewModal orderId={order.id} shopId={order.shop_id} shopName={(order as any).shop?.name || 'Shop'} deliveryPartnerId={order.delivery_partner_id} onClose={() => { setShowReview(false); setHasReviewed(true) }} />
+      {/* Shop hero */}
+      <div style={{ background:'var(--card-white)', marginBottom:10 }}>
+        {/* Banner */}
+        {shop.banner_url ? (
+          <div style={{ height:180, overflow:'hidden', position:'relative' }}>
+            <img src={shop.banner_url} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+            <div style={{ position:'absolute', inset:0, background:'linear-gradient(to top, rgba(0,0,0,.5) 0%, transparent 60%)' }} />
+          </div>
+        ) : (
+          <div style={{ height:120, background:`linear-gradient(135deg, #FF3008, #ff6b35)`, position:'relative' }}>
+            <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:64, opacity:.15 }}>🏪</div>
+          </div>
+        )}
+
+        <div style={{ padding:'0 16px 20px', maxWidth:760, margin:'0 auto' }}>
+          {/* Logo */}
+          <div style={{ width:72, height:72, borderRadius:18, background:'var(--card-white)', border:'3px solid #fff', overflow:'hidden', marginTop:-36, boxShadow:'0 4px 16px rgba(0,0,0,.12)', display:'flex', alignItems:'center', justifyContent:'center', marginBottom:12 }}>
+            {shop.image_url
+              ? <img src={shop.image_url} alt={shop.name} style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+              : <span style={{ fontSize:32 }}>🏪</span>
+            }
+          </div>
+
+          <h1 style={{ fontWeight:900, fontSize:22, color:'var(--text-primary)', marginBottom:4, letterSpacing:'-0.03em' }}>{shop.name}</h1>
+          <p style={{ fontSize:13, color:'var(--text-muted)', marginBottom:12 }}>{shop.category_name} · {shop.area}</p>
+
+          {/* Chips */}
+          <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom:12 }}>
+            <span style={{ fontSize:12, fontWeight:700, padding:'5px 12px', borderRadius:999, background: shop.is_open ? 'var(--green-light)' : 'var(--error-light)', color: shop.is_open ? '#16a34a' : '#ef4444' }}>
+              {shop.is_open ? '● Open now' : '● Closed'}
+            </span>
+            <span style={{ fontSize:12, fontWeight:700, padding:'5px 12px', borderRadius:999, background:'var(--yellow-light)', color:'var(--text-secondary)' }}>
+              ★ {shop.rating?.toFixed(1) || '4.0'}
+            </span>
+            {shop.delivery_enabled && (
+              <span style={{ fontSize:12, fontWeight:700, padding:'5px 12px', borderRadius:999, background:'var(--blue-light)', color:'#4f46e5' }}>
+                🛵 {shop.avg_delivery_time} min
+              </span>
+            )}
+            {shop.pickup_enabled && (
+              <span style={{ fontSize:12, fontWeight:700, padding:'5px 12px', borderRadius:999, background:'var(--page-bg)', color:'var(--text-secondary)' }}>
+                🏪 Pickup
+              </span>
+            )}
+            {shop.min_order_amount > 0 && (
+              <span style={{ fontSize:12, fontWeight:700, padding:'5px 12px', borderRadius:999, background:'var(--page-bg)', color:'var(--text-secondary)' }}>
+                Min ₹{shop.min_order_amount}
+              </span>
+            )}
+          </div>
+
+          {/* Offer */}
+          {(shop.offer_text || shop.free_delivery_above) && (
+            <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+              {shop.offer_text && <span style={{ fontSize:12, fontWeight:700, color:'#FF3008', background:'var(--red-light)', padding:'5px 12px', borderRadius:999 }}>🏷️ {shop.offer_text}</span>}
+              {shop.free_delivery_above && <span style={{ fontSize:12, fontWeight:700, color:'#16a34a', background:'var(--green-light)', padding:'5px 12px', borderRadius:999 }}>🚚 Free delivery above ₹{shop.free_delivery_above}</span>}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Search bar */}
+      <div style={{ padding:'0 12px', marginBottom:10 }}>
+        <div style={{ background:'var(--card-white)', borderRadius:16, display:'flex', alignItems:'center', gap:10, padding:'10px 14px' }}>
+          <svg viewBox="0 0 24 24" fill="none" width={18} height={18} style={{ flexShrink:0 }}><circle cx="11" cy="11" r="8" stroke="#aaa" strokeWidth="2"/><path d="m21 21-4.35-4.35" stroke="#aaa" strokeWidth="2" strokeLinecap="round"/></svg>
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder={`Search in ${shop.name}…`}
+            style={{ flex:1, border:'none', outline:'none', fontSize:14, color:'var(--text-primary)', background:'transparent', fontFamily:'inherit' }} />
+          {search && <button onClick={() => setSearch('')} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--text-faint)', fontSize:16 }}>✕</button>}
+        </div>
+      </div>
+
+      {/* Category tabs */}
+      {categories.length > 1 && (
+        <div style={{ background:'var(--card-white)', position:'sticky', top:56, zIndex:40, borderBottom:'1px solid var(--divider)' }}>
+          <div className="tab-scroll" style={{ display:'flex', overflowX:'auto', padding:'0 12px', scrollbarWidth:'none' }}>
+            {['all', ...categories].map(cat => (
+              <button key={cat} className="cat-tab" onClick={() => setActiveCat(cat)}
+                style={{ color: activeCat === cat ? '#FF3008' : '#888', borderBottomColor: activeCat === cat ? '#FF3008' : 'transparent' }}>
+                {cat === 'all' ? 'All' : cat}
+              </button>
+            ))}
+          </div>
+        </div>
       )}
+
+      {/* Products */}
+      <div style={{ maxWidth:760, margin:'0 auto', padding:'12px' }}>
+        {products.length === 0 ? (
+          <div style={{ background:'var(--card-white)', borderRadius:20, padding:'48px 20px', textAlign:'center' }}>
+            <div style={{ fontSize:52, marginBottom:14 }}>📦</div>
+            <p style={{ fontWeight:800, fontSize:17, color:'var(--text-primary)', marginBottom:6 }}>No products yet</p>
+            <p style={{ fontSize:14, color:'var(--text-muted)' }}>This shop hasn't added any products.</p>
+          </div>
+        ) : Object.entries(filteredGroups).length === 0 ? (
+          <div style={{ background:'var(--card-white)', borderRadius:20, padding:'40px 20px', textAlign:'center' }}>
+            <p style={{ fontWeight:800, fontSize:15, color:'var(--text-primary)', marginBottom:6 }}>No results for "{search}"</p>
+            <button onClick={() => setSearch('')} style={{ color:'#FF3008', fontWeight:700, fontSize:14, background:'none', border:'none', cursor:'pointer', fontFamily:'inherit' }}>Clear search</button>
+          </div>
+        ) : (
+          Object.entries(filteredGroups).map(([cat, items]) => (
+            <div key={cat} style={{ marginBottom:20 }}>
+              {categories.length > 0 && (
+                <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10 }}>
+                  <p style={{ fontWeight:900, fontSize:15, color:'var(--text-primary)', letterSpacing:'-0.01em' }}>{cat}</p>
+                  <span style={{ fontSize:12, color:'var(--text-faint)', fontWeight:600 }}>({items.length})</span>
+                </div>
+              )}
+              <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                {items.map(product => (
+                  <ProductCard key={product.id}
+                    product={product}
+                    qty={cart.items?.find((i: any) => i.product.id === product.id)?.quantity ?? 0}
+                    onAdd={() => handleAdd(product)}
+                    onRemove={() => cart.removeItem(product.id)}
+                    onUpdate={(q: number) => cart.updateQty(product.id, q)}
+                  />
+                ))}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* Floating cart */}
+      {showCartBar && (
+        <div style={{ position:'fixed', bottom:20, left:12, right:12, zIndex:50 }}>
+          <div style={{ maxWidth:760, margin:'0 auto' }}>
+            <Link href="/cart" style={{ display:'flex', alignItems:'center', justifyContent:'space-between', background:'#FF3008', color:'#fff', borderRadius:18, padding:'16px 22px', textDecoration:'none', boxShadow:'0 8px 32px rgba(255,48,8,.4)' }}>
+              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                <span style={{ background:'rgba(255,255,255,.2)', borderRadius:10, padding:'4px 12px', fontWeight:900, fontSize:14 }}>{cartCount}</span>
+                <span style={{ fontWeight:800, fontSize:15 }}>View cart</span>
+              </div>
+              <span style={{ fontWeight:900, fontSize:16 }}>₹{cartTotal}</span>
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {/* Different shop warning */}
+      {diffWarn && (
+        <div style={{ position:'fixed', inset:0, zIndex:200, background:'rgba(0,0,0,.6)', display:'flex', alignItems:'flex-end', justifyContent:'center' }}>
+          <div style={{ background:'var(--card-white)', borderRadius:'24px 24px 0 0', padding:'28px 20px 40px', width:'100%', maxWidth:480, fontFamily:'inherit' }}>
+            <div style={{ fontSize:40, textAlign:'center', marginBottom:12 }}>🛒</div>
+            <h3 style={{ fontWeight:900, fontSize:18, color:'var(--text-primary)', textAlign:'center', marginBottom:8 }}>Start a new cart?</h3>
+            <p style={{ fontSize:14, color:'var(--text-muted)', textAlign:'center', marginBottom:24, lineHeight:1.6 }}>
+              Your cart has items from <strong style={{ color:'var(--text-primary)' }}>{cart.shop_name}</strong>. Adding this will clear it.
+            </p>
+            <div style={{ display:'flex', gap:10 }}>
+              <button onClick={() => setDiffWarn(false)} style={{ flex:1, padding:14, borderRadius:14, border:'1.5px solid var(--divider)', background:'var(--page-bg)', color:'var(--text-primary)', fontWeight:800, fontSize:14, cursor:'pointer', fontFamily:'inherit' }}>Keep cart</button>
+              <button onClick={() => { cart.clear(); setDiffWarn(false) }} style={{ flex:1, padding:14, borderRadius:14, border:'none', background:'#FF3008', color:'#fff', fontWeight:800, fontSize:14, cursor:'pointer', fontFamily:'inherit' }}>Start new cart</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Product Card ──────────────────────────────────────────────────
+function ProductCard({ product, qty, onAdd, onRemove, onUpdate }: {
+  product: Product; qty: number
+  onAdd: () => void; onRemove: () => void; onUpdate: (q: number) => void
+}) {
+  const disc = product.original_price && product.original_price > product.price
+    ? Math.round((1 - product.price / product.original_price) * 100) : 0
+  const unavailable = product.is_available === false
+
+  return (
+    <div className="pcard" style={{ opacity: unavailable ? 0.5 : 1 }}>
+      {/* Image */}
+      <div style={{ width:110, height:110, flexShrink:0, background:'var(--chip-bg)', position:'relative', overflow:'hidden' }}>
+        {product.image_url
+          ? <img src={product.image_url} alt={product.name} style={{ width:'100%', height:'100%', objectFit:'cover' }} onError={e => { (e.currentTarget as HTMLImageElement).style.display='none' }} />
+          : <div style={{ width:'100%', height:'100%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:40, opacity:.2 }}>🛍️</div>
+        }
+        {disc > 0 && <div style={{ position:'absolute', top:6, left:6, background:'#FF3008', color:'#fff', fontSize:10, fontWeight:900, padding:'2px 6px', borderRadius:6 }}>-{disc}%</div>}
+      </div>
+
+      {/* Info */}
+      <div style={{ flex:1, padding:'14px 14px 14px 12px', display:'flex', flexDirection:'column', justifyContent:'space-between', minWidth:0 }}>
+        <div>
+          {product.is_veg != null && (
+            <div style={{ width:14, height:14, border:`2px solid ${product.is_veg ? '#16a34a' : '#ef4444'}`, borderRadius:3, display:'inline-flex', alignItems:'center', justifyContent:'center', marginBottom:4 }}>
+              <div style={{ width:7, height:7, borderRadius:'50%', background: product.is_veg ? '#16a34a' : '#ef4444' }} />
+            </div>
+          )}
+          <p style={{ fontWeight:800, fontSize:14, color:'var(--text-primary)', marginBottom:3, lineHeight:1.3 }}>{product.name}</p>
+          {product.description && <p style={{ fontSize:12, color:'var(--text-faint)', lineHeight:1.5, overflow:'hidden', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical' as any }}>{product.description}</p>}
+        </div>
+
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginTop:10 }}>
+          <div>
+            <span style={{ fontWeight:900, fontSize:15, color:'var(--text-primary)' }}>₹{product.price}</span>
+            {product.original_price && product.original_price > product.price && (
+              <span style={{ fontSize:12, color:'var(--text-faint)', textDecoration:'line-through', marginLeft:6 }}>₹{product.original_price}</span>
+            )}
+          </div>
+
+          {unavailable ? (
+            <span style={{ fontSize:12, color:'var(--text-faint)', fontWeight:700 }}>Unavailable</span>
+          ) : qty === 0 ? (
+            <button onClick={onAdd} style={{ padding:'8px 20px', borderRadius:12, border:'2px solid #FF3008', color:'#FF3008', background:'none', fontWeight:800, fontSize:13, cursor:'pointer', fontFamily:'inherit' }}>
+              ADD
+            </button>
+          ) : (
+            <div style={{ display:'flex', alignItems:'center', background:'#FF3008', borderRadius:12, overflow:'hidden' }}>
+              <button onClick={() => onUpdate(qty - 1)} style={{ color:'#fff', padding:'8px 12px', border:'none', background:'none', cursor:'pointer', fontWeight:900, fontSize:16, lineHeight:1 }}>−</button>
+              <span style={{ color:'#fff', fontWeight:900, fontSize:14, minWidth:22, textAlign:'center' }}>{qty}</span>
+              <button onClick={() => onUpdate(qty + 1)} style={{ color:'#fff', padding:'8px 12px', border:'none', background:'none', cursor:'pointer', fontWeight:900, fontSize:16, lineHeight:1 }}>+</button>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   )
 }

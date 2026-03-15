@@ -2,37 +2,40 @@
 import { useEffect, useState } from 'react'
 
 export default function FavouriteButton({ shopId }: { shopId: string }) {
-  const [saved, setSaved] = useState(false)
+  const [isFav, setIsFav] = useState(false)
 
   useEffect(() => {
-    const ids: string[] = JSON.parse(localStorage.getItem('welokl_favourites') || '[]')
-    setSaved(ids.includes(shopId))
+    try {
+      const ids: string[] = JSON.parse(localStorage.getItem('welokl_favourites') || '[]')
+      setIsFav(ids.includes(shopId))
+    } catch {}
   }, [shopId])
 
   function toggle(e: React.MouseEvent) {
     e.preventDefault()
     e.stopPropagation()
-    const ids: string[] = JSON.parse(localStorage.getItem('welokl_favourites') || '[]')
-    let updated: string[]
-    if (ids.includes(shopId)) {
-      updated = ids.filter(id => id !== shopId)
-      setSaved(false)
-    } else {
-      updated = [...ids, shopId]
-      setSaved(true)
-    }
-    localStorage.setItem('welokl_favourites', JSON.stringify(updated))
+    try {
+      const ids: string[] = JSON.parse(localStorage.getItem('welokl_favourites') || '[]')
+      const next = isFav ? ids.filter(id => id !== shopId) : [...ids, shopId]
+      localStorage.setItem('welokl_favourites', JSON.stringify(next))
+      setIsFav(!isFav)
+    } catch {}
   }
 
   return (
     <button
       onClick={toggle}
-      className={`w-9 h-9 rounded-full flex items-center justify-center transition-all active:scale-90 ${
-        saved ? 'bg-red-50 text-red-500' : 'bg-white/80 text-gray-400 hover:text-red-400'
-      }`}
-      title={saved ? 'Remove from saved' : 'Save shop'}
+      aria-label={isFav ? 'Remove from saved' : 'Save shop'}
+      style={{
+        width: 38, height: 38, borderRadius: '50%',
+        background: isFav ? 'rgba(239,68,68,.12)' : 'var(--bg-3)',
+        border: isFav ? '1.5px solid rgba(239,68,68,.3)' : '1.5px solid var(--border)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        cursor: 'pointer', fontSize: 18, transition: 'all .2s',
+        flexShrink: 0,
+      }}
     >
-      {saved ? '❤️' : '🤍'}
+      {isFav ? '❤️' : '🤍'}
     </button>
   )
 }

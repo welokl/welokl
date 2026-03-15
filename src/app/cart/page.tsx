@@ -3,121 +3,153 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useCart } from '@/store/cart'
-import { calculateFees, DELIVERY_FEE, FREE_DELIVERY_THRESHOLD } from '@/types'
+
+const FREE_DELIVERY_THRESHOLD = 199
+const DELIVERY_FEE = 25
 
 export default function CartPage() {
-  const router = useRouter()
-  const cart = useCart()
-  // Hydration guard — cart is in zustand/localStorage, avoid SSR mismatch
+  const router  = useRouter()
+  const cart    = useCart()
   const [mounted, setMounted] = useState(false)
-  useEffect(() => {
-    cart._hydrate?.()
-    setMounted(true)
-  }, [])
+  useEffect(() => { cart._hydrate?.(); setMounted(true) }, [])
 
   if (!mounted) return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <div style={{ minHeight:'100vh', background:'var(--page-bg)', display:'flex', alignItems:'center', justifyContent:'center' }}>
       <style>{`@keyframes sp{to{transform:rotate(360deg)}}`}</style>
-      <div style={{ width: 36, height: 36, border: '3px solid var(--border)', borderTopColor: '#ff3008', borderRadius: '50%', animation: 'sp .7s linear infinite' }} />
+      <div style={{ width:36, height:36, border:'3px solid #eee', borderTopColor:'#FF3008', borderRadius:'50%', animation:'sp .7s linear infinite' }} />
     </div>
   )
 
-  const subtotal = cart.subtotal()
-  const fees = calculateFees(subtotal)
+  const subtotal     = cart.subtotal()
+  const delivery_fee = subtotal >= FREE_DELIVERY_THRESHOLD ? 0 : DELIVERY_FEE
+  const platform_fee = Math.round(subtotal * 0.05)
+  const total        = subtotal + delivery_fee + platform_fee
+  const toFreeDelivery = FREE_DELIVERY_THRESHOLD - subtotal
 
-  if (cart.items.length === 0) {
-    return (
-      <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: 64, marginBottom: 16 }}>🛒</div>
-          <h2 style={{ fontWeight: 900, fontSize: 20, color: 'var(--text)', marginBottom: 8 }}>Your cart is empty</h2>
-          <p style={{ color: 'var(--text-3)', fontSize: 14, marginBottom: 24 }}>Browse shops and add items to get started</p>
-          <Link href="/stores" style={{ display: 'inline-block', padding: '11px 28px', borderRadius: 12, background: '#ff3008', color: '#fff', fontWeight: 800, fontSize: 14, textDecoration: 'none' }}>
-            Explore shops
-          </Link>
-        </div>
+  if (cart.items.length === 0) return (
+    <div style={{ minHeight:'100vh', background:'var(--page-bg)', display:'flex', alignItems:'center', justifyContent:'center', fontFamily:"'Plus Jakarta Sans',sans-serif" }}>
+      <div style={{ textAlign:'center', padding:24 }}>
+        <div style={{ fontSize:72, marginBottom:16 }}>🛒</div>
+        <h2 style={{ fontWeight:900, fontSize:22, color:'var(--text-primary)', marginBottom:8, letterSpacing:'-0.03em' }}>Your cart is empty</h2>
+        <p style={{ color:'var(--text-muted)', fontSize:15, marginBottom:28, lineHeight:1.6 }}>Add items from a local shop to get started</p>
+        <Link href="/stores" style={{ display:'inline-block', padding:'14px 32px', borderRadius:16, background:'#FF3008', color:'#fff', fontWeight:800, fontSize:15, textDecoration:'none' }}>
+          Browse shops →
+        </Link>
       </div>
-    )
-  }
+    </div>
+  )
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg)', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-      <div style={{ position: 'sticky', top: 0, zIndex: 40, background: 'var(--card-bg)', borderBottom: '1px solid var(--border)', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
-        <button onClick={() => router.back()} style={{ padding: '6px 10px', borderRadius: 10, background: 'var(--bg-3)', border: 'none', cursor: 'pointer', fontSize: 18, color: 'var(--text)' }}>&#8592;</button>
-        <h1 style={{ fontWeight: 900, fontSize: 16, color: 'var(--text)', flex: 1 }}>Your Cart</h1>
-        <span style={{ fontSize: 12, color: 'var(--text-3)', background: 'var(--bg-3)', borderRadius: 999, padding: '3px 10px', fontWeight: 600 }}>{cart.shop_name}</span>
+    <div style={{ minHeight:'100vh', background:'var(--page-bg)', fontFamily:"'Plus Jakarta Sans',sans-serif", paddingBottom:100 }}>
+
+      {/* Header */}
+      <div style={{ position:'sticky', top:0, zIndex:40, background:'var(--card-white)', borderBottom:'1px solid var(--divider)', padding:'0 16px' }}>
+        <div style={{ maxWidth:520, margin:'0 auto', display:'flex', alignItems:'center', gap:12, height:56 }}>
+          <button onClick={() => router.back()} style={{ width:36, height:36, borderRadius:12, background:'var(--page-bg)', border:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'var(--text-primary)' }}>
+            <svg viewBox="0 0 24 24" fill="none" width={20} height={20}>
+              <path d="M19 12H5M5 12l7 7M5 12l7-7" stroke="#111" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
+          <h1 style={{ fontWeight:900, fontSize:17, color:'var(--text-primary)', flex:1, letterSpacing:'-0.02em' }}>Cart</h1>
+          <span style={{ fontSize:12, color:'var(--text-muted)', background:'var(--page-bg)', borderRadius:999, padding:'4px 12px', fontWeight:700 }}>
+            {cart.shop_name}
+          </span>
+        </div>
       </div>
 
-      <div style={{ maxWidth: 520, margin: '0 auto', padding: '20px 16px 120px' }}>
-        {/* Items */}
-        <div style={{ background: 'var(--card-bg)', borderRadius: 18, border: '1px solid var(--border)', overflow: 'hidden', marginBottom: 14 }}>
-          {cart.items.map((item, i) => (
-            <div key={item.product.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', borderTop: i > 0 ? '1px solid var(--border)' : 'none' }}>
-              {/* Product thumbnail */}
-              {(item.product as any).image_url && (
-                <div style={{ width: 48, height: 48, borderRadius: 10, overflow: 'hidden', flexShrink: 0, background: 'var(--bg-3)' }}>
-                  <img src={(item.product as any).image_url} alt={item.product.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                    onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
-                </div>
-              )}
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.product.name}</p>
-                <p style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>₹{item.product.price} each</p>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', background: '#ff3008', borderRadius: 12, overflow: 'hidden', flexShrink: 0 }}>
-                <button onClick={() => cart.updateQty(item.product.id, item.quantity - 1)} style={{ color: '#fff', padding: '7px 12px', border: 'none', background: 'none', cursor: 'pointer', fontWeight: 900, fontSize: 16 }}>-</button>
-                <span style={{ color: '#fff', fontWeight: 900, fontSize: 14, minWidth: 22, textAlign: 'center' }}>{item.quantity}</span>
-                <button onClick={() => cart.updateQty(item.product.id, item.quantity + 1)} style={{ color: '#fff', padding: '7px 12px', border: 'none', background: 'none', cursor: 'pointer', fontWeight: 900, fontSize: 16 }}>+</button>
-              </div>
-              <span style={{ fontWeight: 800, fontSize: 14, color: 'var(--text)', minWidth: 56, textAlign: 'right' }}>₹{item.product.price * item.quantity}</span>
-            </div>
-          ))}
-        </div>
+      <div style={{ maxWidth:520, margin:'0 auto', padding:'16px 12px' }}>
 
         {/* Free delivery progress */}
-        {fees.delivery_fee > 0 && (
-          <div style={{ background: 'var(--card-bg)', borderRadius: 16, border: '1px solid var(--border)', padding: '14px 16px', marginBottom: 14 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text-3)', marginBottom: 8 }}>
-              <span>Add ₹{FREE_DELIVERY_THRESHOLD - subtotal} more for free delivery</span>
-              <span>₹{subtotal}/₹{FREE_DELIVERY_THRESHOLD}</span>
+        {delivery_fee > 0 && (
+          <div style={{ background:'var(--card-white)', borderRadius:18, padding:'14px 16px', marginBottom:10, border:'1px solid var(--divider)' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
+              <span style={{ fontSize:16 }}>🚚</span>
+              <span style={{ fontSize:13, fontWeight:700, color:'var(--text-primary)' }}>
+                Add <span style={{ color:'#FF3008' }}>₹{toFreeDelivery}</span> more for free delivery
+              </span>
             </div>
-            <div style={{ height: 6, background: 'var(--bg-3)', borderRadius: 999, overflow: 'hidden' }}>
-              <div style={{ height: '100%', width: `${Math.min(100, (subtotal / FREE_DELIVERY_THRESHOLD) * 100)}%`, background: '#ff3008', borderRadius: 999, transition: 'width .3s' }} />
+            <div style={{ height:5, background:'var(--page-bg)', borderRadius:999, overflow:'hidden' }}>
+              <div style={{ height:'100%', width:`${Math.min(100, (subtotal/FREE_DELIVERY_THRESHOLD)*100)}%`, background:'#FF3008', borderRadius:999, transition:'width .4s' }} />
             </div>
           </div>
         )}
+        {delivery_fee === 0 && (
+          <div style={{ background:'var(--green-light)', borderRadius:16, padding:'12px 16px', marginBottom:10, display:'flex', alignItems:'center', gap:8 }}>
+            <span style={{ fontSize:18 }}>🎉</span>
+            <span style={{ fontSize:13, fontWeight:700, color:'#16a34a' }}>You've unlocked free delivery!</span>
+          </div>
+        )}
 
-        {/* Price breakdown */}
-        <div style={{ background: 'var(--card-bg)', borderRadius: 16, border: '1px solid var(--border)', padding: '16px', marginBottom: 14 }}>
-          <h3 style={{ fontWeight: 800, fontSize: 13, color: 'var(--text-3)', marginBottom: 12, letterSpacing: '0.05em' }}>BILL SUMMARY</h3>
-          {[
-            { label: 'Subtotal', value: subtotal },
-            { label: `Delivery fee${fees.delivery_fee === 0 ? ' (FREE!)' : ''}`, value: fees.delivery_fee },
-            { label: 'Platform fee', value: fees.platform_fee },
-          ].map(r => (
-            <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10, fontSize: 14 }}>
-              <span style={{ color: r.label.includes('FREE') ? '#16a34a' : 'var(--text-2)' }}>{r.label}</span>
-              <span style={{ fontWeight: 700, color: r.value === 0 ? '#16a34a' : 'var(--text)' }}>{r.value === 0 ? 'FREE' : `₹${r.value}`}</span>
+        {/* Cart items */}
+        <div style={{ background:'var(--card-white)', borderRadius:20, overflow:'hidden', marginBottom:10, border:'1px solid var(--divider)' }}>
+          {cart.items.map((item, i) => (
+            <div key={item.product.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'14px 16px', borderTop: i > 0 ? '1px solid var(--divider)' : 'none' }}>
+              {/* Image */}
+              <div style={{ width:52, height:52, borderRadius:12, overflow:'hidden', flexShrink:0, background:'var(--page-bg)' }}>
+                {(item.product as any).image_url
+                  ? <img src={(item.product as any).image_url} alt={item.product.name} style={{ width:'100%', height:'100%', objectFit:'cover' }} onError={e => { (e.currentTarget as HTMLImageElement).style.display='none' }} />
+                  : <div style={{ width:'100%', height:'100%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:22 }}>🛍️</div>
+                }
+              </div>
+
+              {/* Name + price */}
+              <div style={{ flex:1, minWidth:0 }}>
+                <p style={{ fontWeight:700, fontSize:14, color:'var(--text-primary)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', marginBottom:2 }}>{item.product.name}</p>
+                <p style={{ fontSize:12, color:'var(--text-muted)' }}>₹{item.product.price} × {item.quantity}</p>
+              </div>
+
+              {/* Stepper */}
+              <div style={{ display:'flex', alignItems:'center', background:'#FF3008', borderRadius:12, overflow:'hidden', flexShrink:0 }}>
+                <button onClick={() => cart.updateQty(item.product.id, item.quantity - 1)} style={{ color:'#fff', padding:'7px 12px', border:'none', background:'none', cursor:'pointer', fontWeight:900, fontSize:16, lineHeight:1 }}>−</button>
+                <span style={{ color:'#fff', fontWeight:900, fontSize:14, minWidth:22, textAlign:'center' }}>{item.quantity}</span>
+                <button onClick={() => cart.updateQty(item.product.id, item.quantity + 1)} style={{ color:'#fff', padding:'7px 12px', border:'none', background:'none', cursor:'pointer', fontWeight:900, fontSize:16, lineHeight:1 }}>+</button>
+              </div>
+
+              {/* Total */}
+              <span style={{ fontWeight:800, fontSize:14, color:'var(--text-primary)', minWidth:52, textAlign:'right' }}>₹{item.product.price * item.quantity}</span>
             </div>
           ))}
-          <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12, display: 'flex', justifyContent: 'space-between' }}>
-            <span style={{ fontWeight: 900, fontSize: 15, color: 'var(--text)' }}>Total</span>
-            <span style={{ fontWeight: 900, fontSize: 15, color: 'var(--text)' }}>₹{fees.total_amount}</span>
+        </div>
+
+        {/* Bill summary */}
+        <div style={{ background:'var(--card-white)', borderRadius:20, padding:'18px 16px', marginBottom:10, border:'1px solid var(--divider)' }}>
+          <p style={{ fontSize:12, fontWeight:800, color:'var(--text-faint)', letterSpacing:'0.08em', marginBottom:16 }}>BILL SUMMARY</p>
+          {[
+            { label:'Item total',    value: subtotal,     color:'var(--text-secondary)' },
+            { label:'Delivery fee',  value: delivery_fee, color: delivery_fee === 0 ? '#16a34a' : '#333', display: delivery_fee === 0 ? 'FREE 🎉' : `₹${delivery_fee}` },
+            { label:'Platform fee',  value: platform_fee, color:'var(--text-secondary)' },
+          ].map(r => (
+            <div key={r.label} style={{ display:'flex', justifyContent:'space-between', marginBottom:12, fontSize:14 }}>
+              <span style={{ color:'var(--text-secondary)' }}>{r.label}</span>
+              <span style={{ fontWeight:700, color: r.color }}>{(r as any).display ?? `₹${r.value}`}</span>
+            </div>
+          ))}
+          <div style={{ borderTop:'1.5px dashed #f0f0f0', paddingTop:14, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+            <span style={{ fontWeight:900, fontSize:16, color:'var(--text-primary)' }}>To pay</span>
+            <span style={{ fontWeight:900, fontSize:18, color:'var(--text-primary)' }}>₹{total}</span>
           </div>
         </div>
 
-        {/* Tip */}
-        <p style={{ fontSize: 12, color: 'var(--text-3)', textAlign: 'center', marginBottom: 80 }}>
-          Taxes included where applicable
-        </p>
+        {/* Note */}
+        <div style={{ display:'flex', alignItems:'flex-start', gap:10, padding:'14px 16px', background:'var(--info-light)', borderRadius:16, marginBottom:10 }}>
+          <span style={{ fontSize:18, flexShrink:0 }}>ℹ️</span>
+          <p style={{ fontSize:12, color:'var(--text-muted)', lineHeight:1.6 }}>
+            Review your order carefully. Changes cannot be made after placing.
+          </p>
+        </div>
       </div>
 
-      {/* Checkout button */}
-      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, padding: '12px 16px 20px', background: 'var(--card-bg)', borderTop: '1px solid var(--border)', zIndex: 40 }}>
-        <div style={{ maxWidth: 520, margin: '0 auto' }}>
-          <Link href="/checkout" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#ff3008', color: '#fff', borderRadius: 16, padding: '16px 20px', textDecoration: 'none', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-            <span style={{ fontWeight: 800, fontSize: 15 }}>Proceed to checkout</span>
-            <span style={{ fontWeight: 900, fontSize: 15 }}>₹{fees.total_amount}</span>
+      {/* Checkout bar */}
+      <div style={{ position:'fixed', bottom:0, left:0, right:0, padding:'12px 12px 20px', background:'var(--card-white)', borderTop:'1px solid var(--divider)', zIndex:50 }}>
+        <div style={{ maxWidth:520, margin:'0 auto' }}>
+          <Link href="/checkout" style={{ display:'flex', alignItems:'center', justifyContent:'space-between', background:'#FF3008', color:'#fff', borderRadius:18, padding:'16px 22px', textDecoration:'none', boxShadow:'0 8px 24px rgba(255,48,8,.3)' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+              <span style={{ background:'rgba(255,255,255,.2)', borderRadius:10, padding:'4px 12px', fontWeight:900, fontSize:14 }}>
+                {cart.count()} item{cart.count() !== 1 ? 's' : ''}
+              </span>
+              <span style={{ fontWeight:800, fontSize:15 }}>Proceed to checkout</span>
+            </div>
+            <span style={{ fontWeight:900, fontSize:16 }}>₹{total}</span>
           </Link>
         </div>
       </div>

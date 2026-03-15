@@ -16,6 +16,7 @@ const s = (extra?: React.CSSProperties): React.CSSProperties => ({
 
 export default function CheckoutPage() {
   const cart = useCart()
+  useEffect(() => { cart._hydrate?.() }, [])
   const [user, setUser]             = useState<any>(null)
   const [orderType, setOrderType]   = useState<OrderType>('delivery')
   const [payMethod, setPayMethod]   = useState<PaymentMethod>('cod')
@@ -81,7 +82,7 @@ export default function CheckoutPage() {
   if (!mounted) return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <style>{`@keyframes sp{to{transform:rotate(360deg)}}`}</style>
-      <div style={{ width: 36, height: 36, border: '3px solid var(--border)', borderTopColor: '#ff3008', borderRadius: '50%', animation: 'sp .7s linear infinite' }} />
+      <div style={{ width: 36, height: 36, border: '3px solid var(--border)', borderTopColor: '#0891B2', borderRadius: '50%', animation: 'sp .7s linear infinite' }} />
     </div>
   )
 
@@ -147,7 +148,7 @@ export default function CheckoutPage() {
   if (!user) return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
       <div style={{ textAlign: 'center' }}>
-        <div style={{ width: 32, height: 32, background: '#ff3008', borderRadius: 9, margin: '0 auto 12px', opacity: 0.6 }} className="shimmer" />
+        <div style={{ width: 32, height: 32, background: '#0891B2', borderRadius: 9, margin: '0 auto 12px', opacity: 0.6 }} className="shimmer" />
         <p style={{ color: 'var(--text-3)', fontSize: 14 }}>Loading…</p>
       </div>
     </div>
@@ -175,10 +176,10 @@ export default function CheckoutPage() {
               { type: 'pickup' as OrderType, icon: '🏪', label: 'Self Pickup', sub: 'Pick up from shop, free' },
             ].map(o => (
               <button key={o.type} onClick={() => setOrderType(o.type)}
-                style={{ padding: '14px 12px', borderRadius: 14, border: `2px solid ${orderType === o.type ? '#ff3008' : 'var(--border-2)'}`, background: orderType === o.type ? 'var(--brand-muted)' : 'var(--bg-1)', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', transition: 'all 0.15s' }}>
+                style={{ padding: '14px 12px', borderRadius: 14, border: `2px solid ${orderType === o.type ? '#0891B2' : 'var(--border-2)'}`, background: orderType === o.type ? 'var(--brand-muted)' : 'var(--bg-1)', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', transition: 'all 0.15s' }}>
                 <div style={{ fontSize: 24, marginBottom: 6 }}>{o.icon}</div>
                 <div style={{ fontWeight: 800, fontSize: 13, color: 'var(--text)' }}>{o.label}</div>
-                <div style={{ fontSize: 11, color: orderType === o.type ? '#ff3008' : 'var(--text-3)', marginTop: 2 }}>{o.sub}</div>
+                <div style={{ fontSize: 11, color: orderType === o.type ? '#0891B2' : 'var(--text-3)', marginTop: 2 }}>{o.sub}</div>
               </button>
             ))}
           </div>
@@ -193,7 +194,7 @@ export default function CheckoutPage() {
               <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4, marginBottom: 12 }}>
                 {savedAddresses.map((addr, i) => (
                   <button key={i} onClick={() => { setAddress([addr.address, addr.area, addr.city].filter(Boolean).join(', ')); if (addr.lat) setSelLat(addr.lat); if (addr.lng) setSelLng(addr.lng) }}
-                    style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 10, border: `2px solid ${address.includes(addr.area || addr.city) ? '#ff3008' : 'var(--border-2)'}`, background: address.includes(addr.area || addr.city) ? 'var(--brand-muted)' : 'var(--bg-1)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 700, color: address.includes(addr.area || addr.city) ? '#ff3008' : 'var(--text-2)' }}>
+                    style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 10, border: `2px solid ${address.includes(addr.area || addr.city) ? '#0891B2' : 'var(--border-2)'}`, background: address.includes(addr.area || addr.city) ? 'var(--brand-muted)' : 'var(--bg-1)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 700, color: address.includes(addr.area || addr.city) ? '#0891B2' : 'var(--text-2)' }}>
                     {addr.label === 'home' ? '🏠' : addr.label === 'work' ? '💼' : '📌'} {addr.label === 'home' ? 'Home' : addr.label === 'work' ? 'Work' : addr.label}
                   </button>
                 ))}
@@ -201,7 +202,7 @@ export default function CheckoutPage() {
             )}
 
             <button onClick={detectLocation} disabled={detecting}
-              style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '11px', borderRadius: 12, border: `2px solid ${selLat ? '#22c55e' : '#ff3008'}`, background: selLat ? 'rgba(34,197,94,0.08)' : 'var(--brand-muted)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, color: selLat ? '#16a34a' : '#ff3008', marginBottom: 12 }}>
+              style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '11px', borderRadius: 12, border: `2px solid ${selLat ? '#22c55e' : '#0891B2'}`, background: selLat ? 'rgba(34,197,94,0.08)' : 'var(--brand-muted)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, color: selLat ? '#16a34a' : '#0891B2', marginBottom: 12 }}>
               {detecting ? <><span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>⏳</span> Detecting…</>
                : selLat ? '✅ Location detected — tap to re-detect'
                : '📍 Detect my current location'}
@@ -215,9 +216,8 @@ export default function CheckoutPage() {
               <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center' }}>
                 <span style={{ fontSize: 12, color: 'var(--text-3)', fontWeight: 700 }}>Save as:</span>
                 {['home', 'work', 'other'].map(lbl => (
-                  <button key={lbl} onClick={() => persistAddress(address, selLat, selLng, lbl)}
-                    style={{ padding: '5px 14px', borderRadius: 999, border: `1.5px solid ${addressSaved && saveLabel === lbl ? '#16a34a' : 'var(--border)'}`, background: addressSaved && saveLabel === lbl ? 'rgba(22,163,74,.1)' : 'var(--card-bg)', color: addressSaved && saveLabel === lbl ? '#16a34a' : 'var(--text-2)', fontWeight: 800, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}
-                    onClickCapture={() => setSaveLabel(lbl)}>
+                  <button key={lbl} onClick={() => { setSaveLabel(lbl); persistAddress(address, selLat, selLng, lbl) }}
+                    style={{ padding: '5px 14px', borderRadius: 999, border: `1.5px solid ${addressSaved && saveLabel === lbl ? '#16a34a' : 'var(--border)'}`, background: addressSaved && saveLabel === lbl ? 'rgba(22,163,74,.1)' : 'var(--card-bg)', color: addressSaved && saveLabel === lbl ? '#16a34a' : 'var(--text-2)', fontWeight: 800, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
                     {lbl === 'home' ? '🏠 Home' : lbl === 'work' ? '💼 Work' : '📌 Other'}
                     {addressSaved && saveLabel === lbl ? ' ✓' : ''}
                   </button>
@@ -237,8 +237,8 @@ export default function CheckoutPage() {
             { val: 'cod' as PaymentMethod, icon: '💵', label: 'Cash on Delivery', sub: 'Pay when your order arrives' },
             { val: 'upi' as PaymentMethod, icon: '📲', label: 'UPI Payment', sub: 'GPay, PhonePe, Paytm, any UPI' },
           ].map(p => (
-            <label key={p.val} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 12px', borderRadius: 14, border: `2px solid ${payMethod === p.val ? '#ff3008' : 'var(--border-2)'}`, background: payMethod === p.val ? 'var(--brand-muted)' : 'var(--bg-1)', cursor: 'pointer', marginBottom: 10 }}>
-              <input type="radio" name="pay" value={p.val} checked={payMethod === p.val} onChange={() => setPayMethod(p.val)} style={{ accentColor: '#ff3008' }} />
+            <label key={p.val} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 12px', borderRadius: 14, border: `2px solid ${payMethod === p.val ? '#0891B2' : 'var(--border-2)'}`, background: payMethod === p.val ? 'var(--brand-muted)' : 'var(--bg-1)', cursor: 'pointer', marginBottom: 10 }}>
+              <input type="radio" name="pay" value={p.val} checked={payMethod === p.val} onChange={() => setPayMethod(p.val)} style={{ accentColor: '#0891B2' }} />
               <span style={{ fontSize: 24 }}>{p.icon}</span>
               <div>
                 <p style={{ fontWeight: 800, fontSize: 13, color: 'var(--text)' }}>{p.label}</p>
@@ -283,7 +283,7 @@ export default function CheckoutPage() {
         )}
 
         <button onClick={placeOrder} disabled={loading}
-          style={{ width: '100%', padding: '15px', borderRadius: 14, fontWeight: 900, fontSize: 16, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: '#ff3008', color: '#fff', boxShadow: '0 4px 16px rgba(255,48,8,0.3)', opacity: loading ? 0.7 : 1 }}>
+          style={{ width: '100%', padding: '15px', borderRadius: 14, fontWeight: 900, fontSize: 16, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: '#0891B2', color: '#fff', boxShadow: '0 4px 16px rgba(8,145,178,0.3)', opacity: loading ? 0.7 : 1 }}>
           {loading ? 'Placing order…' : `Place Order — ₹${fees.total_amount} →`}
         </button>
       </div>
@@ -338,7 +338,7 @@ function UpiPaySection({ amount, merchantUpi, upiId, setUpiId, copied, setCopied
         {links.map(l => (
           <button key={l.label} onClick={() => openUpi(l.href, l.fallback)}
             style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '11px 14px', borderRadius: 12, background: 'var(--card-bg)', border: '1.5px solid var(--border)', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 13, color: 'var(--text)', transition: 'border-color .15s' }}
-            onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.borderColor = '#ff3008'}
+            onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.borderColor = '#0891B2'}
             onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border)'}>
             <span style={{ fontSize: 18 }}>{l.icon}</span>
             {l.label}
@@ -350,23 +350,23 @@ function UpiPaySection({ amount, merchantUpi, upiId, setUpiId, copied, setCopied
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--card-bg)', borderRadius: 10, padding: '10px 12px', marginBottom: 14 }}>
         <span style={{ fontSize: 12, color: 'var(--text-3)' }}>Can't open app? Copy UPI ID manually</span>
         <button onClick={() => { navigator.clipboard.writeText(merchantUpi); setCopied(true); setTimeout(() => setCopied(false), 2000) }}
-          style={{ fontSize: 12, fontWeight: 800, padding: '5px 12px', borderRadius: 8, background: copied ? '#22c55e' : 'var(--brand-muted)', color: copied ? '#fff' : '#ff3008', border: 'none', cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0, marginLeft: 10 }}>
+          style={{ fontSize: 12, fontWeight: 800, padding: '5px 12px', borderRadius: 8, background: copied ? '#22c55e' : 'var(--brand-muted)', color: copied ? '#fff' : '#0891B2', border: 'none', cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0, marginLeft: 10 }}>
           {copied ? '✓ Copied' : 'Copy ID'}
         </button>
       </div>
 
       {/* Transaction ID input */}
-      <div style={{ background: 'rgba(255,48,8,.05)', border: '1.5px solid rgba(255,48,8,.2)', borderRadius: 12, padding: '12px 14px', marginTop: 4 }}>
+      <div style={{ background: 'rgba(8,145,178,.05)', border: '1.5px solid rgba(8,145,178,.2)', borderRadius: 12, padding: '12px 14px', marginTop: 4 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
           <span style={{ fontSize: 14 }}>🔴</span>
-          <p style={{ fontSize: 12, fontWeight: 800, color: '#ff3008' }}>REQUIRED — Enter UTR after paying</p>
+          <p style={{ fontSize: 12, fontWeight: 800, color: '#0891B2' }}>REQUIRED — Enter UTR after paying</p>
         </div>
         <input
           value={upiId}
           onChange={e => setUpiId(e.target.value.replace(/\D/g, ''))}
           placeholder="12-digit UTR number (e.g. 407311139279)"
           maxLength={22}
-          style={{ width: '100%', padding: '11px 14px', borderRadius: 10, border: `1.5px solid ${upiId.trim().length >= 10 ? '#16a34a' : 'rgba(255,48,8,.3)'}`, background: 'var(--card-bg)', color: 'var(--text)', fontSize: 14, fontFamily: 'monospace', outline: 'none', boxSizing: 'border-box' as const, marginBottom: 8 }}
+          style={{ width: '100%', padding: '11px 14px', borderRadius: 10, border: `1.5px solid ${upiId.trim().length >= 10 ? '#16a34a' : 'rgba(8,145,178,.3)'}`, background: 'var(--card-bg)', color: 'var(--text)', fontSize: 14, fontFamily: 'monospace', outline: 'none', boxSizing: 'border-box' as const, marginBottom: 8 }}
         />
         <p style={{ fontSize: 11, color: upiId.trim().length >= 10 ? '#16a34a' : 'var(--text-3)', fontWeight: 600 }}>
           {upiId.trim().length >= 10 ? '✓ UTR looks valid' : 'Open your UPI app → Payment history → copy the 12-digit UTR'}

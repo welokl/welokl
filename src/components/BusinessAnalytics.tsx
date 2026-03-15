@@ -114,7 +114,7 @@ export default function BusinessAnalytics({ shopId }: { shopId: string }) {
         {(['today','week','month'] as Period[]).map(p => (
           <button key={p} onClick={() => setPeriod(p)}
             style={{ padding: '8px 20px', borderRadius: 999, fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', border: 'none',
-              background: period === p ? '#ff3008' : 'var(--bg-3)',
+              background: period === p ? '#0891B2' : 'var(--bg-3)',
               color: period === p ? '#fff' : 'var(--text-2)' }}>
             {p === 'today' ? 'Today' : p === 'week' ? 'Last 7 days' : 'This month'}
           </button>
@@ -147,7 +147,7 @@ export default function BusinessAnalytics({ shopId }: { shopId: string }) {
               <div style={{ display: 'flex', alignItems: 'flex-end', gap: period === 'month' ? 3 : 6, height: 120 }}>
                 {chartData.map(([label, val]) => (
                   <div key={label} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-                    <div style={{ width: '100%', background: val > 0 ? '#ff3008' : 'var(--bg-3)', borderRadius: '4px 4px 0 0', height: `${Math.max(4, (val / maxRev) * 100)}px`, transition: 'height .3s' }} />
+                    <div style={{ width: '100%', background: val > 0 ? '#0891B2' : 'var(--bg-3)', borderRadius: '4px 4px 0 0', height: `${Math.max(4, (val / maxRev) * 100)}px`, transition: 'height .3s' }} />
                     {period !== 'month' && <span style={{ fontSize: 9, color: 'var(--text-3)', fontWeight: 600, whiteSpace: 'nowrap' }}>{label}</span>}
                   </div>
                 ))}
@@ -162,7 +162,7 @@ export default function BusinessAnalytics({ shopId }: { shopId: string }) {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {tops.map(([name, d], i) => (
                   <div key={name} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <div style={{ width: 24, height: 24, borderRadius: 8, background: i === 0 ? '#ff3008' : 'var(--bg-3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <div style={{ width: 24, height: 24, borderRadius: 8, background: i === 0 ? '#0891B2' : 'var(--bg-3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                       <span style={{ fontSize: 11, fontWeight: 900, color: i === 0 ? '#fff' : 'var(--text-3)' }}>{i + 1}</span>
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
