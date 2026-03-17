@@ -3,337 +3,299 @@ import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import { useCart } from '@/store/cart'
-import FavouriteButton from '@/components/FavouriteButton'
 
-interface Shop {
-  id: string; name: string; description: string | null; category_name: string
-  is_open: boolean; rating: number; avg_delivery_time: number
-  delivery_enabled: boolean; pickup_enabled: boolean; min_order_amount: number
-  area: string; image_url: string | null; banner_url?: string | null
-  offer_text?: string | null; free_delivery_above?: number | null
-}
-interface Product {
-  id: string; name: string; description?: string | null
-  price: number; original_price?: number | null
-  image_url?: string | null; is_veg?: boolean | null
-  is_available?: boolean; category?: string | null; category_name?: string | null
-  shop_id?: string; [key: string]: unknown
-}
+const STATUS_STEPS = [
+  { key:'placed',    label:'Order placed',        color:'#2563eb' },
+  { key:'accepted',  label:'Accepted by shop',    color:'#7c3aed' },
+  { key:'preparing', label:'Being prepared',      color:'#d97706' },
+  { key:'ready',     label:'Ready for pickup',    color:'#0891b2' },
+  { key:'picked_up', label:'Out for delivery',    color:'#059669' },
+  { key:'delivered', label:'Delivered!',          color:'#16a34a' },
+]
 
-export default function StorePage() {
+export default function OrderPage() {
   const { id }   = useParams<{ id: string }>()
   const router   = useRouter()
-  const cart     = useCart() as any
-  const [shop,       setShop]      = useState<Shop | null>(null)
-  const [products,   setProducts]  = useState<Product[]>([])
-  const [loading,    setLoading]   = useState(true)
-  const [diffWarn,   setDiffWarn]  = useState(false)
-  const [activeCat,  setActiveCat] = useState('all')
-  const [search,     setSearch]    = useState('')
+  const [order,     setOrder]   = useState<any>(null)
+  const [partner,   setPartner] = useState<any>(null)
+  const [loading,   setLoading] = useState(true)
+  const [cancelling,setCancelling] = useState(false)
 
-  useEffect(() => { cart._hydrate?.() }, [])
-  useEffect(() => { load() }, [id])
+  // UUID validation — prevents Supabase query when id is 'history' or any non-UUID
+  const isValidUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id ?? '')
 
-  async function load() {
-    if (!id) return
+  useEffect(() => {
+    if (!isValidUUID) return   // don't query Supabase with a non-UUID
+    loadOrder()
     const sb = createClient()
-    const [{ data: s }, { data: p, error: pe }] = await Promise.all([
-      sb.from('shops').select('*').eq('id', id).single(),
-      sb.from('products').select('id,name,description,price,original_price,image_url,is_veg,is_available,shop_id,category,category_name').eq('shop_id', id).order('name'),
-    ])
-    if (pe) {
-      const { data: p2 } = await sb.from('products').select('*').eq('shop_id', id)
-      setProducts((p2 ?? []) as Product[])
-    } else {
-      setProducts((p ?? []) as Product[])
+    const ch = sb.channel(`order-track:${id}`)
+      .on('postgres_changes', { event:'UPDATE', schema:'public', table:'orders', filter:`id=eq.${id}` },
+        () => loadOrder())
+      .subscribe()
+    return () => { sb.removeChannel(ch) }
+  }, [id])
+
+  async function loadOrder() {
+    const sb = createClient()
+
+    // Fetch order raw first — no joins that might fail
+    const { data: raw, error } = await sb
+      .from('orders')
+      .select('*')
+      .eq('id', id)
+      .single()
+
+    console.log('[order-detail] raw:', raw?.id, error?.message)
+
+    if (error || !raw) {
+      console.error('[order-detail]', error)
+      setOrder(null)
+      setLoading(false)
+      return
     }
-    setShop(s)
+
+    // Fetch related data separately
+    const bizId  = raw.business_id
+    const shopId = raw.shop_id
+
+    const [bizRes, shopRes, itemsRes] = await Promise.all([
+      bizId  ? sb.from('businesses').select('id,name,address,image_url,phone').eq('id', bizId).single()  : Promise.resolve({ data: null }),
+      shopId ? sb.from('shops').select('id,name,area,image_url').eq('id', shopId).single() : Promise.resolve({ data: null }),
+      sb.from('order_items').select('id,product_id,product_name,quantity,price').eq('order_id', raw.id),
+    ])
+
+    const enriched = {
+      ...raw,
+      business:    bizRes.data,
+      shop:        shopRes.data,
+      order_items: itemsRes.data ?? [],
+    }
+
+    console.log('[order-detail] enriched shop:', enriched.business?.name ?? enriched.shop?.name)
+    setOrder(enriched)
+
+    // Load delivery partner if assigned
+    if (raw?.delivery_partner_id) {
+      const [{ data: u }, { data: dp }] = await Promise.all([
+        sb.from('users').select('name,phone').eq('id', raw.delivery_partner_id).single(),
+        sb.from('delivery_partners').select('vehicle_type,rating').eq('user_id', raw.delivery_partner_id).single(),
+      ])
+      if (u) setPartner({ ...u, ...dp })
+    }
+
     setLoading(false)
   }
 
-  function handleAdd(product: Product) {
-    if (cart.shop_id && cart.shop_id !== id && cart.count() > 0) { setDiffWarn(true); return }
-    cart.addItem(product, id, shop?.name ?? '')
+  async function cancelOrder() {
+    setCancelling(true)
+    const sb = createClient()
+    await sb.from('orders').update({ status:'cancelled' }).eq('id', id)
+    loadOrder()
+    setCancelling(false)
   }
 
-  const grouped = products.reduce<Record<string, Product[]>>((acc, p) => {
-    const cat = (p as any).category ?? (p as any).category_name ?? 'Items'
-    ;(acc[cat] ??= []).push(p)
-    return acc
-  }, {})
-  const categories  = Object.keys(grouped)
-  const cartCount   = cart.count?.() ?? 0
-  const cartTotal   = cart.subtotal?.() ?? 0
-  const showCartBar = cartCount > 0 && cart.shop_id === id
-
-  const filteredGroups = Object.entries(grouped).reduce<Record<string, Product[]>>((acc, [cat, items]) => {
-    if (activeCat !== 'all' && cat !== activeCat) return acc
-    const filtered = search ? items.filter(p => p.name.toLowerCase().includes(search.toLowerCase())) : items
-    if (filtered.length) acc[cat] = filtered
-    return acc
-  }, {})
-
   if (loading) return (
-    <div style={{ minHeight:'100vh', background:'var(--page-bg)', padding:16 }}>
-      <style>{`@keyframes sh{0%{background-position:-400px 0}100%{background-position:400px 0}}.sk{background:linear-gradient(90deg,#f0f0f0 25%,#e8e8e8 50%,#f0f0f0 75%);background-size:400px 100%;animation:sh 1.4s infinite;border-radius:16px;}`}</style>
-      <div style={{ maxWidth:760, margin:'0 auto', display:'flex', flexDirection:'column', gap:12 }}>
-        <div className="sk" style={{ height:200, borderRadius:24 }} />
-        {[1,2,3,4].map(i => <div key={i} className="sk" style={{ height:90 }} />)}
+    <div style={{ minHeight:'100vh', background:'var(--page-bg)', fontFamily:"'Plus Jakarta Sans',sans-serif", padding:16 }}>
+      <style>{`@keyframes sk{0%{background-position:-400px 0}100%{background-position:400px 0}}.sk{background:linear-gradient(90deg,var(--chip-bg) 25%,var(--page-bg) 50%,var(--chip-bg) 75%);background-size:400px 100%;animation:sk 1.4s infinite;border-radius:16px;}`}</style>
+      <div style={{ maxWidth:560, margin:'0 auto', display:'flex', flexDirection:'column', gap:12 }}>
+        {[80,200,120,160,120].map((h,i) => <div key={i} className="sk" style={{ height:h }} />)}
       </div>
     </div>
   )
 
-  if (!shop) return (
+  if (!isValidUUID) return (
     <div style={{ minHeight:'100vh', background:'var(--page-bg)', display:'flex', alignItems:'center', justifyContent:'center', fontFamily:"'Plus Jakarta Sans',sans-serif" }}>
       <div style={{ textAlign:'center' }}>
-        <div style={{ fontSize:52, marginBottom:14 }}>🏪</div>
-        <p style={{ fontWeight:800, fontSize:17, color:'var(--text-primary)', marginBottom:10 }}>Shop not found</p>
-        <Link href="/stores" style={{ color:'#FF3008', fontSize:14, textDecoration:'none', fontWeight:700 }}>Browse all shops →</Link>
+        <p style={{ fontWeight:800, fontSize:17, color:'var(--text-primary)', marginBottom:12 }}>Page not found</p>
+        <a href="/orders/history" style={{ color:'#FF3008', fontWeight:700, textDecoration:'none' }}>← Back to orders</a>
       </div>
     </div>
   )
 
-  return (
-    <div style={{ minHeight:'100vh', background:'var(--page-bg)', fontFamily:"'Plus Jakarta Sans',sans-serif", paddingBottom:120 }}>
-      <style>{`
-        @keyframes sh{0%{background-position:-400px 0}100%{background-position:400px 0}}
-        .sk{background:linear-gradient(90deg,#f0f0f0 25%,#e8e8e8 50%,#f0f0f0 75%);background-size:400px 100%;animation:sh 1.4s infinite;}
-        .pcard{background:#fff;border-radius:18px;overflow:hidden;display:flex;gap:0;transition:transform .15s;}
-        .pcard:active{transform:scale(.98);}
-        .cat-tab{padding:10px 18px;font-weight:700;font-size:13px;background:none;border:none;cursor:pointer;font-family:inherit;white-space:nowrap;transition:color .15s,border-color .15s;border-bottom:2.5px solid transparent;}
-        .tab-scroll::-webkit-scrollbar{display:none;}
-      `}</style>
+  if (!order) return (
+    <div style={{ minHeight:'100vh', background:'var(--page-bg)', display:'flex', alignItems:'center', justifyContent:'center', fontFamily:"'Plus Jakarta Sans',sans-serif" }}>
+      <div style={{ textAlign:'center' }}>
+        <p style={{ fontWeight:800, fontSize:17, color:'var(--text-primary)', marginBottom:12 }}>Order not found</p>
+        <Link href="/orders/history" style={{ color:'#FF3008', fontWeight:700, textDecoration:'none' }}>← Back to orders</Link>
+      </div>
+    </div>
+  )
 
-      {/* Sticky header */}
-      <div style={{ position:'sticky', top:0, zIndex:100, background:'var(--card-white)', borderBottom:'1px solid var(--divider)' }}>
-        <div style={{ maxWidth:760, margin:'0 auto', display:'flex', alignItems:'center', gap:10, height:56, padding:'0 16px' }}>
-          <button onClick={() => router.back()} style={{ width:36, height:36, borderRadius:12, background:'var(--page-bg)', border:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-            <svg viewBox="0 0 24 24" fill="none" width={20} height={20}><path d="M19 12H5M5 12l7 7M5 12l7-7" stroke="#111" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+  const shopName  = order.business?.name || order.shop?.name || 'Shop'
+  const shopArea  = order.shop?.area || order.business?.address || ''
+  const stepIdx   = STATUS_STEPS.findIndex(s => s.key === order.status)
+  const isCancelled = ['cancelled','rejected'].includes(order.status)
+  const isActive    = !isCancelled && order.status !== 'delivered'
+  const canCancel   = ['placed','accepted'].includes(order.status)
+
+  return (
+    <div style={{ minHeight:'100vh', background:'var(--page-bg)', fontFamily:"'Plus Jakarta Sans',sans-serif", paddingBottom:40 }}>
+      <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}`}</style>
+
+      {/* Header */}
+      <div style={{ position:'sticky', top:0, zIndex:40, background:'var(--card-white)', borderBottom:'1px solid var(--divider)', padding:'0 16px' }}>
+        <div style={{ maxWidth:560, margin:'0 auto', display:'flex', alignItems:'center', gap:12, height:56 }}>
+          <button onClick={() => router.back()} style={{ width:36, height:36, borderRadius:12, background:'var(--page-bg)', border:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+            <svg viewBox="0 0 24 24" fill="none" width={20} height={20}><path d="M19 12H5M5 12l7 7M5 12l7-7" stroke="var(--text-primary)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
           </button>
-          <span style={{ fontWeight:800, fontSize:15, flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', color:'var(--text-primary)' }}>{shop.name}</span>
-          <FavouriteButton shopId={id} />
-          {showCartBar && (
-            <Link href="/cart" style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 16px', borderRadius:12, background:'#FF3008', color:'#fff', fontWeight:800, fontSize:13, textDecoration:'none', flexShrink:0 }}>
-              <svg viewBox="0 0 24 24" fill="none" width={16} height={16}><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z" stroke="#fff" strokeWidth="2"/><line x1="3" y1="6" x2="21" y2="6" stroke="#fff" strokeWidth="2"/></svg>
-              {cartCount} · ₹{cartTotal}
-            </Link>
-          )}
-        </div>
-      </div>
-
-      {/* Shop hero */}
-      <div style={{ background:'var(--card-white)', marginBottom:10 }}>
-        {/* Banner */}
-        {shop.banner_url ? (
-          <div style={{ height:180, overflow:'hidden', position:'relative' }}>
-            <img src={shop.banner_url} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
-            <div style={{ position:'absolute', inset:0, background:'linear-gradient(to top, rgba(0,0,0,.5) 0%, transparent 60%)' }} />
-          </div>
-        ) : (
-          <div style={{ height:120, background:`linear-gradient(135deg, #FF3008, #ff6b35)`, position:'relative' }}>
-            <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:64, opacity:.15 }}>🏪</div>
-          </div>
-        )}
-
-        <div style={{ padding:'0 16px 20px', maxWidth:760, margin:'0 auto' }}>
-          {/* Logo */}
-          <div style={{ width:72, height:72, borderRadius:18, background:'var(--card-white)', border:'3px solid #fff', overflow:'hidden', marginTop:-36, boxShadow:'0 4px 16px rgba(0,0,0,.12)', display:'flex', alignItems:'center', justifyContent:'center', marginBottom:12 }}>
-            {shop.image_url
-              ? <img src={shop.image_url} alt={shop.name} style={{ width:'100%', height:'100%', objectFit:'cover' }} />
-              : <span style={{ fontSize:32 }}>🏪</span>
-            }
-          </div>
-
-          <h1 style={{ fontWeight:900, fontSize:22, color:'var(--text-primary)', marginBottom:4, letterSpacing:'-0.03em' }}>{shop.name}</h1>
-          <p style={{ fontSize:13, color:'var(--text-muted)', marginBottom:12 }}>{shop.category_name} · {shop.area}</p>
-
-          {/* Chips */}
-          <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom:12 }}>
-            <span style={{ fontSize:12, fontWeight:700, padding:'5px 12px', borderRadius:999, background: shop.is_open ? 'var(--green-light)' : 'var(--error-light)', color: shop.is_open ? '#16a34a' : '#ef4444' }}>
-              {shop.is_open ? '● Open now' : '● Closed'}
-            </span>
-            <span style={{ fontSize:12, fontWeight:700, padding:'5px 12px', borderRadius:999, background:'var(--yellow-light)', color:'var(--text-secondary)' }}>
-              ★ {shop.rating?.toFixed(1) || '4.0'}
-            </span>
-            {shop.delivery_enabled && (
-              <span style={{ fontSize:12, fontWeight:700, padding:'5px 12px', borderRadius:999, background:'var(--blue-light)', color:'#4f46e5' }}>
-                🛵 {shop.avg_delivery_time} min
-              </span>
-            )}
-            {shop.pickup_enabled && (
-              <span style={{ fontSize:12, fontWeight:700, padding:'5px 12px', borderRadius:999, background:'var(--page-bg)', color:'var(--text-secondary)' }}>
-                🏪 Pickup
-              </span>
-            )}
-            {shop.min_order_amount > 0 && (
-              <span style={{ fontSize:12, fontWeight:700, padding:'5px 12px', borderRadius:999, background:'var(--page-bg)', color:'var(--text-secondary)' }}>
-                Min ₹{shop.min_order_amount}
-              </span>
-            )}
-          </div>
-
-          {/* Offer */}
-          {(shop.offer_text || shop.free_delivery_above) && (
-            <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
-              {shop.offer_text && <span style={{ fontSize:12, fontWeight:700, color:'#FF3008', background:'var(--red-light)', padding:'5px 12px', borderRadius:999 }}>🏷️ {shop.offer_text}</span>}
-              {shop.free_delivery_above && <span style={{ fontSize:12, fontWeight:700, color:'#16a34a', background:'var(--green-light)', padding:'5px 12px', borderRadius:999 }}>🚚 Free delivery above ₹{shop.free_delivery_above}</span>}
+          <h1 style={{ fontWeight:900, fontSize:17, color:'var(--text-primary)', flex:1 }}>
+            Order #{order.order_number || order.id?.slice(-6).toUpperCase()}
+          </h1>
+          {/* Live pulse for active orders */}
+          {isActive && (
+            <div style={{ display:'flex', alignItems:'center', gap:6, padding:'5px 12px', borderRadius:999, background:'var(--green-light)' }}>
+              <div style={{ width:7, height:7, borderRadius:'50%', background:'#16a34a', animation:'pulse 1.5s infinite' }} />
+              <span style={{ fontSize:12, fontWeight:700, color:'#16a34a' }}>Live</span>
             </div>
           )}
         </div>
       </div>
 
-      {/* Search bar */}
-      <div style={{ padding:'0 12px', marginBottom:10 }}>
-        <div style={{ background:'var(--card-white)', borderRadius:16, display:'flex', alignItems:'center', gap:10, padding:'10px 14px' }}>
-          <svg viewBox="0 0 24 24" fill="none" width={18} height={18} style={{ flexShrink:0 }}><circle cx="11" cy="11" r="8" stroke="#aaa" strokeWidth="2"/><path d="m21 21-4.35-4.35" stroke="#aaa" strokeWidth="2" strokeLinecap="round"/></svg>
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder={`Search in ${shop.name}…`}
-            style={{ flex:1, border:'none', outline:'none', fontSize:14, color:'var(--text-primary)', background:'transparent', fontFamily:'inherit' }} />
-          {search && <button onClick={() => setSearch('')} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--text-faint)', fontSize:16 }}>✕</button>}
-        </div>
-      </div>
+      <div style={{ maxWidth:560, margin:'0 auto', padding:'16px 12px', display:'flex', flexDirection:'column', gap:12 }}>
 
-      {/* Category tabs */}
-      {categories.length > 1 && (
-        <div style={{ background:'var(--card-white)', position:'sticky', top:56, zIndex:40, borderBottom:'1px solid var(--divider)' }}>
-          <div className="tab-scroll" style={{ display:'flex', overflowX:'auto', padding:'0 12px', scrollbarWidth:'none' }}>
-            {['all', ...categories].map(cat => (
-              <button key={cat} className="cat-tab" onClick={() => setActiveCat(cat)}
-                style={{ color: activeCat === cat ? '#FF3008' : '#888', borderBottomColor: activeCat === cat ? '#FF3008' : 'transparent' }}>
-                {cat === 'all' ? 'All' : cat}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+        {/* Status timeline */}
+        <div style={{ background:'var(--card-white)', borderRadius:20, padding:'20px 18px' }}>
+          <p style={{ fontWeight:800, fontSize:15, color:'var(--text-primary)', marginBottom:20 }}>Order status</p>
 
-      {/* Products */}
-      <div style={{ maxWidth:760, margin:'0 auto', padding:'12px' }}>
-        {products.length === 0 ? (
-          <div style={{ background:'var(--card-white)', borderRadius:20, padding:'48px 20px', textAlign:'center' }}>
-            <div style={{ fontSize:52, marginBottom:14 }}>📦</div>
-            <p style={{ fontWeight:800, fontSize:17, color:'var(--text-primary)', marginBottom:6 }}>No products yet</p>
-            <p style={{ fontSize:14, color:'var(--text-muted)' }}>This shop hasn't added any products.</p>
-          </div>
-        ) : Object.entries(filteredGroups).length === 0 ? (
-          <div style={{ background:'var(--card-white)', borderRadius:20, padding:'40px 20px', textAlign:'center' }}>
-            <p style={{ fontWeight:800, fontSize:15, color:'var(--text-primary)', marginBottom:6 }}>No results for "{search}"</p>
-            <button onClick={() => setSearch('')} style={{ color:'#FF3008', fontWeight:700, fontSize:14, background:'none', border:'none', cursor:'pointer', fontFamily:'inherit' }}>Clear search</button>
-          </div>
-        ) : (
-          Object.entries(filteredGroups).map(([cat, items]) => (
-            <div key={cat} style={{ marginBottom:20 }}>
-              {categories.length > 0 && (
-                <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10 }}>
-                  <p style={{ fontWeight:900, fontSize:15, color:'var(--text-primary)', letterSpacing:'-0.01em' }}>{cat}</p>
-                  <span style={{ fontSize:12, color:'var(--text-faint)', fontWeight:600 }}>({items.length})</span>
-                </div>
-              )}
-              <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-                {items.map(product => (
-                  <ProductCard key={product.id}
-                    product={product}
-                    qty={cart.items?.find((i: any) => i.product.id === product.id)?.quantity ?? 0}
-                    onAdd={() => handleAdd(product)}
-                    onRemove={() => cart.removeItem(product.id)}
-                    onUpdate={(q: number) => cart.updateQty(product.id, q)}
-                  />
-                ))}
+          {isCancelled ? (
+            <div style={{ display:'flex', alignItems:'center', gap:12, padding:'14px 16px', background:'var(--error-light)', borderRadius:14 }}>
+              <div style={{ width:36, height:36, borderRadius:'50%', background:'#ef4444', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                <svg viewBox="0 0 24 24" fill="none" width={18} height={18}><path d="M18 6L6 18M6 6l12 12" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"/></svg>
+              </div>
+              <div>
+                <p style={{ fontWeight:800, fontSize:14, color:'#ef4444' }}>Order {order.status}</p>
+                <p style={{ fontSize:12, color:'var(--text-muted)' }}>Contact support if you need help</p>
               </div>
             </div>
-          ))
-        )}
-      </div>
-
-      {/* Floating cart */}
-      {showCartBar && (
-        <div style={{ position:'fixed', bottom:20, left:12, right:12, zIndex:50 }}>
-          <div style={{ maxWidth:760, margin:'0 auto' }}>
-            <Link href="/cart" style={{ display:'flex', alignItems:'center', justifyContent:'space-between', background:'#FF3008', color:'#fff', borderRadius:18, padding:'16px 22px', textDecoration:'none', boxShadow:'0 8px 32px rgba(255,48,8,.4)' }}>
-              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-                <span style={{ background:'rgba(255,255,255,.2)', borderRadius:10, padding:'4px 12px', fontWeight:900, fontSize:14 }}>{cartCount}</span>
-                <span style={{ fontWeight:800, fontSize:15 }}>View cart</span>
-              </div>
-              <span style={{ fontWeight:900, fontSize:16 }}>₹{cartTotal}</span>
-            </Link>
-          </div>
-        </div>
-      )}
-
-      {/* Different shop warning */}
-      {diffWarn && (
-        <div style={{ position:'fixed', inset:0, zIndex:200, background:'rgba(0,0,0,.6)', display:'flex', alignItems:'flex-end', justifyContent:'center' }}>
-          <div style={{ background:'var(--card-white)', borderRadius:'24px 24px 0 0', padding:'28px 20px 40px', width:'100%', maxWidth:480, fontFamily:'inherit' }}>
-            <div style={{ fontSize:40, textAlign:'center', marginBottom:12 }}>🛒</div>
-            <h3 style={{ fontWeight:900, fontSize:18, color:'var(--text-primary)', textAlign:'center', marginBottom:8 }}>Start a new cart?</h3>
-            <p style={{ fontSize:14, color:'var(--text-muted)', textAlign:'center', marginBottom:24, lineHeight:1.6 }}>
-              Your cart has items from <strong style={{ color:'var(--text-primary)' }}>{cart.shop_name}</strong>. Adding this will clear it.
-            </p>
-            <div style={{ display:'flex', gap:10 }}>
-              <button onClick={() => setDiffWarn(false)} style={{ flex:1, padding:14, borderRadius:14, border:'1.5px solid var(--divider)', background:'var(--page-bg)', color:'var(--text-primary)', fontWeight:800, fontSize:14, cursor:'pointer', fontFamily:'inherit' }}>Keep cart</button>
-              <button onClick={() => { cart.clear(); setDiffWarn(false) }} style={{ flex:1, padding:14, borderRadius:14, border:'none', background:'#FF3008', color:'#fff', fontWeight:800, fontSize:14, cursor:'pointer', fontFamily:'inherit' }}>Start new cart</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ── Product Card ──────────────────────────────────────────────────
-function ProductCard({ product, qty, onAdd, onRemove, onUpdate }: {
-  product: Product; qty: number
-  onAdd: () => void; onRemove: () => void; onUpdate: (q: number) => void
-}) {
-  const disc = product.original_price && product.original_price > product.price
-    ? Math.round((1 - product.price / product.original_price) * 100) : 0
-  const unavailable = product.is_available === false
-
-  return (
-    <div className="pcard" style={{ opacity: unavailable ? 0.5 : 1 }}>
-      {/* Image */}
-      <div style={{ width:110, height:110, flexShrink:0, background:'var(--chip-bg)', position:'relative', overflow:'hidden' }}>
-        {product.image_url
-          ? <img src={product.image_url} alt={product.name} style={{ width:'100%', height:'100%', objectFit:'cover' }} onError={e => { (e.currentTarget as HTMLImageElement).style.display='none' }} />
-          : <div style={{ width:'100%', height:'100%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:40, opacity:.2 }}>🛍️</div>
-        }
-        {disc > 0 && <div style={{ position:'absolute', top:6, left:6, background:'#FF3008', color:'#fff', fontSize:10, fontWeight:900, padding:'2px 6px', borderRadius:6 }}>-{disc}%</div>}
-      </div>
-
-      {/* Info */}
-      <div style={{ flex:1, padding:'14px 14px 14px 12px', display:'flex', flexDirection:'column', justifyContent:'space-between', minWidth:0 }}>
-        <div>
-          {product.is_veg != null && (
-            <div style={{ width:14, height:14, border:`2px solid ${product.is_veg ? '#16a34a' : '#ef4444'}`, borderRadius:3, display:'inline-flex', alignItems:'center', justifyContent:'center', marginBottom:4 }}>
-              <div style={{ width:7, height:7, borderRadius:'50%', background: product.is_veg ? '#16a34a' : '#ef4444' }} />
-            </div>
-          )}
-          <p style={{ fontWeight:800, fontSize:14, color:'var(--text-primary)', marginBottom:3, lineHeight:1.3 }}>{product.name}</p>
-          {product.description && <p style={{ fontSize:12, color:'var(--text-faint)', lineHeight:1.5, overflow:'hidden', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical' as any }}>{product.description}</p>}
-        </div>
-
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginTop:10 }}>
-          <div>
-            <span style={{ fontWeight:900, fontSize:15, color:'var(--text-primary)' }}>₹{product.price}</span>
-            {product.original_price && product.original_price > product.price && (
-              <span style={{ fontSize:12, color:'var(--text-faint)', textDecoration:'line-through', marginLeft:6 }}>₹{product.original_price}</span>
-            )}
-          </div>
-
-          {unavailable ? (
-            <span style={{ fontSize:12, color:'var(--text-faint)', fontWeight:700 }}>Unavailable</span>
-          ) : qty === 0 ? (
-            <button onClick={onAdd} style={{ padding:'8px 20px', borderRadius:12, border:'2px solid #FF3008', color:'#FF3008', background:'none', fontWeight:800, fontSize:13, cursor:'pointer', fontFamily:'inherit' }}>
-              ADD
-            </button>
           ) : (
-            <div style={{ display:'flex', alignItems:'center', background:'#FF3008', borderRadius:12, overflow:'hidden' }}>
-              <button onClick={() => onUpdate(qty - 1)} style={{ color:'#fff', padding:'8px 12px', border:'none', background:'none', cursor:'pointer', fontWeight:900, fontSize:16, lineHeight:1 }}>−</button>
-              <span style={{ color:'#fff', fontWeight:900, fontSize:14, minWidth:22, textAlign:'center' }}>{qty}</span>
-              <button onClick={() => onUpdate(qty + 1)} style={{ color:'#fff', padding:'8px 12px', border:'none', background:'none', cursor:'pointer', fontWeight:900, fontSize:16, lineHeight:1 }}>+</button>
+            <div style={{ display:'flex', flexDirection:'column', gap:0 }}>
+              {STATUS_STEPS.map((step, idx) => {
+                const done   = idx < stepIdx
+                const active = idx === stepIdx
+                const pending = idx > stepIdx
+                return (
+                  <div key={step.key} style={{ display:'flex', gap:14, alignItems:'flex-start' }}>
+                    {/* Dot + line */}
+                    <div style={{ display:'flex', flexDirection:'column', alignItems:'center', flexShrink:0 }}>
+                      <div style={{ width:36, height:36, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', background: done ? '#16a34a' : active ? '#fff' : 'var(--chip-bg)', border:`2px solid ${done ? '#16a34a' : active ? '#FF3008' : 'var(--divider)'}`, boxShadow: active ? '0 0 0 4px rgba(255,48,8,.12)' : 'none', transition:'all .3s' }}>
+                        {done
+                          ? <svg viewBox="0 0 24 24" fill="none" width={16} height={16}><path d="M20 6L9 17l-5-5" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                          : active
+                          ? <div style={{ width:10, height:10, borderRadius:'50%', background:'#FF3008', animation:'pulse 1.5s infinite' }} />
+                          : <div style={{ width:8, height:8, borderRadius:'50%', background:'var(--text-faint)' }} />
+                        }
+                      </div>
+                      {idx < STATUS_STEPS.length - 1 && (
+                        <div style={{ width:2, height:28, background: done ? '#16a34a' : 'var(--divider)', marginTop:2, borderRadius:1 }} />
+                      )}
+                    </div>
+                    {/* Label */}
+                    <div style={{ paddingTop:8, paddingBottom: idx < STATUS_STEPS.length - 1 ? 16 : 0, opacity: pending ? 0.38 : 1 }}>
+                      <p style={{ fontWeight: active ? 800 : 600, fontSize:14, color: active ? '#FF3008' : done ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                        {step.label}
+                      </p>
+                      {active && (
+                        <p style={{ fontSize:12, color:'var(--text-muted)', marginTop:2 }}>In progress…</p>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           )}
         </div>
+
+        {/* Delivery partner */}
+        {partner && (
+          <div style={{ background:'var(--card-white)', borderRadius:20, padding:'16px 18px' }}>
+            <p style={{ fontWeight:800, fontSize:14, color:'var(--text-primary)', marginBottom:12 }}>Delivery partner</p>
+            <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+              <div style={{ width:44, height:44, borderRadius:'50%', background:'var(--blue-light)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                <svg viewBox="0 0 24 24" fill="none" width={22} height={22}><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" stroke="#4f46e5" strokeWidth="2" strokeLinecap="round"/><circle cx="12" cy="7" r="4" stroke="#4f46e5" strokeWidth="2"/></svg>
+              </div>
+              <div style={{ flex:1 }}>
+                <p style={{ fontWeight:700, fontSize:14, color:'var(--text-primary)' }}>{partner.name}</p>
+                <p style={{ fontSize:12, color:'var(--text-muted)' }}>{partner.vehicle_type || 'Bike'} · ★ {partner.rating?.toFixed(1) || '4.5'}</p>
+              </div>
+              {partner.phone && (
+                <a href={`tel:${partner.phone}`} style={{ width:40, height:40, borderRadius:12, background:'var(--green-light)', display:'flex', alignItems:'center', justifyContent:'center', textDecoration:'none' }}>
+                  <svg viewBox="0 0 24 24" fill="none" width={18} height={18}><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" stroke="#16a34a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                </a>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Shop + address */}
+        <div style={{ background:'var(--card-white)', borderRadius:20, padding:'16px 18px' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom: order.delivery_address ? 14 : 0 }}>
+            <div style={{ width:40, height:40, borderRadius:12, background:'var(--red-light)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+              <svg viewBox="0 0 24 24" fill="none" width={20} height={20}><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" stroke="#FF3008" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><polyline points="9 22 9 12 15 12 15 22" stroke="#FF3008" strokeWidth="2" strokeLinecap="round"/></svg>
+            </div>
+            <div>
+              <p style={{ fontSize:11, fontWeight:700, color:'var(--text-muted)', marginBottom:2 }}>ORDER FROM</p>
+              <p style={{ fontWeight:800, fontSize:15, color:'var(--text-primary)' }}>{shopName}</p>
+              {shopArea && <p style={{ fontSize:12, color:'var(--text-muted)' }}>{shopArea}</p>}
+            </div>
+          </div>
+          {order.delivery_address && (
+            <div style={{ display:'flex', alignItems:'flex-start', gap:12, paddingTop:14, borderTop:'1px solid var(--divider)' }}>
+              <div style={{ width:40, height:40, borderRadius:12, background:'var(--blue-light)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                <svg viewBox="0 0 24 24" fill="none" width={20} height={20}><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 010-5 2.5 2.5 0 010 5z" fill="#4f46e5" opacity=".8"/></svg>
+              </div>
+              <div>
+                <p style={{ fontSize:11, fontWeight:700, color:'var(--text-muted)', marginBottom:2 }}>DELIVERING TO</p>
+                <p style={{ fontSize:14, color:'var(--text-primary)', lineHeight:1.5 }}>{order.delivery_address}</p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Bill */}
+        <div style={{ background:'var(--card-white)', borderRadius:20, padding:'16px 18px' }}>
+          <p style={{ fontWeight:800, fontSize:14, color:'var(--text-primary)', marginBottom:14 }}>Bill summary</p>
+          {(order.order_items || []).map((item: any) => (
+            <div key={item.id || item.product_id} style={{ display:'flex', justifyContent:'space-between', marginBottom:8, fontSize:14 }}>
+              <span style={{ color:'var(--text-secondary)' }}>{item.product_name} × {item.quantity}</span>
+              <span style={{ fontWeight:700, color:'var(--text-primary)' }}>₹{(item.price * item.quantity).toFixed(0)}</span>
+            </div>
+          ))}
+          <div style={{ borderTop:'1px dashed var(--divider)', paddingTop:10, marginTop:6 }}>
+            {[
+              { label:'Delivery', val: order.delivery_fee > 0 ? `₹${order.delivery_fee}` : 'FREE', green: !order.delivery_fee },
+              { label:'Platform fee', val:`₹${order.platform_fee || 0}` },
+            ].map(r => (
+              <div key={r.label} style={{ display:'flex', justifyContent:'space-between', marginBottom:6, fontSize:13 }}>
+                <span style={{ color:'var(--text-muted)' }}>{r.label}</span>
+                <span style={{ color: r.green ? '#16a34a' : 'var(--text-secondary)', fontWeight:600 }}>{r.val}</span>
+              </div>
+            ))}
+            <div style={{ display:'flex', justifyContent:'space-between', marginTop:8, paddingTop:8, borderTop:'1px solid var(--divider)' }}>
+              <span style={{ fontWeight:900, fontSize:15, color:'var(--text-primary)' }}>Total</span>
+              <span style={{ fontWeight:900, fontSize:16, color:'var(--text-primary)' }}>₹{order.total_amount}</span>
+            </div>
+          </div>
+          <div style={{ marginTop:10, paddingTop:10, borderTop:'1px solid var(--divider)', display:'flex', justifyContent:'space-between', fontSize:13 }}>
+            <span style={{ color:'var(--text-muted)' }}>Payment</span>
+            <span style={{ fontWeight:700, color:'var(--text-primary)' }}>{order.payment_method === 'cod' ? 'Cash on delivery' : 'UPI / Online'}</span>
+          </div>
+        </div>
+
+        {/* Cancel button */}
+        {canCancel && (
+          <button onClick={cancelOrder} disabled={cancelling}
+            style={{ width:'100%', padding:'14px', borderRadius:16, border:'1.5px solid rgba(239,68,68,.3)', background:'var(--error-light)', color:'#ef4444', fontWeight:800, fontSize:14, cursor:'pointer', fontFamily:'inherit' }}>
+            {cancelling ? 'Cancelling…' : 'Cancel order'}
+          </button>
+        )}
+
+        {/* Reorder */}
+        {order.status === 'delivered' && (
+          <Link href={`/stores/${order.shop_id || order.business_id}`}
+            style={{ display:'block', padding:'14px', borderRadius:16, background:'#FF3008', color:'#fff', fontWeight:800, fontSize:15, textDecoration:'none', textAlign:'center', boxShadow:'0 8px 24px rgba(255,48,8,.3)' }}>
+            Order again →
+          </Link>
+        )}
       </div>
     </div>
   )

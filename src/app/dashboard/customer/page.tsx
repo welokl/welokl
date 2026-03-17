@@ -108,7 +108,7 @@ export default function CustomerHome() {
     const sb = createClient()
     const [{ data: shops }, { data: cats }] = await Promise.all([
       sb.from('shops').select('*').eq('is_active', true).order('rating', { ascending: false }),
-      sb.from('categories').select('*').eq('is_active', true).order('sort_order'),
+      sb.from('categories').select('*').eq('is_active', true),
     ])
     setAllShops(shops || [])
     setShopsLoaded(true)
@@ -129,9 +129,11 @@ export default function CustomerHome() {
     if (!shopIds.length) { setProducts([]); return }
     const { data } = await createClient().from('products')
       .select('id,name,price,original_price,image_url,shop_id,shops(name)')
-      .in('shop_id', shopIds.slice(0, 50)).or('is_available.is.null,is_available.eq.true')
+      .in('shop_id', shopIds.slice(0, 50))
       .order('original_price', { ascending: false }).limit(24)
-    setProducts((data || []).map((p: any) => ({ ...p, shop_name: p.shops?.name })))
+    // Filter unavailable in JS — avoids broken .or() query
+    const available = (data || []).filter((p: any) => p.is_available !== false)
+    setProducts(available.map((p: any) => ({ ...p, shop_name: p.shops?.name })))
   }, [])
 
   function detectLocation() {
@@ -326,19 +328,41 @@ export default function CustomerHome() {
             <p style={{ fontSize:22, fontWeight:900, color:'#fff', letterSpacing:'-0.03em', lineHeight:1.15, marginBottom:4 }}>Delivered in<br /><span style={{ fontSize:26 }}>under 30 min</span></p>
             <p style={{ fontSize:11, color:'rgba(255,255,255,.7)' }}>Real riders · Local shops · 5km only</p>
           </div>
-          <svg viewBox="0 0 64 64" fill="none" width={80} height={80} style={{ flexShrink:0, filter:'drop-shadow(0 4px 14px rgba(0,0,0,.3))' }}>
-            {/* Wheels */}
-            <circle cx="14" cy="46" r="8" stroke="#fff" strokeWidth="3" fill="rgba(255,255,255,.15)"/>
-            <circle cx="50" cy="46" r="8" stroke="#fff" strokeWidth="3" fill="rgba(255,255,255,.15)"/>
-            {/* Body */}
-            <path d="M22 46 L28 22 L36 22 L44 38 L50 38" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
-            {/* Seat / back */}
-            <path d="M28 22 L20 22 L14 38" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
-            {/* Handlebar */}
-            <path d="M44 38 L48 28 L56 28" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
-            <path d="M54 24 L58 28 L54 32" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-            {/* Windscreen */}
-            <path d="M34 22 L38 14 L44 14" stroke="rgba(255,255,255,.6)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+          <svg viewBox="0 0 120 80" fill="none" width={110} height={74} style={{ flexShrink:0 }}>
+            {/* === REAR WHEEL === */}
+            <circle cx="22" cy="58" r="15" stroke="white" strokeWidth="4" fill="rgba(255,255,255,.1)"/>
+            <circle cx="22" cy="58" r="7" stroke="rgba(255,255,255,.35)" strokeWidth="2.5"/>
+            <circle cx="22" cy="58" r="2" fill="white"/>
+            {/* === FRONT WHEEL === */}
+            <circle cx="95" cy="58" r="15" stroke="white" strokeWidth="4" fill="rgba(255,255,255,.1)"/>
+            <circle cx="95" cy="58" r="7" stroke="rgba(255,255,255,.35)" strokeWidth="2.5"/>
+            <circle cx="95" cy="58" r="2" fill="white"/>
+            {/* === FRAME: step-through body === */}
+            {/* Rear axle up to seat post */}
+            <path d="M22 43 L35 43" stroke="white" strokeWidth="3.5" strokeLinecap="round"/>
+            {/* Seat post up */}
+            <path d="M35 43 L38 24" stroke="white" strokeWidth="3.5" strokeLinecap="round"/>
+            {/* Top frame: seat to neck */}
+            <path d="M38 24 L72 22" stroke="white" strokeWidth="3.5" strokeLinecap="round"/>
+            {/* Neck down to front axle */}
+            <path d="M72 22 L82 43 L95 43" stroke="white" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"/>
+            {/* Lower frame / footboard */}
+            <path d="M35 43 L60 43 L82 43" stroke="white" strokeWidth="3" strokeLinecap="round"/>
+            {/* === SEAT (wide flat) === */}
+            <path d="M32 24 L52 24" stroke="white" strokeWidth="6" strokeLinecap="round"/>
+            {/* === HANDLEBAR === */}
+            {/* Stem */}
+            <path d="M72 22 L70 12" stroke="white" strokeWidth="3.5" strokeLinecap="round"/>
+            {/* Bar */}
+            <path d="M63 11 L79 11" stroke="white" strokeWidth="4.5" strokeLinecap="round"/>
+            {/* Grips */}
+            <circle cx="63" cy="11" r="3" fill="rgba(255,255,255,.5)"/>
+            <circle cx="79" cy="11" r="3" fill="rgba(255,255,255,.5)"/>
+            {/* === HEADLIGHT === */}
+            <ellipse cx="96" cy="46" rx="4" ry="3" fill="rgba(255,255,255,.5)"/>
+            {/* === FOOTREST === */}
+            <path d="M48 43 L48 50" stroke="rgba(255,255,255,.5)" strokeWidth="2.5" strokeLinecap="round"/>
+            <path d="M42 50 L56 50" stroke="rgba(255,255,255,.6)" strokeWidth="2.5" strokeLinecap="round"/>
           </svg>
         </div>
       )}
