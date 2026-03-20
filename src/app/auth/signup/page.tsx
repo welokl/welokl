@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
@@ -11,7 +11,7 @@ const ROLES: { id: UserRole; label: string; desc: string }[] = [
   { id: 'delivery_partner', label: 'Delivery Partner', desc: 'Deliver orders & earn money' },
 ]
 
-export default function SignupPage() {
+function SignupPageInner() {
   const router       = useRouter()
   const searchParams = useSearchParams()
   const supabase     = createClient()
@@ -256,5 +256,13 @@ export default function SignupPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function SignupPage() {
+  return (
+    <Suspense fallback={<div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center' }}><p style={{ color:'#888', fontFamily:'sans-serif' }}>Loading...</p></div>}>
+      <SignupPageInner />
+    </Suspense>
   )
 }
