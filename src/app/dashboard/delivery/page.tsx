@@ -9,6 +9,7 @@ import Navbar from '@/components/Navbar'
 
 export default function DeliveryDashboard() {
   const [partner, setPartner] = useState<DeliveryPartner | null>(null)
+  const [userId, setUserId]   = useState<string>('')
   const watchIdRef = useRef<number | null>(null)
   const [assignedOrder, setAssignedOrder] = useState<Order | null>(null)
   const [wallet, setWallet] = useState<Wallet | null>(null)
@@ -19,6 +20,7 @@ export default function DeliveryDashboard() {
   const loadData = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
+    setUserId(user.id)
 
     const [{ data: partnerData }, { data: walletData }] = await Promise.all([
       supabase.from('delivery_partners').select('*, user:users(name)').eq('user_id', user.id).single(),
@@ -98,36 +100,35 @@ export default function DeliveryDashboard() {
   const toggleOnline = async () => {
     if (!partner) return
 
-    // Get current location
-    navigator.geolocation?.getCurrentPosition(async (pos) => {
-      const { error } = await supabase
-        .from('delivery_partners')
-        .update({
-          is_online: !partner.is_online,
+    const newOnline = !partner.is_online
+
+    // Update DB first — don't wait for GPS
+    const { error } = await supabase
+      .from('delivery_partners')
+      .update({ is_online: newOnline })
+      .eq('user_id', userId)
+
+    if (error) {
+      console.error('[toggle] error:', error.message, error.code)
+      toast.error('Could not update status: ' + error.message)
+      return
+    }
+
+    setPartner({ ...partner, is_online: newOnline })
+    toast.success(newOnline ? 'You are now online!' : 'You are now offline')
+
+    // Update GPS in background if going online
+    if (newOnline) {
+      startGPSWatch(partner.id)
+      navigator.geolocation?.getCurrentPosition(pos => {
+        supabase.from('delivery_partners').update({
           current_lat: pos.coords.latitude,
           current_long: pos.coords.longitude,
-        })
-        .eq('id', partner.id)
-
-      if (!error) {
-        const newOnline = !partner.is_online
-        setPartner({ ...partner, is_online: newOnline })
-        if (newOnline) startGPSWatch(partner.id)
-        else stopGPSWatch()
-        toast.success(newOnline ? 'You are now online! 🚴' : 'You are now offline')
-      }
-    }, async () => {
-      // Without location
-      const { error } = await supabase
-        .from('delivery_partners')
-        .update({ is_online: !partner.is_online })
-        .eq('id', partner.id)
-
-      if (!error) {
-        setPartner({ ...partner, is_online: !partner.is_online })
-        toast.success(partner.is_online ? 'You are now offline' : 'You are now online!')
-      }
-    })
+        }).eq('id', partner.id).then(() => {})
+      }, () => {}) // GPS optional — don't block toggle
+    } else {
+      stopGPSWatch()
+    }
   }
 
   const updateOrderStatus = async (status: 'picked_up' | 'delivered') => {
