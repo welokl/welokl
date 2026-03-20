@@ -101,6 +101,13 @@ export default function CustomerHome() {
       sb.from('orders').select('*, shop:shops(name,category_name), items:order_items(*)')
         .eq('customer_id', u.id).order('created_at', { ascending: false }).limit(20),
     ])
+    // If no profile in users table — new Google user who skipped signup
+    if (!profile) {
+      const name  = encodeURIComponent(u.user_metadata?.full_name || u.user_metadata?.name || '')
+      const email = encodeURIComponent(u.email || '')
+      window.location.href = `/auth/signup?from=google&email=${email}&name=${name}`
+      return
+    }
     setUser(profile); setOrders(orderData || []); setLoading(false)
   }, [])
 
@@ -298,72 +305,37 @@ export default function CustomerHome() {
         </Link>
       )}
 
-      {/* ── CATEGORY GRID ─────────────────────────────────── */}
-      <div style={{ margin:'16px 12px 0' }}>
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap:10 }}>
+      {/* ── CATEGORY STRIP — horizontal scroll like Blinkit ── */}
+      <div style={{ overflowX:'auto', scrollbarWidth:'none', WebkitOverflowScrolling:'touch', padding:'12px 12px 0' }}>
+        <div style={{ display:'flex', gap:8, width:'max-content' }}>
           {(activeCats.length ? activeCats : CATS.map(c => ({ name: c.label, q: c.q }))).map(cat => {
             const cfg = CATS.find(c => c.q === cat.q) || { color:'#FF3008', bg:'var(--red-light)' }
             const isActive = activeCategory === cat.q
             return (
-            <button key={cat.q} className="cat-btn"
-              onClick={() => setActiveCat(isActive ? null : cat.q)}
-              style={{ background: isActive ? cfg.color : cfg.bg, boxShadow: isActive ? `0 4px 16px ${cfg.color}40` : 'none' }}>
-              <span style={{ color: isActive ? '#fff' : cfg.color, display:'flex', alignItems:'center', justifyContent:'center' }}>
-                {CAT_SVG[cat.q] || CAT_SVG['food']}
-              </span>
-              <span style={{ fontSize:11, fontWeight:800, color: isActive ? '#fff' : 'var(--text-primary)', letterSpacing:'-0.01em' }}>{cat.name}</span>
-            </button>
+              <button key={cat.q}
+                onClick={() => setActiveCat(isActive ? null : cat.q)}
+                style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:5, padding:'8px 12px', borderRadius:14, border:`1.5px solid ${isActive ? cfg.color : 'transparent'}`, background: isActive ? cfg.color : cfg.bg, cursor:'pointer', fontFamily:'inherit', flexShrink:0, minWidth:64, transition:'all .15s' }}>
+                <span style={{ color: isActive ? '#fff' : cfg.color, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                  {CAT_SVG[cat.q] || CAT_SVG['food']}
+                </span>
+                <span style={{ fontSize:11, fontWeight:800, color: isActive ? '#fff' : 'var(--text-primary)', whiteSpace:'nowrap' }}>{cat.name}</span>
+              </button>
             )
           })}
         </div>
       </div>
 
-      {/* ── PROMO BANNER ──────────────────────────────────── */}
+      {/* ── DELIVERY PROMISE PILL — compact ─────────────── */}
       {!activeCategory && (
-        <div style={{ margin:'14px 12px 0', background:'linear-gradient(135deg,#FF3008,#ff6b35)', borderRadius:22, padding:'20px 20px', display:'flex', alignItems:'center', justifyContent:'space-between', overflow:'hidden', position:'relative' }}>
-          <div style={{ position:'absolute', top:-30, right:-20, width:120, height:120, borderRadius:'50%', background:'rgba(255,255,255,.1)' }} />
-          <div style={{ position:'absolute', bottom:-20, right:60, width:70, height:70, borderRadius:'50%', background:'rgba(255,255,255,.07)' }} />
-          <div style={{ position:'relative' }}>
-            <p style={{ fontSize:11, fontWeight:800, color:'rgba(255,255,255,.75)', letterSpacing:'0.08em', marginBottom:4 }}>WELOKL PROMISE</p>
-            <p style={{ fontSize:22, fontWeight:900, color:'#fff', letterSpacing:'-0.03em', lineHeight:1.15, marginBottom:4 }}>Delivered in<br /><span style={{ fontSize:26 }}>under 30 min</span></p>
-            <p style={{ fontSize:11, color:'rgba(255,255,255,.7)' }}>Real riders · Local shops · 5km only</p>
+        <div style={{ padding:'10px 12px 0' }}>
+          <div style={{ display:'inline-flex', alignItems:'center', gap:6, background:'var(--red-light)', border:'1px solid rgba(255,48,8,.15)', borderRadius:999, padding:'6px 14px' }}>
+            <svg viewBox="0 0 24 24" fill="none" width={14} height={14}>
+              <circle cx="12" cy="12" r="10" stroke="#FF3008" strokeWidth="2"/>
+              <polyline points="12 6 12 12 16 14" stroke="#FF3008" strokeWidth="2" strokeLinecap="round"/>
+            </svg>
+            <span style={{ fontSize:12, fontWeight:800, color:'#FF3008' }}>Delivered in 30 min</span>
+            <span style={{ fontSize:11, color:'var(--text-muted)', fontWeight:600 }}>· Local shops · 5km</span>
           </div>
-          <svg viewBox="0 0 120 80" fill="none" width={110} height={74} style={{ flexShrink:0 }}>
-            {/* === REAR WHEEL === */}
-            <circle cx="22" cy="58" r="15" stroke="white" strokeWidth="4" fill="rgba(255,255,255,.1)"/>
-            <circle cx="22" cy="58" r="7" stroke="rgba(255,255,255,.35)" strokeWidth="2.5"/>
-            <circle cx="22" cy="58" r="2" fill="white"/>
-            {/* === FRONT WHEEL === */}
-            <circle cx="95" cy="58" r="15" stroke="white" strokeWidth="4" fill="rgba(255,255,255,.1)"/>
-            <circle cx="95" cy="58" r="7" stroke="rgba(255,255,255,.35)" strokeWidth="2.5"/>
-            <circle cx="95" cy="58" r="2" fill="white"/>
-            {/* === FRAME: step-through body === */}
-            {/* Rear axle up to seat post */}
-            <path d="M22 43 L35 43" stroke="white" strokeWidth="3.5" strokeLinecap="round"/>
-            {/* Seat post up */}
-            <path d="M35 43 L38 24" stroke="white" strokeWidth="3.5" strokeLinecap="round"/>
-            {/* Top frame: seat to neck */}
-            <path d="M38 24 L72 22" stroke="white" strokeWidth="3.5" strokeLinecap="round"/>
-            {/* Neck down to front axle */}
-            <path d="M72 22 L82 43 L95 43" stroke="white" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"/>
-            {/* Lower frame / footboard */}
-            <path d="M35 43 L60 43 L82 43" stroke="white" strokeWidth="3" strokeLinecap="round"/>
-            {/* === SEAT (wide flat) === */}
-            <path d="M32 24 L52 24" stroke="white" strokeWidth="6" strokeLinecap="round"/>
-            {/* === HANDLEBAR === */}
-            {/* Stem */}
-            <path d="M72 22 L70 12" stroke="white" strokeWidth="3.5" strokeLinecap="round"/>
-            {/* Bar */}
-            <path d="M63 11 L79 11" stroke="white" strokeWidth="4.5" strokeLinecap="round"/>
-            {/* Grips */}
-            <circle cx="63" cy="11" r="3" fill="rgba(255,255,255,.5)"/>
-            <circle cx="79" cy="11" r="3" fill="rgba(255,255,255,.5)"/>
-            {/* === HEADLIGHT === */}
-            <ellipse cx="96" cy="46" rx="4" ry="3" fill="rgba(255,255,255,.5)"/>
-            {/* === FOOTREST === */}
-            <path d="M48 43 L48 50" stroke="rgba(255,255,255,.5)" strokeWidth="2.5" strokeLinecap="round"/>
-            <path d="M42 50 L56 50" stroke="rgba(255,255,255,.6)" strokeWidth="2.5" strokeLinecap="round"/>
-          </svg>
         </div>
       )}
 

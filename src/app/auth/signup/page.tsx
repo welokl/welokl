@@ -1,184 +1,260 @@
 'use client'
-import { useState, Suspense } from 'react'
+import { useState, useEffect } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import type { UserRole } from '@/types'
 
-const roles = [
-  { id: 'customer', icon: '🛍️', title: 'Customer', desc: 'Shop & order from local stores' },
-  { id: 'business', icon: '🏪', title: 'Business', desc: 'List your shop & accept orders' },
-  { id: 'delivery', icon: '🛵', title: 'Rider', desc: 'Deliver & earn per order' },
+const ROLES: { id: UserRole; label: string; desc: string }[] = [
+  { id: 'customer',         label: 'Customer',         desc: 'Shop from local businesses' },
+  { id: 'business',         label: 'Business Owner',   desc: 'List your shop & manage orders' },
+  { id: 'delivery_partner', label: 'Delivery Partner', desc: 'Deliver orders & earn money' },
 ]
 
-function SignupForm() {
-  const params = useSearchParams()
-  const defaultRole = params.get('role') || 'customer'
-  const [name, setName]       = useState('')
-  const [email, setEmail]     = useState('')
-  const [phone, setPhone]     = useState('')
-  const [password, setPwd]    = useState('')
-  const [role, setRole]       = useState(defaultRole)
-  const [loading, setLoading] = useState(false)
-  const [error, setError]     = useState('')
+export default function SignupPage() {
+  const router       = useRouter()
+  const searchParams = useSearchParams()
+  const supabase     = createClient()
 
-  async function handleSignup(e: React.FormEvent) {
-    e.preventDefault()
-    if (!phone.trim() || phone.replace(/\D/g,'').length < 10) {
-      setError('Please enter a valid 10-digit phone number'); return
-    }
-    if (password.length < 8) { setError('Password must be at least 8 characters'); return }
-    setLoading(true); setError('')
+  const fromGoogle = searchParams.get('from') === 'google'
 
-    const supabase = createClient()
-    const { data, error: authError } = await supabase.auth.signUp({
-      email, password,
-      options: { data: { name, role, phone } },
+  const [name,        setName]        = useState(decodeURIComponent(searchParams.get('name')  ?? ''))
+  const [email,       setEmail]       = useState(decodeURIComponent(searchParams.get('email') ?? ''))
+  const [phone,       setPhone]       = useState('')
+  const [password,    setPassword]    = useState('')
+  const [role,        setRole]        = useState<UserRole>((searchParams.get('role') as UserRole) ?? 'customer')
+  const [loading,     setLoading]     = useState(false)
+  const [googleLoad,  setGoogleLoad]  = useState(false)
+  const [err,         setErr]         = useState('')
+  const [googleReady, setGoogleReady] = useState(false)  // google session exists on page
+
+  // If from=google, check the session is still active
+  useEffect(() => {
+    if (!fromGoogle) return
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session?.user) setGoogleReady(true)
+      else {
+        // Session expired — they need to retry Google
+        setErr('Session expired. Please try signing up with Google again.')
+      }
     })
-    if (authError) {
-      setError(authError.message.includes('already registered') ? 'Email already registered. Please sign in.' : authError.message)
-      setLoading(false); return
-    }
-    if (!data.user) { setError('Signup failed — please try again'); setLoading(false); return }
+  }, [fromGoogle])
 
-    await supabase.from('users').upsert({ id: data.user.id, name, email, role, phone }, { onConflict: 'id' })
-    await supabase.from('wallets').upsert({ user_id: data.user.id, balance: 0, total_earned: 0 }, { onConflict: 'user_id' })
-    if (role === 'delivery') {
-      await supabase.from('delivery_partners').upsert({ user_id: data.user.id, is_online: false, total_deliveries: 0 }, { onConflict: 'user_id' })
-    }
-    window.location.href = `/dashboard/${role}`
+  // ── Google OAuth (from signup page) ─────────────────────────
+  async function handleGoogleSignup() {
+    setGoogleLoad(true)
+    setErr('')
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback`,
+        queryParams: { access_type: 'offline', prompt: 'consent' },
+      },
+    })
+    if (error) { setErr(error.message); setGoogleLoad(false) }
   }
 
-  const inputStyle = {
-    width: '100%', padding: '11px 14px', borderRadius: 12, border: '1.5px solid var(--border-2)',
-    background: 'var(--input-bg)', color: 'var(--text)', fontSize: 15, fontFamily: 'inherit', outline: 'none',
-    transition: 'border-color 0.15s',
+  // ── Email signup ─────────────────────────────────────────────
+  async function handleSignup(e: React.FormEvent) {
+    e.preventDefault()
+    setLoading(true)
+    setErr('')
+
+    if (fromGoogle && googleReady) {
+      // User already has a Google session — just create profile row
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) { setErr('Session lost. Please try again.'); setLoading(false); return }
+
+      const { error } = await supabase.from('users').insert({
+        id:    user.id,
+        name:  name.trim(),
+        email: user.email,
+        phone: phone.trim() || null,
+        role,
+      })
+
+      if (error) {
+        setErr(error.message)
+        setLoading(false)
+        return
+      }
+
+      if (role === 'delivery_partner') {
+        await supabase.from('delivery_partners').insert({ user_id: user.id, is_online: false })
+      }
+
+      const redirects: Record<UserRole, string> = {
+        customer: '/dashboard/customer', business: '/dashboard/business',
+        delivery_partner: '/dashboard/delivery', admin: '/dashboard/admin',
+      }
+      router.push(redirects[role])
+      return
+    }
+
+    // Normal email signup
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { data: { name, role } },
+    })
+
+    if (authError || !authData.user) {
+      setErr(authError?.message ?? 'Signup failed')
+      setLoading(false)
+      return
+    }
+
+    const { error: profileError } = await supabase.from('users').insert({
+      id:    authData.user.id,
+      name:  name.trim(),
+      email: email.trim(),
+      phone: phone.trim() || null,
+      role,
+    })
+
+    if (profileError) { setErr(profileError.message); setLoading(false); return }
+
+    if (role === 'delivery_partner') {
+      await supabase.from('delivery_partners').insert({ user_id: authData.user.id, is_online: false })
+    }
+
+    const redirects: Record<UserRole, string> = {
+      customer: '/dashboard/customer', business: '/dashboard/business',
+      delivery_partner: '/dashboard/delivery', admin: '/dashboard/admin',
+    }
+    router.push(redirects[role])
+  }
+
+  const inp: React.CSSProperties = {
+    width:'100%', padding:'12px 14px', borderRadius:14,
+    border:'1.5px solid var(--divider)', background:'var(--input-bg)',
+    color:'var(--text-primary)', fontSize:15, fontFamily:'inherit',
+    outline:'none', boxSizing:'border-box',
   }
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', background: 'var(--bg)', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-      {/* Left panel — desktop only */}
-      <div style={{ display: 'none', width: '42%', background: '#0a0a0a', flexDirection: 'column', justifyContent: 'space-between', padding: '48px 52px', position: 'relative', overflow: 'hidden' }}
-        className="auth-left-panel">
-        <div style={{ position: 'absolute', inset: 0, opacity: 0.04,
-          backgroundImage: 'linear-gradient(#fff 1px,transparent 1px),linear-gradient(90deg,#fff 1px,transparent 1px)',
-          backgroundSize: '48px 48px' }} />
-        <div style={{ position: 'absolute', bottom: -60, right: -60, width: 280, height: 280, borderRadius: '50%', background: '#ff3008', opacity: 0.12, filter: 'blur(60px)' }} />
-        <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none', position: 'relative' }}>
-          <div style={{ width: 36, height: 36, borderRadius: 10, background: '#ff3008', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 900, fontSize: 18 }}>W</div>
-          <span style={{ color: '#fff', fontWeight: 800, fontSize: 22 }}>welokl</span>
-        </Link>
-        <div style={{ position: 'relative' }}>
-          <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 16 }}>Join the movement</p>
-          <h2 style={{ color: '#fff', fontWeight: 900, fontSize: 36, lineHeight: 1.15, marginBottom: 16 }}>Every shop.<br />One app.<br /><span style={{ color: '#ff3008' }}>Your city.</span></h2>
-          <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: 14, lineHeight: 1.6 }}>Welokl connects your neighbourhood shops to your doorstep.</p>
-        </div>
-        <p style={{ color: 'rgba(255,255,255,0.18)', fontSize: 11, position: 'relative' }}>Hyperlocal. Honest. Yours.</p>
-      </div>
+    <div style={{ minHeight:'100vh', background:'var(--page-bg)', display:'flex', alignItems:'center', justifyContent:'center', padding:20, fontFamily:"'Plus Jakarta Sans',sans-serif" }}>
+      <div style={{ width:'100%', maxWidth:420 }}>
 
-      {/* Right form */}
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '32px 20px', overflowY: 'auto' }}>
-        <div style={{ width: '100%', maxWidth: 440, paddingTop: 8, paddingBottom: 32 }}>
-          <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: 8, textDecoration: 'none', marginBottom: 32 }}>
-            <div style={{ width: 32, height: 32, borderRadius: 9, background: '#ff3008', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 900, fontSize: 15 }}>W</div>
-            <span style={{ fontWeight: 800, fontSize: 18, color: 'var(--text)' }}>welokl</span>
+        {/* Logo */}
+        <div style={{ textAlign:'center', marginBottom:28 }}>
+          <Link href="/" style={{ textDecoration:'none', display:'inline-flex', alignItems:'center', gap:10 }}>
+            <div style={{ width:44, height:44, background:'#FF3008', borderRadius:14, display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 8px 24px rgba(255,48,8,.3)' }}>
+              <svg viewBox="0 0 24 24" fill="none" width={22} height={22}>
+                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 010-5 2.5 2.5 0 010 5z" fill="white"/>
+              </svg>
+            </div>
+            <span style={{ fontWeight:900, fontSize:22, color:'var(--text-primary)', letterSpacing:'-0.03em' }}>welokl</span>
           </Link>
+          <p style={{ color:'var(--text-muted)', fontSize:14, marginTop:8 }}>Create your account</p>
+        </div>
 
-          <h1 style={{ fontWeight: 900, fontSize: 28, color: 'var(--text)', marginBottom: 4 }}>Create account</h1>
-          <p style={{ color: 'var(--text-3)', fontSize: 14, marginBottom: 28 }}>Free, takes 30 seconds</p>
+        <div style={{ background:'var(--card-white)', borderRadius:24, padding:28, boxShadow:'0 4px 24px rgba(0,0,0,.06)' }}>
+
+          {/* Google banner for redirect from login */}
+          {fromGoogle && googleReady && (
+            <div style={{ background:'#EEF2FF', border:'1px solid #C7D2FE', borderRadius:14, padding:'12px 16px', marginBottom:20, fontSize:13, color:'#4f46e5', fontWeight:600 }}>
+              ✓ Google account verified. Choose your role and complete signup below.
+            </div>
+          )}
+
+          {/* Error */}
+          {err && (
+            <div style={{ background:'var(--error-light)', borderRadius:12, padding:'12px 14px', marginBottom:16, fontSize:13, color:'#ef4444', fontWeight:600 }}>
+              {err}
+            </div>
+          )}
+
+          {/* Google signup button — only show if NOT already from google redirect */}
+          {!fromGoogle && (
+            <>
+              <button onClick={handleGoogleSignup} disabled={googleLoad}
+                style={{ width:'100%', padding:'13px', borderRadius:14, border:'1.5px solid var(--divider)', background:'var(--page-bg)', color:'var(--text-primary)', fontWeight:700, fontSize:15, cursor:'pointer', fontFamily:'inherit', display:'flex', alignItems:'center', justifyContent:'center', gap:10, marginBottom:18, opacity:googleLoad?.7:1 }}>
+                <svg width="18" height="18" viewBox="0 0 24 24">
+                  <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                  <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                  <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                  <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                </svg>
+                {googleLoad ? 'Redirecting…' : 'Sign up with Google'}
+              </button>
+
+              <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:18 }}>
+                <div style={{ flex:1, height:1, background:'var(--divider)' }} />
+                <span style={{ fontSize:12, color:'var(--text-faint)', fontWeight:600 }}>or with email</span>
+                <div style={{ flex:1, height:1, background:'var(--divider)' }} />
+              </div>
+            </>
+          )}
 
           {/* Role selector */}
-          <div style={{ marginBottom: 24 }}>
-            <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: 'var(--text-2)', marginBottom: 10 }}>I want to join as</label>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}>
-              {roles.map(r => (
-                <button key={r.id} type="button" onClick={() => setRole(r.id)}
-                  style={{ padding: '12px 8px', borderRadius: 12, border: `2px solid ${role === r.id ? '#ff3008' : 'var(--border-2)'}`,
-                    background: role === r.id ? 'var(--brand-muted)' : 'var(--card-bg)', cursor: 'pointer', textAlign: 'center', transition: 'all 0.15s', fontFamily: 'inherit' }}>
-                  <div style={{ fontSize: 24, marginBottom: 4 }}>{r.icon}</div>
-                  <div style={{ fontSize: 12, fontWeight: 800, color: role === r.id ? 'var(--brand)' : 'var(--text)' }}>{r.title}</div>
-                  <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2, lineHeight: 1.3 }}>{r.desc}</div>
-                </button>
-              ))}
-            </div>
+          <p style={{ fontSize:13, fontWeight:700, color:'var(--text-secondary)', marginBottom:10 }}>I want to join as</p>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8, marginBottom:20 }}>
+            {ROLES.map(r => (
+              <button key={r.id} type="button" onClick={() => setRole(r.id)}
+                style={{ padding:'12px 8px', borderRadius:14, border:`2px solid ${role===r.id ? '#FF3008' : 'var(--divider)'}`, background:role===r.id ? 'var(--red-light)' : 'var(--page-bg)', cursor:'pointer', fontFamily:'inherit', textAlign:'center', transition:'all .15s' }}>
+                <p style={{ fontWeight:800, fontSize:12, color:role===r.id ? '#FF3008' : 'var(--text-primary)' }}>{r.label}</p>
+              </button>
+            ))}
           </div>
 
-          <form onSubmit={handleSignup} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            {[
-              { label: 'Full name', type: 'text', val: name, set: setName, ph: 'Rahul Verma', req: true },
-              { label: 'Email address', type: 'email', val: email, set: setEmail, ph: 'you@example.com', req: true },
-            ].map(f => (
-              <div key={f.label}>
-                <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: 'var(--text-2)', marginBottom: 6 }}>{f.label}</label>
-                <input type={f.type} value={f.val} onChange={e => f.set(e.target.value)} placeholder={f.ph} required={f.req} style={inputStyle}
-                  onFocus={e => (e.target as HTMLInputElement).style.borderColor = '#ff3008'}
-                  onBlur={e => (e.target as HTMLInputElement).style.borderColor = 'var(--border-2)'} />
+          {/* Form */}
+          <form onSubmit={handleSignup} style={{ display:'flex', flexDirection:'column', gap:14 }}>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+              <div>
+                <label style={{ display:'block', fontSize:13, fontWeight:700, color:'var(--text-secondary)', marginBottom:6 }}>Full name</label>
+                <input type="text" value={name} onChange={e => setName(e.target.value)}
+                  placeholder="Rahul Kumar" required style={inp}
+                  onFocus={e => e.currentTarget.style.borderColor='#FF3008'}
+                  onBlur={e => e.currentTarget.style.borderColor='var(--divider)'}
+                />
               </div>
-            ))}
-
-            {/* Phone — REQUIRED */}
-            <div>
-              <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: 'var(--text-2)', marginBottom: 6 }}>
-                Phone number <span style={{ color: '#ff3008' }}>*</span>
-              </label>
-              <div style={{ position: 'relative' }}>
-                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 14, color: 'var(--text-3)', fontWeight: 700 }}>+91</span>
-                <input type="tel" value={phone} onChange={e => setPhone(e.target.value.replace(/\D/g,'').slice(0,10))}
-                  placeholder="9876543210" required maxLength={10} style={{ ...inputStyle, paddingLeft: 48 }}
-                  onFocus={e => (e.target as HTMLInputElement).style.borderColor = '#ff3008'}
-                  onBlur={e => (e.target as HTMLInputElement).style.borderColor = 'var(--border-2)'} />
+              <div>
+                <label style={{ display:'block', fontSize:13, fontWeight:700, color:'var(--text-secondary)', marginBottom:6 }}>Phone</label>
+                <input type="tel" value={phone} onChange={e => setPhone(e.target.value)}
+                  placeholder="+91 98765…" style={inp}
+                  onFocus={e => e.currentTarget.style.borderColor='#FF3008'}
+                  onBlur={e => e.currentTarget.style.borderColor='var(--divider)'}
+                />
               </div>
-              <p style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4 }}>Required for order updates and delivery coordination</p>
             </div>
 
-            {/* Password */}
-            <div>
-              <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: 'var(--text-2)', marginBottom: 6 }}>Password</label>
-              <input type="password" value={password} onChange={e => setPwd(e.target.value)} placeholder="Min. 8 characters" required style={inputStyle}
-                onFocus={e => (e.target as HTMLInputElement).style.borderColor = '#ff3008'}
-                onBlur={e => (e.target as HTMLInputElement).style.borderColor = 'var(--border-2)'} />
-              {password.length > 0 && (
-                <div style={{ display: 'flex', gap: 4, marginTop: 6 }}>
-                  {[...Array(4)].map((_, i) => (
-                    <div key={i} style={{ flex: 1, height: 3, borderRadius: 99, background: password.length > i * 2 + 2 ? (password.length >= 8 ? '#22c55e' : '#f59e0b') : 'var(--border-2)' }} />
-                  ))}
-                </div>
-              )}
-            </div>
+            {/* Email — hide if Google session active (we use their google email) */}
+            {!(fromGoogle && googleReady) && (
+              <div>
+                <label style={{ display:'block', fontSize:13, fontWeight:700, color:'var(--text-secondary)', marginBottom:6 }}>Email</label>
+                <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+                  placeholder="you@example.com" required style={inp}
+                  onFocus={e => e.currentTarget.style.borderColor='#FF3008'}
+                  onBlur={e => e.currentTarget.style.borderColor='var(--divider)'}
+                />
+              </div>
+            )}
 
-            {error && (
-              <div style={{ background: 'var(--red-bg)', border: '1px solid rgba(239,68,68,0.25)', color: '#ef4444', fontSize: 13, borderRadius: 10, padding: '10px 14px' }}>
-                {error}
+            {/* Password — hide if from Google (already authenticated) */}
+            {!(fromGoogle && googleReady) && (
+              <div>
+                <label style={{ display:'block', fontSize:13, fontWeight:700, color:'var(--text-secondary)', marginBottom:6 }}>Password</label>
+                <input type="password" value={password} onChange={e => setPassword(e.target.value)}
+                  placeholder="Min 8 characters" required minLength={8} style={inp}
+                  onFocus={e => e.currentTarget.style.borderColor='#FF3008'}
+                  onBlur={e => e.currentTarget.style.borderColor='var(--divider)'}
+                />
               </div>
             )}
 
             <button type="submit" disabled={loading}
-              style={{ width: '100%', padding: '13px', borderRadius: 13, fontWeight: 900, fontSize: 15, border: 'none', cursor: 'pointer', fontFamily: 'inherit',
-                background: '#ff3008', color: '#fff', boxShadow: '0 4px 16px rgba(255,48,8,0.3)', opacity: loading ? 0.7 : 1, transition: 'opacity 0.15s' }}>
-              {loading ? 'Creating account…' : `Join as ${roles.find(r => r.id === role)?.title} →`}
+              style={{ width:'100%', padding:'14px', borderRadius:14, border:'none', background:loading?'var(--chip-bg)':'#FF3008', color:loading?'var(--text-muted)':'#fff', fontWeight:900, fontSize:16, cursor:loading?'not-allowed':'pointer', fontFamily:'inherit', boxShadow:loading?'none':'0 8px 24px rgba(255,48,8,.3)', transition:'all .2s' }}>
+              {loading ? 'Creating account…' : fromGoogle && googleReady ? 'Complete signup' : 'Create account'}
             </button>
           </form>
 
-          <p style={{ textAlign: 'center', fontSize: 14, color: 'var(--text-3)', marginTop: 20 }}>
+          <p style={{ textAlign:'center', fontSize:13, color:'var(--text-muted)', marginTop:20 }}>
             Already have an account?{' '}
-            <Link href="/auth/login" style={{ color: '#ff3008', fontWeight: 700, textDecoration: 'none' }}>Sign in</Link>
+            <Link href="/auth/login" style={{ color:'#FF3008', fontWeight:700, textDecoration:'none' }}>Sign in</Link>
           </p>
         </div>
       </div>
     </div>
-  )
-}
-
-export default function SignupPage() {
-  return (
-    <Suspense fallback={
-      <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ width: 32, height: 32, borderRadius: 9, background: '#ff3008', margin: '0 auto 12px', opacity: 0.6 }} />
-          <p style={{ color: 'var(--text-3)', fontSize: 14 }}>Loading…</p>
-        </div>
-      </div>
-    }>
-      <SignupForm />
-    </Suspense>
   )
 }

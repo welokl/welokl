@@ -22,7 +22,7 @@ export default function CartPage() {
 
   const subtotal     = cart.subtotal()
   const delivery_fee = subtotal >= FREE_DELIVERY_THRESHOLD ? 0 : DELIVERY_FEE
-  const platform_fee = Math.round(subtotal * 0.05)
+  const platform_fee = 5  // flat ₹5 per order (admin-controlled)
   const total        = subtotal + delivery_fee + platform_fee
   const toFreeDelivery = FREE_DELIVERY_THRESHOLD - subtotal
 

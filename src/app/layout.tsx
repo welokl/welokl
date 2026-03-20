@@ -1,8 +1,8 @@
 // src/app/layout.tsx
 import type { Metadata, Viewport } from 'next'
 import { Syne } from 'next/font/google'
-import { Toaster } from 'react-hot-toast'
 import './globals.css'
+import CartProvider from '@/components/CartProvider'
 
 const syne = Syne({
   subsets: ['latin'],
@@ -56,27 +56,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta name="color-scheme" content="light dark" />
       </head>
       <body className="bg-surface-50 text-surface-900 font-sans antialiased">
-        {children}
-        <Toaster
-          position="top-center"
-          toastOptions={{
-            duration: 2500,
-            className: 'font-sans text-sm',
-            style: {
-              background: '#1a1a1a',
-              color: '#f2f2f2',
-              borderRadius: '14px',
-              fontSize: '14px',
-              padding: '12px 18px',
-            },
-            success: {
-              iconTheme: { primary: '#16a34a', secondary: '#fff' },
-            },
-            error: {
-              iconTheme: { primary: '#FF3008', secondary: '#fff' },
-            },
-          }}
-        />
+        <CartProvider>{children}</CartProvider>
       </body>
     </html>
   )

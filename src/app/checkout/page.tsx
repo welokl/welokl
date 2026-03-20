@@ -40,7 +40,7 @@ export default function CheckoutPage() {
 
     // ── Auto-fill address from saved location ──────────────────
     try {
-      const saved = JSON.parse(localStorage.getItem('welokl_addresses') || '[]')
+      const saved = JSON.parse(localStorage.getItem(`welokl_addresses_${userId}`) || '[]')
       setSavedAddrs(saved)
       // Pre-fill with first saved address
       if (saved.length > 0 && !address) setAddress(saved[0].address)
@@ -140,10 +140,11 @@ export default function CheckoutPage() {
     // Save address
     if (address.trim()) {
       try {
-        const addrs = JSON.parse(localStorage.getItem('welokl_addresses') || '[]')
+        const addrKey = `welokl_addresses_${userId}`
+        const addrs = JSON.parse(localStorage.getItem(addrKey) || '[]')
         if (!addrs.find((a:any) => a.address === address)) {
           addrs.unshift({ label:'other', address: address.trim() })
-          localStorage.setItem('welokl_addresses', JSON.stringify(addrs.slice(0, 5)))
+          localStorage.setItem(addrKey, JSON.stringify(addrs.slice(0, 5)))
         }
       } catch {}
     }
