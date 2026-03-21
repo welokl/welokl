@@ -177,6 +177,21 @@ export default function CheckoutPage() {
       } catch {}
     }
 
+    // Notify shop owner — push notification even when their app is closed
+    fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-notification`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify({
+        type:        'order_placed',
+        order_id:    order.id,
+        shop_id:     cart.shop_id,
+        customer_id: uid,
+      }),
+    }).catch(() => {}) // fire and forget — don't block order flow
+
     return order.id
   }
 
