@@ -18,7 +18,9 @@ export default function CheckoutPage() {
   const [address,       setAddress]       = useState('')
   const [savedAddrs,    setSavedAddrs]    = useState<{label:string;address:string}[]>([])
   const [note,          setNote]          = useState('')
-  const [payment,       setPayment]       = useState<'cod'|'upi'>('cod')
+  const [payment,       setPayment]       = useState<'cod'|'upi'|'wallet'>('cod')
+  const [walletBalance, setWalletBalance] = useState(0)
+  const [walletId,      setWalletId]      = useState<string|null>(null)
   const [type,          setType]          = useState<'delivery'|'pickup'>('delivery')
   const [loading,       setLoading]       = useState(false)
   const [userId,        setUserId]        = useState<string|null>(null)
@@ -85,6 +87,15 @@ export default function CheckoutPage() {
       .then(({ data }) => { if (data) setShopInfo(data) })
   }, [mounted, cart.shop_id])
 
+  useEffect(() => {
+    if (!userId) return
+    const sb = createClient()
+    sb.from('wallets').select('id,balance').eq('user_id', userId).single()
+      .then(({ data }) => {
+        if (data) { setWalletId(data.id); setWalletBalance(data.balance ?? 0) }
+      })
+  }, [userId])
+
   if (!mounted) return null
 
   const items    = cart.items || []
@@ -130,7 +141,7 @@ export default function CheckoutPage() {
       platform_fee:          PLATFORM_FEE,
       discount:              0,
       total_amount:          total,
-      payment_method:        payment === 'upi' ? 'online' : 'cod',
+      payment_method:        payment === 'upi' ? 'online' : payment === 'wallet' ? 'wallet' : 'cod',
       payment_status:        paymentStatus,
     }
 
@@ -254,9 +265,42 @@ export default function CheckoutPage() {
     setPayment('cod')
   }
 
+  // ── Wallet flow ──────────────────────────────────────────────
+  async function handleWallet() {
+    if (type === 'delivery' && !address.trim()) { alert('Please enter a delivery address'); return }
+    if (!walletId) { alert('Wallet not found. Please try again.'); return }
+    if (walletBalance < total) { alert('Insufficient wallet balance.'); return }
+    setLoading(true)
+    try {
+      const sb = createClient()
+      // Deduct from wallet before creating order
+      const { data: freshWallet } = await sb.from('wallets').select('total_spent').eq('id', walletId).single()
+      const { error: walletErr } = await sb.from('wallets').update({
+        balance:     walletBalance - total,
+        total_spent: (freshWallet?.total_spent ?? 0) + total,
+      }).eq('id', walletId)
+      if (walletErr) throw walletErr
+
+      // Log debit transaction
+      await sb.from('transactions').insert({
+        wallet_id:   walletId,
+        amount:      total,
+        type:        'debit',
+        description: `Order payment — ${cart.shop_name}`,
+      })
+
+      const id = await createOrder('paid')
+      cart.clear?.()
+      router.push(`/orders/${id}`)
+    } catch (e: any) {
+      alert('Wallet payment failed: ' + (e?.message || JSON.stringify(e)))
+    } finally { setLoading(false) }
+  }
+
   function handlePlaceOrder() {
-    if (payment === 'cod') { handleCOD(); return }
-    if (payment === 'upi') { handleUPIStart(); return }
+    if (payment === 'cod')    { handleCOD(); return }
+    if (payment === 'upi')    { handleUPIStart(); return }
+    if (payment === 'wallet') { handleWallet(); return }
   }
 
   const inp: React.CSSProperties = {
@@ -436,10 +480,36 @@ export default function CheckoutPage() {
               </button>
             ))}
           </div>
+
+          {/* Wallet option — full width */}
+          {walletBalance > 0 && (
+            <button onClick={() => setPayment('wallet')}
+              style={{ marginTop:10, width:'100%', padding:'14px 16px', borderRadius:16, border:`2px solid ${payment==='wallet' ? '#FF3008' : 'var(--divider)'}`, background:payment==='wallet' ? 'var(--red-light)' : 'var(--page-bg)', cursor:'pointer', textAlign:'left', fontFamily:'inherit', transition:'all .15s', display:'flex', alignItems:'center', gap:12 }}>
+              <div style={{ color:payment==='wallet' ? '#FF3008' : 'var(--text-muted)', flexShrink:0 }}>
+                <svg viewBox="0 0 24 24" fill="none" width={20} height={20}><path d="M21 12V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2h14a2 2 0 002-2v-3" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><path d="M16 12h5v4h-5a2 2 0 010-4z" stroke="currentColor" strokeWidth="2"/></svg>
+              </div>
+              <div style={{ flex:1 }}>
+                <p style={{ fontWeight:800, fontSize:13, color:payment==='wallet' ? '#FF3008' : 'var(--text-primary)', marginBottom:2 }}>Welokl Wallet</p>
+                <p style={{ fontSize:11, color:'var(--text-muted)' }}>Balance: ₹{walletBalance.toFixed(0)}</p>
+              </div>
+              {walletBalance >= total
+                ? <span style={{ fontSize:11, fontWeight:800, color:'#16a34a', background:'rgba(22,163,74,.1)', borderRadius:8, padding:'3px 8px', flexShrink:0 }}>Covers full ✓</span>
+                : <span style={{ fontSize:11, fontWeight:700, color:'#d97706', flexShrink:0 }}>Short ₹{(total-walletBalance).toFixed(0)}</span>
+              }
+            </button>
+          )}
+
           {payment === 'upi' && (
             <div style={{ marginTop:10, padding:'10px 14px', background:'var(--blue-light)', borderRadius:12 }}>
               <p style={{ fontSize:12, fontWeight:700, color:'#4f46e5' }}>
                 You'll be redirected to your UPI app to pay ₹{total}. Return here to confirm.
+              </p>
+            </div>
+          )}
+          {payment === 'wallet' && walletBalance < total && (
+            <div style={{ marginTop:10, padding:'10px 14px', background:'rgba(245,158,11,.08)', borderRadius:12 }}>
+              <p style={{ fontSize:12, fontWeight:700, color:'#d97706' }}>
+                Insufficient balance — you have ₹{walletBalance.toFixed(0)}, need ₹{total}. Please choose another payment method.
               </p>
             </div>
           )}
@@ -473,11 +543,23 @@ export default function CheckoutPage() {
       {/* Place order bar */}
       <div style={{ position:'fixed', bottom:0, left:0, right:0, padding:'12px 12px 20px', background:'var(--card-white)', borderTop:'1px solid var(--divider)', zIndex:50 }}>
         <div style={{ maxWidth:560, margin:'0 auto' }}>
-          <button onClick={handlePlaceOrder} disabled={loading || belowMin}
-            style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'space-between', padding:'16px 22px', borderRadius:18, border:'none', background:loading||belowMin ? 'var(--chip-bg)' : '#FF3008', color:loading||belowMin ? 'var(--text-muted)' : '#fff', fontWeight:900, fontSize:16, cursor:loading||belowMin ? 'not-allowed' : 'pointer', fontFamily:'inherit', transition:'background .2s', boxShadow:loading||belowMin ? 'none' : '0 8px 24px rgba(255,48,8,.3)' }}>
-            <span>{loading ? 'Please wait…' : belowMin ? `Add ₹${minOrder-subtotal} more` : payment==='upi' ? 'Pay with UPI' : 'Place order'}</span>
-            {!loading && !belowMin && <span>₹{total}</span>}
-          </button>
+          {(() => {
+            const walletInsufficient = payment === 'wallet' && walletBalance < total
+            const disabled = loading || belowMin || walletInsufficient
+            const btnLabel = loading ? 'Please wait…'
+              : belowMin           ? `Add ₹${minOrder-subtotal} more`
+              : walletInsufficient ? 'Insufficient wallet balance'
+              : payment === 'upi'  ? 'Pay with UPI'
+              : payment === 'wallet' ? `Pay ₹${total} from Wallet`
+              : 'Place order'
+            return (
+              <button onClick={handlePlaceOrder} disabled={disabled}
+                style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'space-between', padding:'16px 22px', borderRadius:18, border:'none', background:disabled ? 'var(--chip-bg)' : '#FF3008', color:disabled ? 'var(--text-muted)' : '#fff', fontWeight:900, fontSize:16, cursor:disabled ? 'not-allowed' : 'pointer', fontFamily:'inherit', transition:'background .2s', boxShadow:disabled ? 'none' : '0 8px 24px rgba(255,48,8,.3)' }}>
+                <span>{btnLabel}</span>
+                {!loading && !belowMin && !walletInsufficient && <span>₹{total}</span>}
+              </button>
+            )
+          })()}
         </div>
       </div>
     </div>

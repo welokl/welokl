@@ -20,6 +20,7 @@ export default function OrderPage() {
   const leafletRef  = useRef<any>(null)
   const markerRef   = useRef<any>(null)  // rider marker
   const destRef     = useRef<any>(null)  // customer pin
+  const shopRef     = useRef<any>(null)  // shop pin
 
   const [order,      setOrder]      = useState<any>(null)
   const [partner,    setPartner]    = useState<any>(null)
@@ -68,7 +69,7 @@ export default function OrderPage() {
   // Init Leaflet map when order loads and is in delivery phase
   useEffect(() => {
     if (!order || !mapRef.current) return
-    const showMap = ['picked_up'].includes(order.status) && riderPos
+    const showMap = ['ready', 'picked_up'].includes(order.status) && order.delivery_partner_id && riderPos
     if (!showMap) return
     if (leafletRef.current) return // already inited
 
@@ -109,22 +110,34 @@ export default function OrderPage() {
         .addTo(map)
         .bindPopup('Your rider')
 
-      // Customer destination pin
-      if (order.delivery_lat && order.delivery_long) {
-        const destIcon = L.divIcon({
-          html: `<div style="width:32px;height:32px;background:#16a34a;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:3px solid #fff;box-shadow:0 2px 8px rgba(22,163,74,.5);"></div>`,
-          className: '', iconSize: [32, 32], iconAnchor: [16, 32]
+      const points: [number, number][] = [[riderPos.lat, riderPos.lng]]
+
+      // Shop pin — orange (where rider is coming from)
+      if (order.shop?.latitude && order.shop?.longitude) {
+        const shopIcon = L.divIcon({
+          html: `<div style="width:38px;height:38px;background:#FF3008;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:3px solid #fff;box-shadow:0 2px 8px rgba(255,48,8,.5);"></div>`,
+          className: '', iconSize: [38, 38], iconAnchor: [19, 38],
         })
-        destRef.current = L.marker([order.delivery_lat, order.delivery_long], { icon: destIcon })
+        shopRef.current = L.marker([order.shop.latitude, order.shop.longitude], { icon: shopIcon })
+          .addTo(map)
+          .bindPopup(order.shop?.name || 'Shop')
+        points.push([order.shop.latitude, order.shop.longitude])
+      }
+
+      // Customer destination pin — green
+      if (order.delivery_lat && order.delivery_lng) {
+        const destIcon = L.divIcon({
+          html: `<div style="width:34px;height:34px;background:#16a34a;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:3px solid #fff;box-shadow:0 2px 8px rgba(22,163,74,.5);"></div>`,
+          className: '', iconSize: [34, 34], iconAnchor: [17, 34],
+        })
+        destRef.current = L.marker([order.delivery_lat, order.delivery_lng], { icon: destIcon })
           .addTo(map)
           .bindPopup('Your location')
+        points.push([order.delivery_lat, order.delivery_lng])
+      }
 
-        // Fit both markers in view
-        const bounds = L.latLngBounds(
-          [riderPos.lat, riderPos.lng],
-          [order.delivery_lat, order.delivery_long]
-        )
-        map.fitBounds(bounds, { padding: [40, 40] })
+      if (points.length > 1) {
+        map.fitBounds(L.latLngBounds(points), { padding: [40, 40] })
       }
     }
     document.head.appendChild(script)
@@ -145,7 +158,7 @@ export default function OrderPage() {
 
     const [bizRes, shopRes, itemsRes] = await Promise.all([
       bizId  ? sb.from('businesses').select('id,name,address,image_url').eq('id', bizId).single() : Promise.resolve({ data: null }),
-      shopId ? sb.from('shops').select('id,name,area,image_url').eq('id', shopId).single()        : Promise.resolve({ data: null }),
+      shopId ? sb.from('shops').select('id,name,area,image_url,latitude,longitude').eq('id', shopId).single() : Promise.resolve({ data: null }),
       sb.from('order_items').select('id,product_name,quantity,price').eq('order_id', raw.id),
     ])
 
@@ -206,7 +219,7 @@ export default function OrderPage() {
   const isCancelled = ['cancelled','rejected'].includes(order.status)
   const isActive    = !isCancelled && order.status !== 'delivered'
   const canCancel   = ['placed','accepted'].includes(order.status)
-  const showMap     = order.status === 'picked_up' && riderPos
+  const showMap     = ['ready', 'picked_up'].includes(order.status) && !!order.delivery_partner_id && !!riderPos
 
   return (
     <div style={{ minHeight:'100vh', background:'var(--page-bg)', fontFamily:"'Plus Jakarta Sans',sans-serif", paddingBottom:40 }}>
@@ -237,7 +250,9 @@ export default function OrderPage() {
           <div style={{ background:'var(--card-white)', borderRadius:20, overflow:'hidden' }}>
             <div style={{ padding:'14px 16px 10px', display:'flex', alignItems:'center', gap:8 }}>
               <div style={{ width:8, height:8, borderRadius:'50%', background:'#FF3008', animation:'pulse 1.5s infinite' }} />
-              <p style={{ fontWeight:800, fontSize:14, color:'var(--text-primary)' }}>Rider is on the way</p>
+              <p style={{ fontWeight:800, fontSize:14, color:'var(--text-primary)' }}>
+                {order.status === 'ready' ? 'Rider heading to shop' : 'Rider is on the way'}
+              </p>
               {partner?.name && <span style={{ fontSize:12, color:'var(--text-muted)', marginLeft:'auto' }}>{partner.name}</span>}
             </div>
             {/* Leaflet map container */}

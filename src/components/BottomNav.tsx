@@ -1,10 +1,9 @@
 // src/components/BottomNav.tsx
-// 5-tab nav: Home, Search, Saved, Orders, Account
-// On /stores page, 'shops' active state replaces Home highlight
+// 5-tab nav: Home, Search, Shops, Orders, Account
 'use client'
 import Link from 'next/link'
 
-type NavTab = 'home' | 'shops' | 'search' | 'saved' | 'orders' | 'account'
+type NavTab = 'home' | 'shops' | 'search' | 'orders' | 'account'
 
 const NAV_ITEMS = [
   {
@@ -39,15 +38,21 @@ const NAV_ITEMS = [
     ),
   },
   {
-    id: 'saved' as NavTab,
-    label: 'Saved',
-    href: '/favourites',
+    id: 'shops' as NavTab,
+    label: 'Shops',
+    href: '/stores',
     icon: (active: boolean) => (
       <svg viewBox="0 0 24 24" fill="none" width={22} height={22}>
-        <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"
+        <path d="M3 3h18v4H3z"
           stroke={active ? '#FF3008' : 'currentColor'}
           fill={active ? 'rgba(255,48,8,.12)' : 'none'}
           strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="M5 7v11a2 2 0 002 2h10a2 2 0 002-2V7"
+          stroke={active ? '#FF3008' : 'currentColor'}
+          strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="M10 12h4"
+          stroke={active ? '#FF3008' : 'currentColor'}
+          strokeWidth="2" strokeLinecap="round"/>
       </svg>
     ),
   },
@@ -89,8 +94,7 @@ const NAV_ITEMS = [
 ]
 
 export default function BottomNav({ active }: { active: NavTab }) {
-  // 'shops' active = highlight Home tab (since stores is accessed from home)
-  const resolvedActive = active === 'shops' ? 'home' : active
+  const resolvedActive = active
 
   return (
     <div style={{

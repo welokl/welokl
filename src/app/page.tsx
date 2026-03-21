@@ -252,6 +252,31 @@ export default function LandingPage() {
         @media(min-width:901px){.mob{display:none!important;}}
         ::-webkit-scrollbar{width:5px;}
         ::-webkit-scrollbar-thumb{background:rgba(128,128,128,.2);border-radius:3px;}
+        /* ── Mission pillars ── */
+        .pillars{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;}
+        @media(max-width:900px){.pillars{grid-template-columns:repeat(3,1fr)!important;gap:14px!important;}}
+        @media(max-width:520px){.pillars{grid-template-columns:1fr!important;}}
+
+        /* ── Big platform bento ── */
+        .pbento{display:grid;grid-template-columns:repeat(12,1fr);gap:16px;}
+        .pb1{grid-column:1/8;grid-row:1;min-height:340px;}
+        .pb2{grid-column:8/13;grid-row:1;min-height:340px;}
+        .pb3{grid-column:1/5;grid-row:2;min-height:220px;}
+        .pb4{grid-column:5/9;grid-row:2;min-height:220px;}
+        .pb5{grid-column:9/13;grid-row:2;min-height:220px;}
+        @media(max-width:900px){
+          .pb1,.pb2{grid-column:1/-1!important;min-height:280px!important;}
+          .pb3,.pb4,.pb5{grid-column:span 6!important;min-height:200px!important;}
+        }
+        @media(max-width:520px){
+          .pb3,.pb4,.pb5{grid-column:1/-1!important;}
+        }
+
+        /* ── marquee ── */
+        @keyframes marquee{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+        .marquee-inner{display:flex;gap:32px;animation:marquee 22s linear infinite;width:max-content;}
+        .marquee-inner:hover{animation-play-state:paused;}
+
       `}} />
 
       {/* ── NAV ──────────────────────────────────────────────── */}
@@ -437,6 +462,90 @@ export default function LandingPage() {
         </div>
       </section>
 
+
+      {/* ── MISSION ──────────────────────────────────────────── */}
+      <section className="sec" style={{ padding:'96px 20px', background:t.bg2, borderBottom:`1px solid ${t.border}` }}>
+        <div style={{ maxWidth:1200, margin:'0 auto' }}>
+
+          {/* Tag + headline */}
+          <div style={{ maxWidth:760, marginBottom:72 }}>
+            <div style={{ display:'inline-flex', alignItems:'center', gap:8, background:dark?'rgba(255,48,8,.1)':'rgba(255,48,8,.06)', border:'1px solid rgba(255,48,8,.15)', borderRadius:999, padding:'6px 18px', marginBottom:28 }}>
+              <span className="pulse" style={{ width:7, height:7, borderRadius:'50%', background:'#FF3008', display:'block', flexShrink:0 }} />
+              <span style={{ fontSize:12, fontWeight:700, color:'#FF3008', letterSpacing:'.06em', textTransform:'uppercase' }}>Our Mission</span>
+            </div>
+            <h2 className="syne" style={{ fontSize:'clamp(30px,5vw,56px)', fontWeight:900, color:t.text, letterSpacing:'-0.055em', lineHeight:1.06, marginBottom:28 }}>
+              We believe your corner shop<br />
+              shouldn't lose to a warehouse<br />
+              <span className="tg">500 km away.</span>
+            </h2>
+            <p style={{ fontSize:'clamp(15px,1.8vw,18px)', color:t.text2, lineHeight:1.8, maxWidth:580 }}>
+              Welokl is built on a simple idea: local shops are the backbone of every neighbourhood. We connect real stores — the pharmacy around the corner, the daily tiffin, the family grocery — directly to the people who need them. No middlemen. No dark kitchens. Just your community, closer.
+            </p>
+          </div>
+
+          {/* Three pillars */}
+          <div className="pillars">
+            {[
+              {
+                icon: <svg viewBox="0 0 24 24" fill="none" width={22} height={22}><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><polyline points="9 22 9 12 15 12 15 22" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>,
+                color:'#FF3008', bg:dark?'rgba(255,48,8,.1)':'rgba(255,48,8,.06)',
+                label:'Local First',
+                desc:'We partner only with physical shops in your city. Every product is stocked on a real shelf, by a real person you could walk in and meet.',
+              },
+              {
+                icon: <svg viewBox="0 0 24 24" fill="none" width={22} height={22}><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="2"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>,
+                color:'#2563eb', bg:dark?'rgba(37,99,235,.1)':'rgba(37,99,235,.06)',
+                label:'People Powered',
+                desc:'Every rider is locally verified before their first delivery. Every shopkeeper is your neighbour. Every delivery is a person, not a drone.',
+              },
+              {
+                icon: <svg viewBox="0 0 24 24" fill="none" width={22} height={22}><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/><path d="M12 6v6l4 2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>,
+                color:'#16a34a', bg:dark?'rgba(22,163,74,.1)':'rgba(22,163,74,.06)',
+                label:'Always Improving',
+                desc:'We started with one city. We are growing to every town that has a shop worth supporting. Built in India, for India, with every zip code in mind.',
+              },
+            ].map((p,i) => (
+              <div key={i} className="lift" style={{ background:t.card, borderRadius:24, padding:'clamp(24px,2.5vw,32px)', border:`2px solid ${dark ? 'rgba(255,255,255,.12)' : 'rgba(0,0,0,.1)'}`, boxShadow:dark?'none':'0 4px 24px rgba(0,0,0,.07)', position:'relative', overflow:'hidden' }}>
+                <div style={{ position:'absolute', top:-20, right:-20, width:100, height:100, borderRadius:'50%', background:p.bg, filter:'blur(30px)', opacity:.8, pointerEvents:'none' }} />
+                <div style={{ width:48, height:48, borderRadius:16, background:p.bg, display:'flex', alignItems:'center', justifyContent:'center', color:p.color, marginBottom:22, position:'relative' }}>
+                  {p.icon}
+                </div>
+                <h3 style={{ fontWeight:900, fontSize:'clamp(16px,1.8vw,20px)', color:t.text, letterSpacing:'-0.03em', marginBottom:12 }}>{p.label}</h3>
+                <p style={{ fontSize:'clamp(13px,1.3vw,14px)', color:t.text2, lineHeight:1.75 }}>{p.desc}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Marquee of values / commitments */}
+          <div style={{ marginTop:64, overflow:'hidden', position:'relative' }}>
+            <div style={{ position:'absolute', left:0, top:0, bottom:0, width:80, background:`linear-gradient(to right,${t.bg},transparent)`, zIndex:2, pointerEvents:'none' }} />
+            <div style={{ position:'absolute', right:0, top:0, bottom:0, width:80, background:`linear-gradient(to left,${t.bg},transparent)`, zIndex:2, pointerEvents:'none' }} />
+            <div className="marquee-inner">
+              {[
+                '🏪 Real local shops only',
+                '🛵 Verified delivery partners',
+                '📍 Hyperlocal, always within 5 km',
+                '⚡ Under 30 minutes, guaranteed',
+                '💳 UPI · COD · Wallet payments',
+                '🔁 Subscribe for daily deliveries',
+                '🌱 Supporting local livelihoods',
+                '📲 Live GPS order tracking',
+                '🏪 Real local shops only',
+                '🛵 Verified delivery partners',
+                '📍 Hyperlocal, always within 5 km',
+                '⚡ Under 30 minutes, guaranteed',
+                '💳 UPI · COD · Wallet payments',
+                '🔁 Subscribe for daily deliveries',
+                '🌱 Supporting local livelihoods',
+                '📲 Live GPS order tracking',
+              ].map((item,i) => (
+                <span key={i} style={{ flexShrink:0, display:'inline-flex', alignItems:'center', gap:10, padding:'12px 22px', borderRadius:999, background:t.card, border:`1px solid ${t.border}`, fontSize:13.5, fontWeight:600, color:t.text2, whiteSpace:'nowrap' }}>{item}</span>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* ── BENTO GRID ───────────────────────────────────────── */}
       <section className="sec" style={{ padding:'80px 20px', background:t.bg2 }}>
         <div style={{ maxWidth:1200, margin:'0 auto' }}>
@@ -513,6 +622,124 @@ export default function LandingPage() {
                 <p style={{ fontSize:12, color:t.text2, lineHeight:1.55 }}>Pay however works for you.</p>
               </div>
             </div>
+          </div>
+        </div>
+      </section>
+
+
+
+      {/* ── PLATFORM FEATURES GRID ───────────────────────────── */}
+      <section className="sec" style={{ padding:'80px 20px 96px', background:t.bg2 }}>
+        <div style={{ maxWidth:1200, margin:'0 auto' }}>
+          <div style={{ textAlign:'center', marginBottom:56 }}>
+            <p style={{ fontSize:12, fontWeight:700, color:'#FF3008', textTransform:'uppercase', letterSpacing:'.12em', marginBottom:12 }}>Platform</p>
+            <h2 className="syne" style={{ fontSize:'clamp(26px,4.5vw,44px)', fontWeight:800, color:t.text, letterSpacing:'-0.045em', marginBottom:12 }}>One app. Everything local.</h2>
+            <p style={{ fontSize:'clamp(14px,2vw,16px)', color:t.text2, maxWidth:460, margin:'0 auto', lineHeight:1.65 }}>From a single daily delivery to full subscription plans — Welokl handles everything between your shop and your door.</p>
+          </div>
+
+          <div className="pbento">
+
+            {/* PB1 — big left: "The full picture" dark card */}
+            <div className="pb1" style={{ background:'linear-gradient(145deg,#0d0d0d 0%,#111 100%)', borderRadius:28, padding:'clamp(28px,3vw,42px)', border:'1.5px solid rgba(255,255,255,.07)', position:'relative', overflow:'hidden', display:'flex', flexDirection:'column', justifyContent:'space-between' }}>
+              {/* Ambient circles */}
+              <div style={{ position:'absolute', top:-80, right:-80, width:300, height:300, borderRadius:'50%', background:'radial-gradient(circle,rgba(255,48,8,.12),transparent 70%)', pointerEvents:'none' }} />
+              <div style={{ position:'absolute', bottom:-60, left:-40, width:200, height:200, borderRadius:'50%', background:'radial-gradient(circle,rgba(37,99,235,.08),transparent 70%)', pointerEvents:'none' }} />
+
+              <div style={{ position:'relative', zIndex:1 }}>
+                <p style={{ fontSize:11, fontWeight:700, color:'rgba(255,255,255,.3)', letterSpacing:'.12em', textTransform:'uppercase', marginBottom:20 }}>What makes us different</p>
+                <h3 className="syne" style={{ fontWeight:800, fontSize:'clamp(26px,3.2vw,38px)', color:'#fff', letterSpacing:'-0.04em', lineHeight:1.1, marginBottom:18 }}>
+                  Hyper-local.<br />
+                  <span style={{ background:'linear-gradient(135deg,#FF3008,#ff7a3d)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent', backgroundClip:'text' }}>Not hyper-corporate.</span>
+                </h3>
+                <p style={{ fontSize:'clamp(13px,1.4vw,15px)', color:'rgba(255,255,255,.5)', lineHeight:1.75, maxWidth:360 }}>
+                  Every feature we build starts with one question: does this help a local shop owner or a neighbourhood rider make a living? That is the only roadmap that matters.
+                </p>
+              </div>
+
+              {/* Feature chips */}
+              <div style={{ display:'flex', flexWrap:'wrap', gap:10, position:'relative', zIndex:1 }}>
+                {[
+                  { label:'Real-time GPS', color:'#FF3008' },
+                  { label:'Daily subscriptions', color:'#d97706' },
+                  { label:'Wallet & rewards', color:'#16a34a' },
+                  { label:'Live order feed', color:'#2563eb' },
+                  { label:'Verified riders', color:'#7c3aed' },
+                  { label:'UPI + COD', color:'#0891b2' },
+                ].map(chip => (
+                  <span key={chip.label} style={{ fontSize:12, fontWeight:700, padding:'7px 16px', borderRadius:999, background:`${chip.color}18`, color:chip.color, border:`1px solid ${chip.color}30`, whiteSpace:'nowrap' }}>{chip.label}</span>
+                ))}
+              </div>
+            </div>
+
+            {/* PB2 — right top: Subscriptions */}
+            <div className="pb2" style={{ background:'linear-gradient(145deg,#78350f 0%,#431407 100%)', borderRadius:28, padding:'clamp(26px,3vw,38px)', border:'1.5px solid rgba(251,191,36,.12)', position:'relative', overflow:'hidden', display:'flex', flexDirection:'column', justifyContent:'space-between' }}>
+              <div style={{ position:'absolute', top:-30, right:-30, width:160, height:160, borderRadius:'50%', background:'rgba(251,191,36,.07)', pointerEvents:'none' }} />
+              <div style={{ position:'relative', zIndex:1 }}>
+                <div style={{ width:48, height:48, borderRadius:16, background:'rgba(251,191,36,.15)', display:'flex', alignItems:'center', justifyContent:'center', marginBottom:22 }}>
+                  <svg viewBox="0 0 24 24" fill="none" width={22} height={22}><path d="M12 2v20M2 12h20" stroke="#fbbf24" strokeWidth="2" strokeLinecap="round"/><path d="M17 7A5 5 0 007 7M7 17a5 5 0 0010 0" stroke="#fbbf24" strokeWidth="1.8" strokeLinecap="round"/></svg>
+                </div>
+                <h3 className="syne" style={{ fontWeight:800, fontSize:'clamp(20px,2.5vw,26px)', color:'#fff', letterSpacing:'-0.03em', marginBottom:10 }}>Subscribe once,<br />receive daily.</h3>
+                <p style={{ fontSize:13, color:'rgba(255,255,255,.5)', lineHeight:1.65, marginBottom:24 }}>Set up daily milk, eggs, tiffin or groceries from your local shop. They deliver. You never think about it again.</p>
+              </div>
+              {/* Mock subscription list */}
+              <div style={{ display:'flex', flexDirection:'column', gap:10, position:'relative', zIndex:1 }}>
+                {[
+                  { name:'Morning Milk', time:'7:00 AM', price:'₹40/day', color:'#fbbf24' },
+                  { name:'Tiffin Box', time:'12:30 PM', price:'₹80/day', color:'#fb923c' },
+                  { name:'Evening Veggies', time:'5:00 PM', price:'₹60/day', color:'#4ade80' },
+                ].map(sub => (
+                  <div key={sub.name} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', background:'rgba(255,255,255,.06)', borderRadius:14, padding:'11px 16px', border:'1px solid rgba(255,255,255,.06)' }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                      <span style={{ width:8, height:8, borderRadius:'50%', background:sub.color, display:'block', flexShrink:0 }} />
+                      <div>
+                        <p style={{ fontSize:13, fontWeight:700, color:'#fff' }}>{sub.name}</p>
+                        <p style={{ fontSize:11, color:'rgba(255,255,255,.4)' }}>{sub.time} daily</p>
+                      </div>
+                    </div>
+                    <span style={{ fontSize:12, fontWeight:800, color:sub.color }}>{sub.price}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* PB3 — bottom left: Wallet & rewards */}
+            <div className="pb3" style={{ background:'linear-gradient(145deg,#052e16 0%,#0a3622 100%)', borderRadius:28, padding:'clamp(24px,2.5vw,32px)', border:'1.5px solid rgba(74,222,128,.1)', position:'relative', overflow:'hidden', display:'flex', flexDirection:'column', justifyContent:'space-between' }}>
+              <div style={{ position:'absolute', bottom:-40, right:-30, width:140, height:140, borderRadius:'50%', background:'rgba(74,222,128,.06)', pointerEvents:'none' }} />
+              <div style={{ width:44, height:44, borderRadius:14, background:'rgba(74,222,128,.12)', display:'flex', alignItems:'center', justifyContent:'center', marginBottom:20 }}>
+                <svg viewBox="0 0 24 24" fill="none" width={20} height={20}><path d="M21 12V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2h14a2 2 0 002-2v-3" stroke="#4ade80" strokeWidth="2" strokeLinecap="round"/><path d="M16 12h5v4h-5a2 2 0 010-4z" stroke="#4ade80" strokeWidth="2"/></svg>
+              </div>
+              <div style={{ position:'relative', zIndex:1 }}>
+                <p className="syne" style={{ fontWeight:900, fontSize:'clamp(28px,3vw,38px)', color:'#4ade80', letterSpacing:'-0.05em', lineHeight:1 }}>+₹20</p>
+                <p style={{ fontWeight:800, fontSize:14, color:'rgba(255,255,255,.8)', marginTop:6, marginBottom:8 }}>On your first order</p>
+                <p style={{ fontSize:12.5, color:'rgba(255,255,255,.4)', lineHeight:1.6 }}>Earn wallet credits with every order. Use them like cash at checkout. Refer a friend — get ₹30.</p>
+              </div>
+            </div>
+
+            {/* PB4 — bottom mid: Rider community */}
+            <div className="pb4" style={{ background:dark?'rgba(37,99,235,.1)':'#eff6ff', borderRadius:28, padding:'clamp(24px,2.5vw,32px)', border:'1.5px solid rgba(37,99,235,.22)', position:'relative', overflow:'hidden', display:'flex', flexDirection:'column', justifyContent:'space-between' }}>
+              <div style={{ position:'absolute', top:-20, right:-20, width:100, height:100, borderRadius:'50%', background:'rgba(37,99,235,.12)', pointerEvents:'none' }} />
+              <div style={{ width:44, height:44, borderRadius:14, background:'rgba(37,99,235,.1)', display:'flex', alignItems:'center', justifyContent:'center', color:'#2563eb', marginBottom:20 }}>
+                <svg viewBox="0 0 24 24" fill="none" width={20} height={20}><circle cx="5.5" cy="17.5" r="2.5" stroke="currentColor" strokeWidth="2"/><circle cx="18.5" cy="17.5" r="2.5" stroke="currentColor" strokeWidth="2"/><path d="M8 17.5H3V6l3-3h5v5M15 17.5h-3.5M8 6h5l3 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><path d="M13 10h5l1.5 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+              </div>
+              <div style={{ position:'relative', zIndex:1 }}>
+                <p className="syne" style={{ fontWeight:900, fontSize:'clamp(28px,3vw,38px)', color:'#2563eb', letterSpacing:'-0.05em', lineHeight:1 }}>₹500+</p>
+                <p style={{ fontWeight:800, fontSize:14, color:t.text, marginTop:6, marginBottom:8 }}>Avg. daily rider earnings</p>
+                <p style={{ fontSize:12.5, color:t.text2, lineHeight:1.6 }}>Work flexible hours. Get paid every week. Join our verified rider community and earn on your own terms.</p>
+              </div>
+            </div>
+
+            {/* PB5 — bottom right: Zero markup promise */}
+            <div className="pb5" style={{ background:dark?'rgba(255,48,8,.1)':'#fff0ed', borderRadius:28, padding:'clamp(24px,2.5vw,32px)', border:'1.5px solid rgba(255,48,8,.28)', position:'relative', overflow:'hidden', display:'flex', flexDirection:'column', justifyContent:'space-between' }}>
+              <div style={{ position:'absolute', bottom:-30, left:-20, width:120, height:120, borderRadius:'50%', background:'rgba(255,48,8,.06)', pointerEvents:'none' }} />
+              <div style={{ width:44, height:44, borderRadius:14, background:'rgba(255,48,8,.1)', display:'flex', alignItems:'center', justifyContent:'center', color:'#FF3008', marginBottom:20 }}>
+                <svg viewBox="0 0 24 24" fill="none" width={20} height={20}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><path d="M9 12l2 2 4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              </div>
+              <div style={{ position:'relative', zIndex:1 }}>
+                <p className="syne" style={{ fontWeight:900, fontSize:'clamp(26px,2.8vw,34px)', color:'#FF3008', letterSpacing:'-0.05em', lineHeight:1.1 }}>Shop price.<br />Always.</p>
+                <p style={{ fontSize:12.5, color:t.text2, lineHeight:1.6, marginTop:10 }}>We charge commission to shops, never to customers. You pay exactly what the sticker says — zero delivery markup on the product price.</p>
+              </div>
+            </div>
+
           </div>
         </div>
       </section>
@@ -734,7 +961,7 @@ export default function LandingPage() {
             </div>
             {[
               { t:'Customers', l:[['Browse shops','/stores'],['Track order','/orders/history'],['Sign up','/auth/signup']] },
-              { t:'Business',  l:[['Partner with us','/become-partner'],['Rider signup','/auth/signup?role=delivery_partner'],['Admin','/auth/login']] },
+              { t:'Business',  l:[['Partner with us','/become-partner'],['Rider signup','/auth/signup?role=delivery_partner'],['Login','/auth/login']] },
               { t:'Company',   l:[['About us','#'],['Privacy','/privacy'],['Contact','#']] },
             ].map(col => (
               <div key={col.t}>

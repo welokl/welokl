@@ -8,6 +8,7 @@ import type { Order, User } from '@/types'
 import { ORDER_STATUS_LABELS, ORDER_STATUS_ICONS } from '@/types'
 import { useCustomerOrderAlerts } from '@/hooks/useOrderAlerts'
 import ThemeToggle from '@/components/ThemeToggle'
+import { PhoneGate } from '@/components/PhoneGate'
 
 interface Shop {
   id: string; name: string; description: string | null; category_name: string
@@ -85,6 +86,7 @@ export default function CustomerHome() {
   const [radius, setRadius]               = useState(5)
   const [activeCategory, setActiveCat]    = useState<string | null>(null)
   const [activeCats, setActiveCats]       = useState<{name:string; q:string}[]>([])
+  const [showPhoneGate, setShowPhoneGate] = useState(false)
 
   useCustomerOrderAlerts(user?.id)
 
@@ -92,23 +94,33 @@ export default function CustomerHome() {
     const sb = createClient()
     const { data: { user: u } } = await sb.auth.getUser()
     if (!u) { window.location.href = '/auth/login'; return }
-    const role = u.user_metadata?.role || 'customer'
-    if (role === 'business' || role === 'shopkeeper') { window.location.replace('/dashboard/business'); return }
-    if (role === 'delivery') { window.location.replace('/dashboard/delivery'); return }
-    if (role === 'admin')    { window.location.replace('/dashboard/admin');    return }
-    const [{ data: profile }, { data: orderData }] = await Promise.all([
-      sb.from('users').select('*').eq('id', u.id).single(),
-      sb.from('orders').select('*, shop:shops(name,category_name), items:order_items(*)')
-        .eq('customer_id', u.id).order('created_at', { ascending: false }).limit(20),
-    ])
-    // If no profile in users table — new Google user who skipped signup
+
+    // Fetch profile from DB first — more reliable than JWT metadata for role checks
+    const { data: profile } = await sb.from('users').select('*').eq('id', u.id).single()
+
+    // New Google user who skipped signup
     if (!profile) {
       const name  = encodeURIComponent(u.user_metadata?.full_name || u.user_metadata?.name || '')
       const email = encodeURIComponent(u.email || '')
       window.location.href = `/auth/signup?from=google&email=${email}&name=${name}`
       return
     }
-    setUser(profile); setOrders(orderData || []); setLoading(false)
+
+    // Role guard — read from DB, not JWT metadata
+    const role = profile.role || ''
+    if (role === 'business' || role === 'shopkeeper')           { window.location.replace('/dashboard/business'); return }
+    if (role === 'delivery' || role === 'delivery_partner')     { window.location.replace('/dashboard/delivery'); return }
+    if (role === 'admin')                                       { window.location.replace('/dashboard/admin');    return }
+
+    if (!profile.phone) setShowPhoneGate(true)
+    setUser(profile)
+
+    const { data: orderData } = await sb
+      .from('orders').select('*, shop:shops(name,category_name), items:order_items(*)')
+      .eq('customer_id', u.id).order('created_at', { ascending: false }).limit(20)
+
+    setOrders(orderData || [])
+    setLoading(false)
   }, [])
 
   const loadShops = useCallback(async () => {
@@ -179,12 +191,14 @@ export default function CustomerHome() {
 
   useEffect(() => {
     const sb = createClient()
+    let channel: ReturnType<typeof sb.channel> | null = null
     sb.auth.getUser().then(({ data: { user: u } }) => {
       if (!u) return
-      sb.channel(`cust-rt-${u.id}`)
+      channel = sb.channel(`cust-rt-${u.id}`)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `customer_id=eq.${u.id}` }, () => loadOrders())
         .subscribe()
     })
+    return () => { if (channel) sb.removeChannel(channel) }
   }, [loadOrders])
 
   useEffect(() => {
@@ -210,6 +224,8 @@ export default function CustomerHome() {
   const greeting       = (() => { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening' })()
 
   return (
+    <>
+    {showPhoneGate && user?.id && <PhoneGate userId={user.id} onDone={() => setShowPhoneGate(false)} />}
     <div style={{ minHeight:'100vh', background:'var(--page-bg)', fontFamily:"'Plus Jakarta Sans',sans-serif", paddingBottom:80 }}>
       <style>{`
         @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:.4 } }
@@ -290,6 +306,16 @@ export default function CustomerHome() {
           </Link>
         </div>
       </div>
+
+      {/* ── SUBSCRIPTIONS PILL ─────────────────────────────── */}
+      <Link href="/subscriptions" style={{ display:'flex', alignItems:'center', gap:10, margin:'12px 12px 0', background:'var(--card-white)', borderRadius:16, padding:'12px 16px', textDecoration:'none', border:'1.5px solid var(--divider)' }}>
+        <div style={{ width:34, height:34, borderRadius:10, background:'rgba(255,48,8,.08)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, fontSize:16 }}>🔁</div>
+        <div style={{ flex:1 }}>
+          <p style={{ fontSize:13, fontWeight:800, color:'var(--text-primary)' }}>My Subscriptions</p>
+          <p style={{ fontSize:11, color:'var(--text-muted)' }}>Daily milk, tiffin, eggs & more</p>
+        </div>
+        <svg viewBox="0 0 24 24" fill="none" style={{ width:16, height:16, flexShrink:0 }}><path d="M9 18l6-6-6-6" stroke="var(--text-muted)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+      </Link>
 
       {/* ── ACTIVE ORDER PILL ─────────────────────────────── */}
       {activeOrders.length > 0 && (
@@ -448,9 +474,9 @@ export default function CustomerHome() {
       <div style={{ position:'fixed', bottom:0, left:0, right:0, background:'var(--card-white)', borderTop:'1px solid var(--divider)', paddingBottom:'env(safe-area-inset-bottom,0)', zIndex:50 }}>
         <div style={{ display:'flex', maxWidth:480, margin:'0 auto' }}>
           {[
-            { label:'Home',   href:'/dashboard/customer', on:true,  icon: <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>, fill: true },
+            { label:'Home',   href:'/dashboard/customer', on:true,  icon: <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/> },
             { label:'Search', href:'/search',              on:false, icon: <><circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="2"/><path d="m21 21-4.35-4.35" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></> },
-            { label:'Saved',  href:'/favourites',          on:false, icon: <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/> },
+            { label:'Shops',  href:'/stores',              on:false, icon: <><path d="M3 3h18v4H3zM5 7v11a2 2 0 002 2h10a2 2 0 002-2V7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><path d="M10 12h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></> },
             { label:'Orders', href:'/orders/history',      on:false, icon: <><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><rect x="9" y="3" width="6" height="4" rx="2" stroke="currentColor" strokeWidth="2"/></> },
             { label:'Account',href:'/profile',             on:false, icon: <><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><circle cx="12" cy="7" r="4" stroke="currentColor" strokeWidth="2"/></> },
           ].map(item => (
@@ -462,6 +488,7 @@ export default function CustomerHome() {
         </div>
       </div>
     </div>
+    </>
   )
 }
 

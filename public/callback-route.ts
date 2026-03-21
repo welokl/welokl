@@ -5,6 +5,15 @@ import { cookies } from 'next/headers'
 
 export const dynamic = 'force-dynamic'
 
+const ROLE_HOME: Record<string, string> = {
+  customer:         '/dashboard/customer',
+  business:         '/dashboard/business',
+  shopkeeper:       '/dashboard/business',
+  delivery:         '/dashboard/delivery',
+  delivery_partner: '/dashboard/delivery',
+  admin:            '/dashboard/admin',
+}
+
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url)
   const code = searchParams.get('code')
@@ -12,6 +21,7 @@ export async function GET(request: Request) {
   if (code) {
     const cookieStore = cookies()
 
+    // This client handles session exchange + cookie setting
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -33,7 +43,8 @@ export async function GET(request: Request) {
     if (!error && data.user) {
       const user = data.user
 
-      // Use service role to bypass RLS — guaranteed to work
+      // Use service role client for DB lookup — bypasses RLS completely
+      // This ensures the query never fails due to auth/cookie timing issues
       const adminClient = createClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -41,23 +52,23 @@ export async function GET(request: Request) {
 
       const { data: existing } = await adminClient
         .from('users')
-        .select('id')
+        .select('id, role')
         .eq('id', user.id)
         .single()
 
+      let redirectPath: string
+
       if (!existing) {
-        // New Google user — send to signup to pick role + phone
+        // New Google user — send to signup to pick role + enter phone
         const name  = encodeURIComponent(user.user_metadata?.full_name || user.user_metadata?.name || '')
         const email = encodeURIComponent(user.email || '')
-        return NextResponse.redirect(
-          new URL(`/auth/signup?email=${email}&name=${name}&from=google`, origin)
-        )
+        redirectPath = `/auth/signup?email=${email}&name=${name}&from=google`
+      } else {
+        // Existing user — redirect to their dashboard
+        redirectPath = ROLE_HOME[existing.role] || '/dashboard/customer'
       }
 
-      // Existing user — redirect to root
-      // The middleware will read their role from DB and send them
-      // to the correct dashboard. We already proved this works.
-      return NextResponse.redirect(new URL('/', origin))
+      return NextResponse.redirect(new URL(redirectPath, origin))
     }
   }
 

@@ -2,13 +2,14 @@
 import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
  
-type Tab = 'overview' | 'orders' | 'shops' | 'users' | 'verify' | 'pricing' | 'delivery' | 'categories'
+type Tab = 'overview' | 'orders' | 'shops' | 'users' | 'verify' | 'pricing' | 'delivery' | 'categories' | 'wallets'
  
 interface Config  { key: string; value: string; label: string }
 interface Order   { id: string; order_number: string; status: string; total_amount: number; subtotal: number; payment_method: string; created_at: string; type: string; delivery_partner_id: string | null; shop: { name: string; commission_percent: number } | null; customer: { name: string; phone: string } | null; partner: { name: string; phone: string } | null }
 interface Shop    { id: string; name: string; category_name: string; is_active: boolean; commission_percent: number; rating: number; area: string; city: string; image_url: string | null; verification_status: string; verification_note: string | null; owner: { name: string; email: string; phone: string | null } | null }
 interface User    { id: string; name: string; email: string; phone: string | null; role: string; created_at: string }
 interface PendingDelivery { user_id: string; name: string; email: string; phone: string | null; vehicle_type: string | null; verification_status: string; verification_note: string | null; created_at: string }
+interface WalletRow { id: string; user_id: string; balance: number; total_earned: number; total_spent: number; user: { name: string; email: string; phone: string | null } | null }
  
 const STATUS_COLOR: Record<string, { bg: string; text: string }> = {
   placed:    { bg: 'rgba(59,130,246,0.15)',  text: '#3b82f6' },
@@ -34,6 +35,7 @@ const IcoVerify   = () => <svg viewBox="0 0 16 16" fill="none" width={15} height
 const IcoPrice    = () => <svg viewBox="0 0 16 16" fill="none" width={15} height={15}><circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.4"/><path d="M8 4V5M8 11V12M10 6C10 5 9.1 4.5 8 4.5S6 5 6 6S7.2 7 8 7S10 7.8 10 9 9 11.5 8 11.5 6 11 6 10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>
 const IcoBike     = () => <svg viewBox="0 0 16 16" fill="none" width={15} height={15}><circle cx="3.5" cy="11.5" r="2.5" stroke="currentColor" strokeWidth="1.4"/><circle cx="12.5" cy="11.5" r="2.5" stroke="currentColor" strokeWidth="1.4"/><path d="M3.5 11.5L6 7L9 9L10 6H13" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/><path d="M9 4H11" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>
 const IcoTag      = () => <svg viewBox="0 0 16 16" fill="none" width={15} height={15}><path d="M9 1H14V6L8 12L4 8L9 1Z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/><circle cx="12" cy="4" r="1" fill="currentColor"/></svg>
+const IcoWallet   = () => <svg viewBox="0 0 16 16" fill="none" width={15} height={15}><rect x="1" y="4" width="14" height="10" rx="2" stroke="currentColor" strokeWidth="1.4"/><path d="M1 7h14" stroke="currentColor" strokeWidth="1.4"/><circle cx="12" cy="10" r="1" fill="currentColor"/></svg>
  
 export default function AdminDashboard() {
   const [tab, setTab]             = useState<Tab>('overview')
@@ -43,12 +45,20 @@ export default function AdminDashboard() {
   const [config, setConfig]       = useState<Config[]>([])
   const [pendingDel, setPendingDel] = useState<PendingDelivery[]>([])
   const [categories, setCategories] = useState<any[]>([])
+  const [wallets,    setWallets]    = useState<WalletRow[]>([])
   const [loading, setLoading]     = useState(true)
   const [saving, setSaving]       = useState(false)
   const [edits, setEdits]         = useState<Record<string, string>>({})
   const [search, setSearch]       = useState('')
+  const [shopSearch,  setShopSearch]  = useState('')
+  const [userSearch,  setUserSearch]  = useState('')
   const [statusFilter, setFilter] = useState('all')
   const [rejectNote, setRejectNote] = useState<Record<string, string>>({})
+  const [newCatName,  setNewCatName]  = useState('')
+  const [creditUserId, setCreditUserId] = useState('')
+  const [creditAmt,    setCreditAmt]    = useState('')
+  const [creditDesc,   setCreditDesc]   = useState('')
+  const [creditSaving, setCreditSaving] = useState(false)
  
   const load = useCallback(async () => {
     const sb = createClient()
@@ -56,18 +66,19 @@ export default function AdminDashboard() {
     if (!user) { window.location.href = '/auth/login'; return }
     const { data: profile } = await sb.from('users').select('role').eq('id', user.id).single()
     if (profile?.role !== 'admin') {
-      const roleHome: Record<string, string> = { customer: '/dashboard/customer', shopkeeper: '/dashboard/business', business: '/dashboard/business', delivery: '/dashboard/delivery' }
+      const roleHome: Record<string, string> = { customer: '/dashboard/customer', shopkeeper: '/dashboard/business', business: '/dashboard/business', delivery_partner: '/dashboard/delivery' }
       window.location.replace(roleHome[profile?.role || ''] || '/dashboard/customer')
       return
     }
  
-    const [{ data: od }, { data: sd }, { data: ud }, { data: cd }, { data: dd }, { data: cats }] = await Promise.all([
+    const [{ data: od }, { data: sd }, { data: ud }, { data: cd }, { data: dd }, { data: cats }, { data: wds }] = await Promise.all([
       sb.from('orders').select('*, shop:shops(name,commission_percent), customer:users!customer_id(name,phone), partner:users!delivery_partner_id(name,phone)').order('created_at', { ascending: false }).limit(200),
       sb.from('shops').select('*, owner:users!owner_id(name,email,phone)').order('created_at', { ascending: false }),
       sb.from('users').select('*').order('created_at', { ascending: false }).limit(300),
       sb.from('platform_config').select('*').order('key'),
       sb.from('delivery_partners').select('*, user:users!user_id(name,email,phone,created_at)').order('created_at', { ascending: false }),
       sb.from('categories').select('*').order('name'),
+      sb.from('wallets').select('*, user:users(name,email,phone)').order('balance', { ascending: false }).limit(200),
     ])
  
     setOrders((od as Order[]) || [])
@@ -75,6 +86,7 @@ export default function AdminDashboard() {
     setUsers((ud as User[]) || [])
     setConfig((cd as Config[]) || [])
     setCategories(cats || [])
+    setWallets((wds as WalletRow[]) || [])
  
     const flat: PendingDelivery[] = ((dd as any[]) || []).map((dp: any) => ({
       user_id: dp.user_id,
@@ -151,6 +163,31 @@ export default function AdminDashboard() {
     await createClient().from('categories').update({ is_active: !current }).eq('id', id)
     setCategories(c => c.map(x => x.id === id ? { ...x, is_active: !current } : x))
   }
+  async function addCategory(name: string) {
+    if (!name.trim()) return
+    const sb = createClient()
+    const { data } = await sb.from('categories').insert({ name: name.trim(), is_active: true }).select().single()
+    if (data) { setCategories(c => [...c, data]); setNewCatName('') }
+  }
+
+  async function creditWallet(userId: string, amount: number, description: string, type: 'credit' | 'debit') {
+    if (!userId || !amount || !description) return
+    setCreditSaving(true)
+    const sb = createClient()
+    const wallet = wallets.find(w => w.user_id === userId)
+    if (!wallet) { alert('No wallet found for this user'); setCreditSaving(false); return }
+    const newBalance = type === 'credit' ? wallet.balance + amount : wallet.balance - amount
+    if (type === 'debit' && newBalance < 0) { alert('Insufficient balance'); setCreditSaving(false); return }
+    await sb.from('wallets').update({
+      balance: newBalance,
+      total_earned: type === 'credit' ? wallet.total_earned + amount : wallet.total_earned,
+      total_spent:  type === 'debit'  ? wallet.total_spent  + amount : wallet.total_spent,
+    }).eq('id', wallet.id)
+    await sb.from('transactions').insert({ wallet_id: wallet.id, amount, type, description })
+    setCreditUserId(''); setCreditAmt(''); setCreditDesc('')
+    load()
+    setCreditSaving(false)
+  }
  
   const today = new Date().toDateString()
   const todayOrders = orders.filter(o => new Date(o.created_at).toDateString() === today)
@@ -159,6 +196,13 @@ export default function AdminDashboard() {
     const mq = !search || o.order_number?.includes(search) || o.shop?.name?.toLowerCase().includes(search.toLowerCase()) || o.customer?.name?.toLowerCase().includes(search.toLowerCase())
     return ms && mq
   })
+
+  const filteredShops = shops.filter(s =>
+    !shopSearch || s.name.toLowerCase().includes(shopSearch.toLowerCase()) || s.area?.toLowerCase().includes(shopSearch.toLowerCase()) || s.owner?.name?.toLowerCase().includes(shopSearch.toLowerCase())
+  )
+  const filteredUsers = users.filter(u =>
+    !userSearch || u.name?.toLowerCase().includes(userSearch.toLowerCase()) || u.email?.toLowerCase().includes(userSearch.toLowerCase()) || u.phone?.includes(userSearch)
+  )
  
   const TABS: { id: Tab; icon: React.ReactNode; label: string; badge?: number }[] = [
     { id: 'overview',    icon: <IcoChart />,  label: 'Overview' },
@@ -169,6 +213,7 @@ export default function AdminDashboard() {
     { id: 'pricing',     icon: <IcoPrice />,  label: 'Pricing & UPI' },
     { id: 'delivery',    icon: <IcoBike />,   label: 'Delivery' },
     { id: 'categories',  icon: <IcoTag />,    label: 'Categories' },
+    { id: 'wallets',     icon: <IcoWallet />, label: 'Wallets' },
   ]
  
   return (
@@ -288,7 +333,7 @@ export default function AdminDashboard() {
                 {[
                   { l: 'Customers',       v: users.filter(u => u.role === 'customer').length },
                   { l: 'Shop Owners',     v: users.filter(u => u.role === 'business').length },
-                  { l: 'Riders',          v: users.filter(u => u.role === 'delivery').length },
+                  { l: 'Riders',          v: users.filter(u => u.role === 'delivery_partner').length },
                   { l: 'Active Shops',    v: shops.filter(s => s.is_active).length },
                   { l: 'Pending Verify',  v: totalPending },
                 ].map(s => (
@@ -346,7 +391,7 @@ export default function AdminDashboard() {
                     {filteredOrders.map((o, i) => (
                       <tr key={o.id} style={{ borderTop: i > 0 ? '1px solid var(--border)' : 'none' }}>
                         <td style={{ ...mono, padding: '11px 16px', whiteSpace: 'nowrap' }}>{o.order_number}</td>
-                        <td style={{ padding: '11px 16px', fontSize: 12, color: 'var(--text-3)', whiteSpace: 'nowrap' }}>{new Date(o.created_at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</td>
+                        <td style={{ padding: '11px 16px', fontSize: 12, color: 'var(--text-3)', whiteSpace: 'nowrap' }}>{new Date(o.created_at).toDateString() === new Date().toDateString() ? new Date(o.created_at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}) : new Date(o.created_at).toLocaleDateString('en-IN',{day:'numeric',month:'short'})}</td>
                         <td style={{ padding: '11px 16px', fontWeight: 600, fontSize: 12, color: 'var(--text)', maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.shop?.name}</td>
                         <td style={{ padding: '11px 16px', fontSize: 12, color: 'var(--text-2)' }}>{o.customer?.name || '—'}</td>
                         <td style={{ padding: '11px 16px', fontSize: 12 }}>{o.delivery_partner_id ? <span style={{ color: '#16a34a', fontWeight: 700 }}>{o.partner?.name || 'Assigned'}</span> : <span style={{ color: 'var(--text-3)' }}>—</span>}</td>
@@ -372,8 +417,12 @@ export default function AdminDashboard() {
           {/* SHOPS */}
           {tab === 'shops' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <h2 style={{ fontWeight: 900, fontSize: 18, color: 'var(--text)' }}>Shops ({shops.length})</h2>
-              {shops.map(shop => (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+                <h2 style={{ fontWeight: 900, fontSize: 18, color: 'var(--text)' }}>Shops ({filteredShops.length})</h2>
+                <input value={shopSearch} onChange={e => setShopSearch(e.target.value)} placeholder="Search name, area, owner..."
+                  style={{ width: 220, fontSize: 13, border: '1px solid var(--border-2)', borderRadius: 10, padding: '8px 12px', background: 'var(--input-bg)', color: 'var(--text)', fontFamily: 'inherit', outline: 'none' }} />
+              </div>
+              {filteredShops.map(shop => (
                 <div key={shop.id} style={{ ...card, display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
                   <div style={{ width: 56, height: 56, borderRadius: 12, background: 'var(--bg-3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, flexShrink: 0, overflow: 'hidden' }}>
                     {shop.image_url ? <img src={shop.image_url} alt={shop.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <IcoShop />}
@@ -412,11 +461,13 @@ export default function AdminDashboard() {
           {tab === 'users' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
-                <h2 style={{ fontWeight: 900, fontSize: 18, color: 'var(--text)' }}>Users ({users.length})</h2>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  {['customer','business','delivery','admin'].map(r => (
+                <h2 style={{ fontWeight: 900, fontSize: 18, color: 'var(--text)' }}>Users ({filteredUsers.length})</h2>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <input value={userSearch} onChange={e => setUserSearch(e.target.value)} placeholder="Search name, email, phone..."
+                    style={{ width: 200, fontSize: 13, border: '1px solid var(--border-2)', borderRadius: 10, padding: '8px 12px', background: 'var(--input-bg)', color: 'var(--text)', fontFamily: 'inherit', outline: 'none' }} />
+                  {['customer','business','delivery_partner','admin'].map(r => (
                     <span key={r} style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 999, background: 'var(--bg-3)', color: 'var(--text-2)' }}>
-                      {r}: {users.filter(u => u.role === r).length}
+                      {r === 'delivery_partner' ? 'riders' : r}: {users.filter(u => u.role === r).length}
                     </span>
                   ))}
                 </div>
@@ -431,7 +482,7 @@ export default function AdminDashboard() {
                     </tr>
                   </thead>
                   <tbody>
-                    {users.map((u, i) => (
+                    {filteredUsers.map((u, i) => (
                       <tr key={u.id} style={{ borderTop: i > 0 ? '1px solid var(--border)' : 'none' }}>
                         <td style={{ padding: '11px 16px', fontWeight: 700, fontSize: 13, color: 'var(--text)' }}>{u.name}</td>
                         <td style={{ padding: '11px 16px', fontSize: 12, color: 'var(--text-2)' }}>{u.email}</td>
@@ -439,7 +490,7 @@ export default function AdminDashboard() {
                         <td style={{ padding: '11px 16px' }}>
                           <select value={u.role} onChange={e => createClient().from('users').update({ role: e.target.value }).eq('id', u.id).then(load)}
                             style={{ fontSize: 12, border: '1px solid var(--border-2)', borderRadius: 8, padding: '5px 8px', background: 'var(--input-bg)', color: 'var(--text)', fontFamily: 'inherit', outline: 'none', fontWeight: 700 }}>
-                            {['customer','business','delivery','admin'].map(r => <option key={r} value={r}>{r}</option>)}
+                            {['customer','business','delivery_partner','admin'].map(r => <option key={r} value={r}>{r}</option>)}
                           </select>
                         </td>
                         <td style={{ padding: '11px 16px', fontSize: 12, color: 'var(--text-3)', whiteSpace: 'nowrap' }}>{new Date(u.created_at).toLocaleDateString('en-IN')}</td>
@@ -645,7 +696,7 @@ export default function AdminDashboard() {
                 ))}
               </div>
               <div style={{ ...card }}>
-                <p style={{ fontWeight: 800, fontSize: 14, color: 'var(--text)', marginBottom: 14 }}>Registered Riders ({users.filter(u => u.role === 'delivery').length})</p>
+                <p style={{ fontWeight: 800, fontSize: 14, color: 'var(--text)', marginBottom: 14 }}>Registered Riders ({users.filter(u => u.role === 'delivery_partner').length})</p>
                 {pendingDel.length === 0 ? (
                   <p style={{ fontSize: 13, color: 'var(--text-3)', fontStyle: 'italic' }}>No delivery partners yet</p>
                 ) : pendingDel.map(d => (
@@ -670,10 +721,19 @@ export default function AdminDashboard() {
           {/* CATEGORIES */}
           {tab === 'categories' && (
             <div style={{ maxWidth: 560, display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
                 <div>
                   <h2 style={{ fontWeight: 900, fontSize: 18, color: 'var(--text)', marginBottom: 4 }}>Categories</h2>
                   <p style={{ fontSize: 13, color: 'var(--text-3)' }}>Enable or disable categories shown on the customer home screen.</p>
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input value={newCatName} onChange={e => setNewCatName(e.target.value)} placeholder="New category name..."
+                    onKeyDown={e => { if (e.key === 'Enter') addCategory(newCatName) }}
+                    style={{ fontSize: 13, border: '1px solid var(--border-2)', borderRadius: 10, padding: '8px 12px', background: 'var(--input-bg)', color: 'var(--text)', fontFamily: 'inherit', outline: 'none', width: 180 }} />
+                  <button onClick={() => addCategory(newCatName)} disabled={!newCatName.trim()}
+                    style={{ padding: '8px 16px', borderRadius: 10, border: 'none', fontWeight: 800, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', background: newCatName.trim() ? '#16a34a' : 'var(--bg-3)', color: newCatName.trim() ? '#fff' : 'var(--text-4)' }}>
+                    + Add
+                  </button>
                 </div>
               </div>
               {categories.length === 0 ? (
@@ -702,6 +762,85 @@ export default function AdminDashboard() {
             </div>
           )}
  
+
+          {/* WALLETS */}
+          {tab === 'wallets' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+                <div>
+                  <h2 style={{ fontWeight: 900, fontSize: 18, color: 'var(--text)', marginBottom: 4 }}>Customer Wallets</h2>
+                  <p style={{ fontSize: 13, color: 'var(--text-3)' }}>Credit or debit balances for refunds, bonuses, and compensation.</p>
+                </div>
+                <span style={{ padding: '4px 14px', borderRadius: 999, background: 'var(--bg-3)', fontSize: 13, fontWeight: 700, color: 'var(--text-2)' }}>
+                  Total in wallets: Rs.{wallets.reduce((s,w) => s + (w.balance||0), 0).toLocaleString('en-IN')}
+                </span>
+              </div>
+
+              <div style={{ ...card, maxWidth: 560 }}>
+                <p style={{ ...lbl, marginBottom: 16 }}>Manual Credit / Debit</p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <select value={creditUserId} onChange={e => setCreditUserId(e.target.value)}
+                    style={{ fontSize: 13, border: '1px solid var(--border-2)', borderRadius: 10, padding: '10px 12px', background: 'var(--input-bg)', color: 'var(--text)', fontFamily: 'inherit', outline: 'none' }}>
+                    <option value="">— Select customer —</option>
+                    {wallets.map(w => (
+                      <option key={w.user_id} value={w.user_id}>
+                        {w.user?.name || w.user?.email || w.user_id} — Rs.{(w.balance||0).toFixed(0)} balance
+                      </option>
+                    ))}
+                  </select>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <input type="number" value={creditAmt} onChange={e => setCreditAmt(e.target.value)} placeholder="Amount (Rs.)"
+                      style={{ fontSize: 13, border: '1px solid var(--border-2)', borderRadius: 10, padding: '10px 12px', background: 'var(--input-bg)', color: 'var(--text)', fontFamily: 'inherit', outline: 'none' }} />
+                    <input value={creditDesc} onChange={e => setCreditDesc(e.target.value)} placeholder="Reason / description"
+                      style={{ fontSize: 13, border: '1px solid var(--border-2)', borderRadius: 10, padding: '10px 12px', background: 'var(--input-bg)', color: 'var(--text)', fontFamily: 'inherit', outline: 'none' }} />
+                  </div>
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <button onClick={() => creditWallet(creditUserId, parseFloat(creditAmt), creditDesc, 'credit')}
+                      disabled={creditSaving || !creditUserId || !creditAmt || !creditDesc}
+                      style={{ flex: 1, padding: '11px', borderRadius: 12, border: 'none', fontWeight: 800, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', background: (creditUserId && creditAmt && creditDesc) ? '#16a34a' : 'var(--bg-3)', color: (creditUserId && creditAmt && creditDesc) ? '#fff' : 'var(--text-4)' }}>
+                      {creditSaving ? '...' : '+ Credit (add money)'}
+                    </button>
+                    <button onClick={() => creditWallet(creditUserId, parseFloat(creditAmt), creditDesc, 'debit')}
+                      disabled={creditSaving || !creditUserId || !creditAmt || !creditDesc}
+                      style={{ flex: 1, padding: '11px', borderRadius: 12, border: '2px solid rgba(239,68,68,0.3)', fontWeight: 800, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', background: 'rgba(239,68,68,0.06)', color: '#ef4444' }}>
+                      {creditSaving ? '...' : '- Debit (remove money)'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ ...card2, overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                      {['Customer','Email','Phone','Balance','Earned','Spent'].map(h => (
+                        <th key={h} style={{ ...lbl, padding: '12px 16px', textAlign: 'left', whiteSpace: 'nowrap' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {wallets.map((w, i) => (
+                      <tr key={w.id} style={{ borderTop: i > 0 ? '1px solid var(--border)' : 'none' }}>
+                        <td style={{ padding: '11px 16px', fontWeight: 700, color: 'var(--text)' }}>{w.user?.name || '—'}</td>
+                        <td style={{ padding: '11px 16px', fontSize: 12, color: 'var(--text-3)' }}>{w.user?.email || '—'}</td>
+                        <td style={{ padding: '11px 16px', fontSize: 12, color: 'var(--text-3)' }}>{w.user?.phone || '—'}</td>
+                        <td style={{ padding: '11px 16px', fontWeight: 900, color: (w.balance||0) > 0 ? '#FF3008' : 'var(--text-3)' }}>Rs.{(w.balance||0).toFixed(0)}</td>
+                        <td style={{ padding: '11px 16px', fontWeight: 700, color: '#16a34a' }}>Rs.{(w.total_earned||0).toFixed(0)}</td>
+                        <td style={{ padding: '11px 16px', fontWeight: 700, color: 'var(--text-2)' }}>Rs.{(w.total_spent||0).toFixed(0)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {wallets.length === 0 && (
+                  <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-3)' }}>
+                    <p style={{ fontWeight: 700 }}>No wallets yet</p>
+                    <p style={{ fontSize: 12, marginTop: 4 }}>Wallets are created when customers open their wallet page.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
         </>}
       </div>
     </div>

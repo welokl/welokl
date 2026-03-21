@@ -35,9 +35,9 @@ export default function WalletPage() {
       setWallet(w)
 
       // Get transactions
-      const { data: t } = await sb.from('wallet_transactions')
+      const { data: t } = await sb.from('transactions')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('wallet_id', w?.id)
         .order('created_at', { ascending: false })
         .limit(50)
       setTxns(t || [])

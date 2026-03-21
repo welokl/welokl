@@ -10,8 +10,9 @@ import ThemeToggle from '@/components/ThemeToggle'
 import ImageUploader from '@/components/ImageUploader'
 import { uploadShopImage, deleteProductImages, imgUrl } from '@/lib/imageService'
 import BusinessAnalytics from '@/components/BusinessAnalytics'
+import { PhoneGate } from '@/components/PhoneGate'
 
-type Tab = 'orders' | 'products' | 'analytics' | 'settings'
+type Tab = 'orders' | 'products' | 'analytics' | 'settings' | 'subscriptions'
 
 export default function BusinessDashboard() {
   const [user, setUser] = useState<User | null>(null)
@@ -21,10 +22,12 @@ export default function BusinessDashboard() {
   const [products, setProducts] = useState<Product[]>([])
   const [tab, setTab] = useState<Tab>('orders')
   const [loading, setLoading] = useState(true)
+  const [showPhoneGate, setShowPhoneGate] = useState(false)
   const [showAddProduct, setShowAddProduct] = useState(false)
   const [editingProduct, setEditingProduct] = useState<any>(null)
   const [verStatus, setVerStatus] = useState<'pending' | 'approved' | 'rejected' | null>(null)
   const [verNote, setVerNote] = useState<string | null>(null)
+  const autoKeyRef = useRef<string>('')   // tracks last applied boundary, e.g. "open-2026-03-22"
   const [logoProgress, setLogoProgress]     = useState(0)
   const [bannerProgress, setBannerProgress] = useState(0)
   const [imgError, setImgError]             = useState('')
@@ -35,11 +38,12 @@ export default function BusinessDashboard() {
     if (!authUser) { window.location.href = '/auth/login'; return }
 
     // Role guard — only shopkeeper/business role allowed here
-    const role = authUser.user_metadata?.role || ''
-    if (role === 'customer')  { window.location.replace('/dashboard/customer'); return }
-    if (role === 'delivery')  { window.location.replace('/dashboard/delivery'); return }
-    if (role === 'admin')     { window.location.replace('/dashboard/admin');    return }
     const { data: profile } = await supabase.from('users').select('*').eq('id', authUser.id).single()
+    const role = profile?.role || authUser.user_metadata?.role || ''
+    if (role === 'customer')                              { window.location.replace('/dashboard/customer'); return }
+    if (role === 'delivery' || role === 'delivery_partner') { window.location.replace('/dashboard/delivery'); return }
+    if (role === 'admin')                                 { window.location.replace('/dashboard/admin');    return }
+    if (!profile?.phone) setShowPhoneGate(true)
     setUser(profile)
     const { data: shopData } = await supabase.from('shops').select('*').eq('owner_id', authUser.id).single()
     if (!shopData) { setLoading(false); return }
@@ -75,6 +79,45 @@ export default function BusinessDashboard() {
       .subscribe()
     return () => { supabase.removeChannel(chShops) }
   }, [loadData])
+
+  // Auto open/close: fires only at boundary crossings (opening time → open, closing time → close).
+  // Between boundaries the manual toggle is the source of truth — we never override it mid-session.
+  useEffect(() => {
+    if (!shop?.id) return
+    const openTime  = (shop as any).opening_time as string | undefined
+    const closeTime = (shop as any).closing_time as string | undefined
+    if (!openTime || !closeTime) return
+
+    const [oh, om] = openTime.split(':').map(Number)
+    const [ch, cm] = closeTime.split(':').map(Number)
+
+    const checkHours = async () => {
+      const now  = new Date()
+      const mins = now.getHours() * 60 + now.getMinutes()
+      const shouldBeOpen = mins >= oh * 60 + om && mins < ch * 60 + cm
+      const today = now.toISOString().split('T')[0]
+      const key   = `${shouldBeOpen ? 'open' : 'closed'}-${today}`
+
+      if (!autoKeyRef.current) {
+        // First run on mount — just record the current segment, don't force anything.
+        // This preserves any manual override the shopkeeper made before opening the dashboard.
+        autoKeyRef.current = key
+        return
+      }
+
+      if (autoKeyRef.current === key) return  // still in same segment, manual toggle wins
+
+      // Boundary just crossed — schedule takes over
+      autoKeyRef.current = key
+      await createClient().from('shops').update({ is_open: shouldBeOpen }).eq('id', shop.id)
+      loadData()
+    }
+
+    checkHours()
+    const interval = setInterval(checkHours, 60_000)
+    return () => { clearInterval(interval); autoKeyRef.current = '' }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shop?.id, (shop as any)?.opening_time, (shop as any)?.closing_time, loadData])
 
   // Separate effect: subscribe to THIS shop's orders in realtime once we know shop.id
   useEffect(() => {
@@ -221,6 +264,8 @@ export default function BusinessDashboard() {
   )
 
   return (
+    <>
+    {showPhoneGate && user?.id && <PhoneGate userId={user.id} onDone={() => setShowPhoneGate(false)} />}
     <div style={{minHeight:"100vh", background:"var(--bg)"}}>
       <div style={{background:"var(--card-bg)", borderBottom:"1px solid var(--border)", padding:"16px"}}>
         <div className="max-w-4xl mx-auto">
@@ -271,10 +316,10 @@ export default function BusinessDashboard() {
 
       <div style={{background:"var(--card-bg)", borderBottom:"1px solid var(--border)", padding:"0 16px"}}>
         <div className="max-w-4xl mx-auto flex">
-          {(['orders','products','analytics','settings'] as Tab[]).map(t => (
+          {(['orders','products','analytics','settings','subscriptions'] as Tab[]).map(t => (
             <button key={t} onClick={() => setTab(t)}
-              style={{padding:'12px 20px', fontSize:13, fontWeight:700, textTransform:'capitalize', borderBottom:`2px solid ${tab===t?'#FF3008':'transparent'}`, color:tab===t?'#FF3008':'var(--text-3)', background:'none', cursor:'pointer', fontFamily:'inherit', transition:'all .15s'}}>
-              {t === 'settings' ? '⚙ Settings' : t}{t === 'orders' && newOrders.length > 0 && <span className="ml-1.5 bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5">{newOrders.length}</span>}
+              style={{padding:'12px 16px', fontSize:13, fontWeight:700, textTransform:'capitalize', borderBottom:`2px solid ${tab===t?'#FF3008':'transparent'}`, color:tab===t?'#FF3008':'var(--text-3)', background:'none', cursor:'pointer', fontFamily:'inherit', transition:'all .15s', whiteSpace:'nowrap'}}>
+              {t === 'settings' ? '⚙ Settings' : t === 'subscriptions' ? '🔁 Subs' : t}{t === 'orders' && newOrders.length > 0 && <span className="ml-1.5 bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5">{newOrders.length}</span>}
             </button>
           ))}
         </div>
@@ -443,7 +488,11 @@ export default function BusinessDashboard() {
         )}
 
         {tab === 'settings' && shop && (
-          <ShopSettings shop={shop} onSaved={loadData} />
+          <ShopSettings shop={shop} userId={user?.id ?? ''} onSaved={loadData} />
+        )}
+
+        {tab === 'subscriptions' && shop && (
+          <SubscriptionsTab shopId={shop.id} />
         )}
       </div>
 
@@ -454,6 +503,7 @@ export default function BusinessDashboard() {
         <EditProductModal product={editingProduct} userId={user.id} onClose={() => setEditingProduct(null)} onSuccess={() => { setEditingProduct(null); loadData() }} />
       )}
     </div>
+    </>
   )
 }
 
@@ -463,7 +513,7 @@ const SHOP_CATEGORIES = [
   'Fashion','Stationery','Hardware','Salon & Beauty','Pet Supplies','Flowers & Gifts',
 ]
 
-function ShopSettings({ shop, onSaved }: { shop: any; onSaved: () => void }) {
+function ShopSettings({ shop, userId, onSaved }: { shop: any; userId: string; onSaved: () => void }) {
   const [section, setSection] = useState<'info'|'hours'|'delivery'|'images'|'offers'>('info')
   const [saving, setSaving]   = useState(false)
   const [saved, setSaved]     = useState('')
@@ -536,7 +586,7 @@ function ShopSettings({ shop, onSaved }: { shop: any; onSaved: () => void }) {
     setImgError('')
     try {
       const { uploadShopImage } = await import('@/lib/imageService')
-      const url = await uploadShopImage(file, shop.id, type, type === 'logo' ? setLogoProg : setBannerProg)
+      const { url } = await uploadShopImage(file, userId, type, type === 'logo' ? setLogoProg : setBannerProg)
       if (url) { await sb.from('shops').update(type === 'logo' ? { image_url: url } : { banner_url: url }).eq('id', shop.id); onSaved() }
     } catch(e: any) { setImgError(e.message || 'Upload failed') }
   }
@@ -839,6 +889,278 @@ function PickupCodeVerifier({
           transition: 'all 0.2s' }}>
         {checking ? 'Verifying…' : confirmText}
       </button>
+    </div>
+  )
+}
+
+// ── SubscriptionsTab ────────────────────────────────────────────────────────
+function SubscriptionsTab({ shopId }: { shopId: string }) {
+  const sb = createClient()
+  const [plans, setPlans]         = useState<any[]>([])
+  const [subscribers, setSubs]    = useState<any[]>([])
+  const [view, setView]           = useState<'plans' | 'subscribers'>('plans')
+  const [showForm, setShowForm]   = useState(false)
+  const [generating, setGenerating] = useState(false)
+  const [genMsg, setGenMsg]       = useState('')
+  const [loading, setLoading]     = useState(true)
+  const [form, setForm]           = useState({ name: '', description: '', price: '', delivery_time: '07:00' })
+  const [saving, setSaving]       = useState(false)
+  const [formErr, setFormErr]     = useState('')
+
+  const inp: React.CSSProperties = { width: '100%', padding: '11px 14px', borderRadius: 12, border: '1.5px solid var(--border)', background: 'var(--bg-2)', color: 'var(--text)', fontSize: 14, fontFamily: 'inherit', boxSizing: 'border-box', outline: 'none' }
+
+  const load = useCallback(async () => {
+    const [{ data: p }, { data: s }] = await Promise.all([
+      sb.from('subscription_plans').select('*').eq('shop_id', shopId).order('created_at', { ascending: false }),
+      sb.from('customer_subscriptions')
+        .select('*, customer:users!customer_subscriptions_customer_id_fkey(name, phone), plan:subscription_plans(name, price)')
+        .eq('shop_id', shopId)
+        .eq('status', 'active')
+        .order('created_at', { ascending: false }),
+    ])
+    setPlans(p ?? [])
+    setSubs(s ?? [])
+    setLoading(false)
+  }, [shopId])
+
+  useEffect(() => { load() }, [load])
+
+  async function savePlan() {
+    if (!form.name.trim()) { setFormErr('Plan name required'); return }
+    if (!form.price || isNaN(Number(form.price))) { setFormErr('Valid price required'); return }
+    setSaving(true); setFormErr('')
+    const { error } = await sb.from('subscription_plans').insert({
+      shop_id: shopId,
+      name: form.name.trim(),
+      description: form.description.trim() || null,
+      price: parseFloat(form.price),
+      delivery_time: form.delivery_time,
+      is_active: true,
+    })
+    if (error) { setFormErr(error.message); setSaving(false); return }
+    setForm({ name: '', description: '', price: '', delivery_time: '07:00' })
+    setShowForm(false)
+    setSaving(false)
+    load()
+  }
+
+  async function togglePlan(id: string, is_active: boolean) {
+    await sb.from('subscription_plans').update({ is_active }).eq('id', id)
+    load()
+  }
+
+  async function deletePlan(id: string) {
+    if (!confirm('Delete this plan? Active subscribers will not be affected.')) return
+    await sb.from('subscription_plans').update({ is_active: false }).eq('id', id)
+    await sb.from('subscription_plans').delete().eq('id', id)
+    load()
+  }
+
+  async function generateTodayOrders() {
+    setGenerating(true); setGenMsg('')
+    const today = new Date().toISOString().split('T')[0]
+
+    // Get active subscriptions for this shop
+    const { data: activeSubs } = await sb
+      .from('customer_subscriptions')
+      .select('*, plan:subscription_plans(name, price, delivery_time)')
+      .eq('shop_id', shopId)
+      .eq('status', 'active')
+      .or(`pause_until.is.null,pause_until.lt.${today}`)
+
+    if (!activeSubs?.length) { setGenMsg('No active subscriptions to process.'); setGenerating(false); return }
+
+    let created = 0, skipped = 0
+    for (const sub of activeSubs) {
+      // Check if already created today (delivery_instructions contains [SUB:sub.id])
+      const marker = `[SUB:${sub.id}]`
+      const { data: existing } = await sb.from('orders')
+        .select('id').eq('customer_id', sub.customer_id).eq('shop_id', shopId)
+        .like('delivery_instructions', `%${marker}%`)
+        .gte('created_at', `${today}T00:00:00`)
+        .limit(1)
+
+      if (existing?.length) { skipped++; continue }
+
+      const orderNum = 'WLK-' + Date.now().toString().slice(-6)
+      const price    = sub.plan?.price ?? 0
+      await sb.from('orders').insert({
+        customer_id:           sub.customer_id,
+        shop_id:               shopId,
+        order_number:          orderNum,
+        status:                'placed',
+        type:                  'delivery',
+        delivery_address:      sub.delivery_address,
+        delivery_lat:          sub.delivery_lat,
+        delivery_lng:          sub.delivery_lng,
+        delivery_instructions: `${marker} ${sub.plan?.name ?? 'Subscription'} · Auto-order`,
+        subtotal:              price,
+        delivery_fee:          0,
+        platform_fee:          5,
+        discount:              0,
+        total_amount:          price + 5,
+        payment_method:        'cod',
+        payment_status:        'pending',
+      })
+      created++
+    }
+
+    setGenMsg(`Done — ${created} order${created !== 1 ? 's' : ''} created${skipped ? `, ${skipped} already existed` : ''}.`)
+    setGenerating(false)
+  }
+
+  if (loading) return (
+    <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-3)', fontSize: 14 }}>Loading subscriptions…</div>
+  )
+
+  const S: React.CSSProperties = { fontFamily: "'Plus Jakarta Sans', sans-serif" }
+
+  return (
+    <div style={{ maxWidth: 600, ...S }}>
+
+      {/* Sub-nav */}
+      <div style={{ display: 'flex', gap: 0, background: 'var(--bg-2)', borderRadius: 14, padding: 4, marginBottom: 20, width: 'fit-content' }}>
+        {(['plans', 'subscribers'] as const).map(v => (
+          <button key={v} onClick={() => setView(v)} style={{
+            padding: '8px 20px', borderRadius: 10, border: 'none', cursor: 'pointer', fontWeight: 800, fontSize: 13, fontFamily: 'inherit', transition: 'all .2s',
+            background: view === v ? 'var(--card-bg)' : 'transparent',
+            color: view === v ? '#FF3008' : 'var(--text-3)',
+            boxShadow: view === v ? '0 1px 6px rgba(0,0,0,.08)' : 'none',
+          }}>
+            {v === 'plans' ? `Plans (${plans.length})` : `Subscribers (${subscribers.length})`}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Plans ── */}
+      {view === 'plans' && (
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+            <div>
+              <p style={{ fontWeight: 900, fontSize: 16, color: 'var(--text)' }}>Subscription plans</p>
+              <p style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>Customers subscribe for recurring daily delivery</p>
+            </div>
+            <button onClick={() => setShowForm(f => !f)} style={{ padding: '9px 18px', borderRadius: 12, border: 'none', background: '#FF3008', color: '#fff', fontWeight: 800, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
+              {showForm ? 'Cancel' : '+ New plan'}
+            </button>
+          </div>
+
+          {/* Create form */}
+          {showForm && (
+            <div style={{ background: 'var(--bg-2)', borderRadius: 16, padding: '20px', marginBottom: 20, border: '1.5px solid var(--border)' }}>
+              <p style={{ fontWeight: 800, fontSize: 14, color: 'var(--text)', marginBottom: 16 }}>New subscription plan</p>
+              {formErr && <p style={{ fontSize: 12, color: '#ef4444', marginBottom: 12 }}>⚠ {formErr}</p>}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-2)', marginBottom: 5 }}>Plan name *</label>
+                  <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} style={inp} placeholder="e.g. Daily 1L Milk, Morning Tiffin" />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-2)', marginBottom: 5 }}>Description</label>
+                  <input value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} style={inp} placeholder="What's included" />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-2)', marginBottom: 5 }}>Price per day (₹) *</label>
+                    <input type="number" value={form.price} onChange={e => setForm(f => ({ ...f, price: e.target.value }))} style={inp} placeholder="e.g. 60" min="1" />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-2)', marginBottom: 5 }}>Delivery time</label>
+                    <input type="time" value={form.delivery_time} onChange={e => setForm(f => ({ ...f, delivery_time: e.target.value }))} style={inp} />
+                  </div>
+                </div>
+                <button onClick={savePlan} disabled={saving} style={{ padding: '12px', borderRadius: 12, border: 'none', background: saving ? 'var(--bg-3)' : '#FF3008', color: saving ? 'var(--text-3)' : '#fff', fontWeight: 900, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  {saving ? 'Saving…' : 'Create plan'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {plans.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '48px 20px', background: 'var(--card-bg)', borderRadius: 18, border: '1.5px solid var(--border)' }}>
+              <div style={{ fontSize: 40, marginBottom: 12 }}>🔁</div>
+              <p style={{ fontWeight: 800, fontSize: 15, color: 'var(--text)', marginBottom: 6 }}>No subscription plans yet</p>
+              <p style={{ fontSize: 13, color: 'var(--text-3)' }}>Create plans like daily milk, eggs, tiffin — customers subscribe and get auto-orders every morning.</p>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {plans.map(p => (
+                <div key={p.id} style={{ background: 'var(--card-bg)', borderRadius: 14, padding: '14px 16px', border: `1.5px solid ${p.is_active ? 'var(--border)' : 'var(--border)'}`, display: 'flex', alignItems: 'center', gap: 12, opacity: p.is_active ? 1 : 0.55 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+                      <p style={{ fontWeight: 800, fontSize: 14, color: 'var(--text)', truncate: 'true' }}>{p.name}</p>
+                      {!p.is_active && <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-4)', background: 'var(--bg-3)', padding: '2px 7px', borderRadius: 999 }}>PAUSED</span>}
+                    </div>
+                    {p.description && <p style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 3 }}>{p.description}</p>}
+                    <div style={{ display: 'flex', gap: 12, fontSize: 12, color: 'var(--text-3)' }}>
+                      <span style={{ fontWeight: 800, color: '#FF3008' }}>₹{p.price}/day</span>
+                      <span>🕐 {p.delivery_time}</span>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                    <button onClick={() => togglePlan(p.id, !p.is_active)}
+                      style={{ padding: '6px 14px', borderRadius: 8, border: '1.5px solid var(--border)', background: 'var(--bg-2)', color: 'var(--text-2)', fontWeight: 700, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
+                      {p.is_active ? 'Pause' : 'Activate'}
+                    </button>
+                    <button onClick={() => deletePlan(p.id)}
+                      style={{ padding: '6px 12px', borderRadius: 8, border: '1.5px solid rgba(239,68,68,.3)', background: 'rgba(239,68,68,.07)', color: '#ef4444', fontWeight: 700, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Subscribers ── */}
+      {view === 'subscribers' && (
+        <div>
+          {/* Generate today's orders */}
+          <div style={{ background: 'linear-gradient(135deg, rgba(255,48,8,.06), rgba(255,48,8,.03))', border: '1.5px solid rgba(255,48,8,.15)', borderRadius: 16, padding: '16px 18px', marginBottom: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <div>
+                <p style={{ fontWeight: 800, fontSize: 14, color: 'var(--text)', marginBottom: 3 }}>Today&apos;s subscription orders</p>
+                <p style={{ fontSize: 12, color: 'var(--text-3)' }}>{new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short' })}</p>
+              </div>
+              <button onClick={generateTodayOrders} disabled={generating || subscribers.length === 0}
+                style={{ padding: '10px 18px', borderRadius: 12, border: 'none', background: generating || subscribers.length === 0 ? 'var(--bg-3)' : '#FF3008', color: generating || subscribers.length === 0 ? 'var(--text-4)' : '#fff', fontWeight: 800, fontSize: 13, cursor: subscribers.length > 0 ? 'pointer' : 'default', fontFamily: 'inherit', flexShrink: 0 }}>
+                {generating ? 'Creating…' : 'Create today\'s orders'}
+              </button>
+            </div>
+            {genMsg && <p style={{ fontSize: 13, color: '#16a34a', fontWeight: 700, marginTop: 10 }}>✓ {genMsg}</p>}
+          </div>
+
+          {subscribers.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '48px 20px', background: 'var(--card-bg)', borderRadius: 18, border: '1.5px solid var(--border)' }}>
+              <div style={{ fontSize: 40, marginBottom: 12 }}>👥</div>
+              <p style={{ fontWeight: 800, fontSize: 15, color: 'var(--text)', marginBottom: 6 }}>No active subscribers yet</p>
+              <p style={{ fontSize: 13, color: 'var(--text-3)' }}>Customers can subscribe from your store page.</p>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <p style={{ fontSize: 13, color: 'var(--text-3)', fontWeight: 600, paddingLeft: 2 }}>{subscribers.length} active subscriber{subscribers.length !== 1 ? 's' : ''}</p>
+              {subscribers.map(s => (
+                <div key={s.id} style={{ background: 'var(--card-bg)', borderRadius: 14, padding: '14px 16px', border: '1.5px solid var(--border)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                    <div>
+                      <p style={{ fontWeight: 800, fontSize: 14, color: 'var(--text)', marginBottom: 2 }}>{s.customer?.name || 'Customer'}</p>
+                      <p style={{ fontSize: 12, color: 'var(--text-3)' }}>{s.plan?.name}</p>
+                    </div>
+                    <span style={{ fontSize: 14, fontWeight: 900, color: '#FF3008' }}>₹{s.plan?.price}/day</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 16, fontSize: 12, color: 'var(--text-3)' }}>
+                    {s.customer?.phone && <span>📞 {s.customer.phone}</span>}
+                    {s.delivery_address && <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📍 {s.delivery_address}</span>}
+                  </div>
+                  {s.delivery_time && <p style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 6 }}>🕐 Deliver by {s.delivery_time}</p>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

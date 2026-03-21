@@ -1,0 +1,267 @@
+'use client'
+import { useEffect, useState, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
+
+interface EarningPeriod { label: string; amount: number; count: number }
+interface DeliveryRecord {
+  id: string
+  order_number: string
+  created_at: string
+  delivered_at: string | null
+  total_amount: number
+  shop: { name: string } | null
+  delivery_address: string
+  earned: number
+}
+
+function startOf(unit: 'day' | 'week' | 'month'): string {
+  const d = new Date()
+  if (unit === 'day')   { d.setHours(0, 0, 0, 0) }
+  if (unit === 'week')  { d.setDate(d.getDate() - d.getDay()); d.setHours(0, 0, 0, 0) }
+  if (unit === 'month') { d.setDate(1); d.setHours(0, 0, 0, 0) }
+  return d.toISOString()
+}
+
+function fmtDate(iso: string) {
+  return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+function fmtTime(iso: string) {
+  return new Date(iso).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+}
+
+export default function DeliveryAnalytics() {
+  const router = useRouter()
+  const [loading, setLoading]     = useState(true)
+  const [balance, setBalance]     = useState(0)
+  const [totalEarned, setTotalEarned] = useState(0)
+  const [periods, setPeriods]     = useState<EarningPeriod[]>([])
+  const [deliveries, setDeliveries] = useState<DeliveryRecord[]>([])
+  const [totalDeliveries, setTotalDeliveries] = useState(0)
+  const [activeTab, setActiveTab] = useState<'earnings' | 'history'>('earnings')
+
+  const load = useCallback(async () => {
+    const sb = createClient()
+    const { data: { user } } = await sb.auth.getUser()
+    if (!user) { window.location.href = '/auth/login'; return }
+
+    const { data: roleRow } = await sb.from('users').select('role').eq('id', user.id).single()
+    const role = roleRow?.role || ''
+    if (role !== 'delivery_partner' && role !== 'delivery') {
+      window.location.replace('/dashboard/customer'); return
+    }
+
+    const [{ data: wallet }, { data: dp }] = await Promise.all([
+      sb.from('wallets').select('balance, total_earned').eq('user_id', user.id).single(),
+      sb.from('delivery_partners').select('total_deliveries').eq('user_id', user.id).single(),
+    ])
+
+    setBalance(wallet?.balance ?? 0)
+    setTotalEarned(wallet?.total_earned ?? 0)
+    setTotalDeliveries(dp?.total_deliveries ?? 0)
+
+    // Fetch all credits for this wallet for period breakdowns
+    const walletRes = await sb.from('wallets').select('id').eq('user_id', user.id).single()
+    const walletId = walletRes.data?.id
+
+    if (walletId) {
+      const [todayRes, weekRes, monthRes] = await Promise.all([
+        sb.from('transactions').select('amount').eq('wallet_id', walletId).eq('type', 'credit').gte('created_at', startOf('day')),
+        sb.from('transactions').select('amount').eq('wallet_id', walletId).eq('type', 'credit').gte('created_at', startOf('week')),
+        sb.from('transactions').select('amount').eq('wallet_id', walletId).eq('type', 'credit').gte('created_at', startOf('month')),
+      ])
+
+      const sum = (rows: any[]) => (rows ?? []).reduce((s: number, r: any) => s + (r.amount || 0), 0)
+
+      setPeriods([
+        { label: 'Today',      amount: sum(todayRes.data ?? []),  count: (todayRes.data ?? []).length  },
+        { label: 'This week',  amount: sum(weekRes.data ?? []),   count: (weekRes.data ?? []).length   },
+        { label: 'This month', amount: sum(monthRes.data ?? []),  count: (monthRes.data ?? []).length  },
+        { label: 'All time',   amount: wallet?.total_earned ?? 0, count: dp?.total_deliveries ?? 0     },
+      ])
+    }
+
+    // Delivery history — last 50 delivered orders
+    const { data: orders } = await sb
+      .from('orders')
+      .select('id, order_number, created_at, delivered_at, total_amount, delivery_address, shop:shops(name)')
+      .eq('delivery_partner_id', user.id)
+      .eq('status', 'delivered')
+      .order('delivered_at', { ascending: false })
+      .limit(50)
+
+    // Each delivery earns a fixed partner payout (₹20 default, from the platform)
+    const PAYOUT = 20
+    setDeliveries((orders ?? []).map((o: any) => ({ ...o, earned: PAYOUT })))
+
+    setLoading(false)
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  const PERIOD_COLORS = ['#f97316', '#8b5cf6', '#0ea5e9', '#16a34a']
+
+  if (loading) return (
+    <div style={{ minHeight: '100vh', background: 'var(--page-bg)', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+      <div style={{ maxWidth: 480, margin: '0 auto', padding: '0 16px' }}>
+        <div style={{ height: 56, display: 'flex', alignItems: 'center', gap: 12, borderBottom: '1px solid var(--divider)' }}>
+          <div style={{ width: 36, height: 36, borderRadius: 12, background: 'var(--chip-bg)' }} />
+          <div style={{ width: 140, height: 18, borderRadius: 6, background: 'var(--chip-bg)' }} />
+        </div>
+        <div style={{ paddingTop: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {[100, 220, 320, 420].map(h => (
+            <div key={h} style={{ height: h, borderRadius: 20, background: 'var(--chip-bg)', animation: 'pulse 1.5s infinite' }} />
+          ))}
+        </div>
+      </div>
+      <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}`}</style>
+    </div>
+  )
+
+  // Avg deliveries per active day this month
+  const daysInMonth = new Date().getDate()
+  const monthCount  = periods.find(p => p.label === 'This month')?.count ?? 0
+  const avgPerDay   = daysInMonth > 0 ? (monthCount / daysInMonth).toFixed(1) : '0'
+
+  return (
+    <div style={{ minHeight: '100vh', background: 'var(--page-bg)', fontFamily: "'Plus Jakarta Sans', sans-serif", paddingBottom: 40 }}>
+      <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}`}</style>
+
+      {/* Header */}
+      <div style={{ position: 'sticky', top: 0, zIndex: 40, background: 'var(--card-white)', borderBottom: '1px solid var(--divider)' }}>
+        <div style={{ maxWidth: 480, margin: '0 auto', padding: '0 16px', height: 56, display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button onClick={() => router.back()} style={{ width: 36, height: 36, borderRadius: 12, background: 'var(--page-bg)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <svg viewBox="0 0 24 24" fill="none" width={20} height={20}><path d="M19 12H5M5 12l7 7M5 12l7-7" stroke="var(--text-primary)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          </button>
+          <h1 style={{ fontWeight: 900, fontSize: 18, color: 'var(--text-primary)', flex: 1 }}>My Earnings</h1>
+          <div style={{ padding: '5px 12px', borderRadius: 999, background: 'rgba(255,48,8,.08)' }}>
+            <span style={{ fontSize: 12, fontWeight: 800, color: '#FF3008' }}>₹{balance.toFixed(0)} wallet</span>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div style={{ maxWidth: 480, margin: '0 auto', padding: '0 16px 0', display: 'flex', gap: 0 }}>
+          {(['earnings', 'history'] as const).map(tab => (
+            <button key={tab} onClick={() => setActiveTab(tab)} style={{
+              flex: 1, paddingBottom: 12, paddingTop: 4, border: 'none', background: 'none', cursor: 'pointer',
+              fontSize: 14, fontWeight: 700, fontFamily: 'inherit',
+              color: activeTab === tab ? '#FF3008' : 'var(--text-muted)',
+              borderBottom: activeTab === tab ? '2.5px solid #FF3008' : '2.5px solid transparent',
+              transition: 'all .2s',
+            }}>
+              {tab === 'earnings' ? 'Earnings' : 'Delivery history'}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ maxWidth: 480, margin: '0 auto', padding: '16px 16px 0' }}>
+
+        {activeTab === 'earnings' && (
+          <>
+            {/* All-time hero */}
+            <div style={{ background: 'linear-gradient(135deg, #FF3008 0%, #ff6b35 100%)', borderRadius: 24, padding: '24px 24px', marginBottom: 16, color: '#fff', boxShadow: '0 8px 32px rgba(255,48,8,.3)' }}>
+              <p style={{ fontSize: 13, fontWeight: 700, opacity: 0.8, marginBottom: 6 }}>Total earned (all time)</p>
+              <p style={{ fontSize: 40, fontWeight: 900, letterSpacing: '-1px', marginBottom: 4 }}>₹{totalEarned.toFixed(0)}</p>
+              <p style={{ fontSize: 13, opacity: 0.75 }}>{totalDeliveries} deliveries completed</p>
+            </div>
+
+            {/* Period breakdown */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 }}>
+              {periods.filter(p => p.label !== 'All time').map((p, i) => (
+                <div key={p.label} style={{ background: 'var(--card-white)', borderRadius: 18, padding: '16px 18px', border: '1.5px solid var(--divider)' }}>
+                  <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{p.label}</p>
+                  <p style={{ fontSize: 26, fontWeight: 900, color: PERIOD_COLORS[i], marginBottom: 2 }}>₹{p.amount.toFixed(0)}</p>
+                  <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>{p.count} {p.count === 1 ? 'delivery' : 'deliveries'}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Stats row */}
+            <div style={{ background: 'var(--card-white)', borderRadius: 20, padding: '18px 20px', marginBottom: 16, border: '1.5px solid var(--divider)' }}>
+              <p style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 16 }}>Performance</p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 0 }}>
+                {[
+                  { label: 'Total', value: String(totalDeliveries), sub: 'deliveries' },
+                  { label: 'This month', value: String(monthCount), sub: 'deliveries' },
+                  { label: 'Avg / day', value: avgPerDay, sub: 'this month' },
+                ].map((s, i) => (
+                  <div key={s.label} style={{ textAlign: 'center', borderRight: i < 2 ? '1px solid var(--divider)' : 'none', padding: '0 8px' }}>
+                    <p style={{ fontSize: 24, fontWeight: 900, color: 'var(--text-primary)', marginBottom: 2 }}>{s.value}</p>
+                    <p style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>{s.label}</p>
+                    <p style={{ fontSize: 10, color: 'var(--text-faint)' }}>{s.sub}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Wallet balance card */}
+            <div style={{ background: 'var(--card-white)', borderRadius: 20, padding: '18px 20px', border: '1.5px solid var(--divider)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 4 }}>Wallet balance</p>
+                <p style={{ fontSize: 28, fontWeight: 900, color: '#16a34a' }}>₹{balance.toFixed(0)}</p>
+                <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>Available to withdraw</p>
+              </div>
+              <div style={{ width: 56, height: 56, borderRadius: 18, background: 'rgba(22,163,74,.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <svg viewBox="0 0 24 24" fill="none" width={28} height={28}>
+                  <rect x="2" y="5" width="20" height="15" rx="3" stroke="#16a34a" strokeWidth="2"/>
+                  <path d="M16 12a1 1 0 100 2 1 1 0 000-2z" fill="#16a34a"/>
+                  <path d="M2 9h20" stroke="#16a34a" strokeWidth="2"/>
+                </svg>
+              </div>
+            </div>
+          </>
+        )}
+
+        {activeTab === 'history' && (
+          <>
+            {deliveries.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '60px 20px', background: 'var(--card-white)', borderRadius: 24, border: '1.5px solid var(--divider)' }}>
+                <div style={{ width: 64, height: 64, borderRadius: 20, background: 'rgba(255,48,8,.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+                  <svg viewBox="0 0 24 24" fill="none" width={32} height={32}><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="#FF3008" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                </div>
+                <p style={{ fontWeight: 800, fontSize: 16, color: 'var(--text-primary)', marginBottom: 6 }}>No deliveries yet</p>
+                <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>Your completed deliveries will appear here</p>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <p style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 600, paddingLeft: 4 }}>
+                  {deliveries.length} {deliveries.length === 1 ? 'delivery' : 'deliveries'} completed
+                </p>
+                {deliveries.map(d => (
+                  <div key={d.id} style={{ background: 'var(--card-white)', borderRadius: 18, padding: '16px 18px', border: '1.5px solid var(--divider)' }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 10 }}>
+                      <div>
+                        <p style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 2 }}>
+                          {d.shop?.name || 'Shop'}
+                        </p>
+                        <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                          {d.order_number} · {d.delivered_at ? fmtDate(d.delivered_at) : fmtDate(d.created_at)}
+                          {d.delivered_at ? ` · ${fmtTime(d.delivered_at)}` : ''}
+                        </p>
+                      </div>
+                      <span style={{ fontSize: 16, fontWeight: 900, color: '#16a34a', flexShrink: 0, marginLeft: 12 }}>
+                        +₹{d.earned}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, paddingTop: 10, borderTop: '1px solid var(--divider)' }}>
+                      <svg viewBox="0 0 24 24" fill="none" width={14} height={14} style={{ marginTop: 1, flexShrink: 0 }}>
+                        <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 010-5 2.5 2.5 0 010 5z" fill="#9ca3af"/>
+                      </svg>
+                      <p style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.4 }}>{d.delivery_address || '—'}</p>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+                      <span style={{ fontSize: 11, color: 'var(--text-muted)', background: 'var(--chip-bg)', padding: '3px 10px', borderRadius: 999 }}>
+                        Order ₹{d.total_amount}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  )
+}

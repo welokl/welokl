@@ -136,7 +136,7 @@ export default function FavouritesPage() {
         )}
       </div>
 
-      <BottomNav active="saved" />
+      <BottomNav active="shops" />
     </div>
   )
 }
