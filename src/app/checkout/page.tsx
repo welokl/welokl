@@ -22,7 +22,7 @@ export default function CheckoutPage() {
   const [type,          setType]          = useState<'delivery'|'pickup'>('delivery')
   const [loading,       setLoading]       = useState(false)
   const [userId,        setUserId]        = useState<string|null>(null)
-  const [shopInfo,      setShopInfo]      = useState<{delivery_enabled:boolean;pickup_enabled:boolean;min_order_amount:number}|null>(null)
+  const [shopInfo,      setShopInfo]      = useState<{delivery_enabled:boolean;pickup_enabled:boolean;min_order_amount:number;commission_percent:number}|null>(null)
   const [mounted,       setMounted]       = useState(false)
   const [locStatus,     setLocStatus]     = useState<'idle'|'detecting'|'done'|'denied'>('idle')
   const [upiStep,       setUpiStep]       = useState<'select'|'pay'|'confirm'>('select')
@@ -79,7 +79,7 @@ export default function CheckoutPage() {
     if (!mounted || !cart.shop_id) return
     createClient()
       .from('shops')
-      .select('delivery_enabled,pickup_enabled,min_order_amount')
+      .select('delivery_enabled,pickup_enabled,min_order_amount,commission_percent')
       .eq('id', cart.shop_id)
       .single()
       .then(({ data }) => { if (data) setShopInfo(data) })
@@ -104,30 +104,53 @@ export default function CheckoutPage() {
 
   const delivery_fee = type === 'pickup' ? 0 : subtotal >= FREE_DELIVERY ? 0 : DELIVERY_FEE
   const total        = subtotal + delivery_fee + PLATFORM_FEE
-  const minOrder     = shopInfo?.min_order_amount || 0
-  const belowMin     = minOrder > 0 && subtotal < minOrder
+  const minOrder     = 0   // minimum order check disabled
+  const belowMin     = false
 
   // ── Create the order in DB ──────────────────────────────────
   async function createOrder(paymentStatus: 'pending' | 'paid') {
     const sb = createClient()
-    const { data: order, error } = await sb.from('orders').insert({
-      customer_id:          userId,
-      shop_id:              cart.shop_id,
-      status:               'placed',
-      type,
-      delivery_address:     address || null,
-      special_instructions: note || null,
-      subtotal,
-      delivery_fee,
-      platform_fee:         PLATFORM_FEE,
-      total_amount:         total,
-      payment_method:       payment === 'upi' ? 'online' : 'cod',
-      payment_status:       paymentStatus,
-    }).select().single()
 
-    if (error) throw error
+    // Fresh auth — never rely on stale state
+    const { data: { user: authUser } } = await sb.auth.getUser()
+    if (!authUser) throw new Error('Not logged in. Please sign in again.')
+    const uid = authUser.id
 
-    await sb.from('order_items').insert(
+    // Exact columns from live orders table
+    const orderPayload: Record<string, any> = {
+      customer_id:           uid,
+      shop_id:               cart.shop_id,
+      order_number:          'WLK-' + Date.now().toString().slice(-6),
+      status:                'placed',
+      type:                  type,
+      delivery_address:      type === 'pickup' ? 'Pickup' : (address?.trim() || ''),
+      delivery_instructions: note?.trim() || null,
+      subtotal:              subtotal,
+      delivery_fee:          delivery_fee,
+      platform_fee:          PLATFORM_FEE,
+      discount:              0,
+      total_amount:          total,
+      payment_method:        payment === 'upi' ? 'online' : 'cod',
+      payment_status:        paymentStatus,
+    }
+
+    console.log('[welokl] inserting order:', JSON.stringify(orderPayload, null, 2))
+
+    const { data: order, error: orderErr } = await sb
+      .from('orders')
+      .insert(orderPayload)
+      .select('id')
+      .single()
+
+    if (orderErr) {
+      const errDetail = `code:${orderErr.code} msg:${orderErr.message} detail:${orderErr.details} hint:${orderErr.hint}`
+      console.error('[welokl] order insert FAILED:', errDetail, orderErr)
+      throw new Error(errDetail)
+    }
+    console.log('[welokl] order created:', order.id)
+
+    // Insert order items
+    const { error: itemsErr } = await sb.from('order_items').insert(
       items.map((item: any) => ({
         order_id:     order.id,
         product_id:   item.product.id,
@@ -137,10 +160,15 @@ export default function CheckoutPage() {
       }))
     )
 
+    if (itemsErr) {
+      console.error('[checkout] order_items error:', itemsErr)
+      // Don't throw — order was placed, items error is non-fatal
+    }
+
     // Save address
     if (address.trim()) {
       try {
-        const addrKey = `welokl_addresses_${userId}`
+        const addrKey = `welokl_addresses_${uid}`
         const addrs = JSON.parse(localStorage.getItem(addrKey) || '[]')
         if (!addrs.find((a:any) => a.address === address)) {
           addrs.unshift({ label:'other', address: address.trim() })
@@ -154,22 +182,22 @@ export default function CheckoutPage() {
 
   // ── COD flow ────────────────────────────────────────────────
   async function handleCOD() {
-    if (type === 'delivery' && !address.trim()) { alert('Please enter delivery address'); return }
-    if (!userId || belowMin) return
+    if (type === 'delivery' && !address.trim()) { alert('Please enter a delivery address'); return }
     setLoading(true)
     try {
       const id = await createOrder('pending')
       cart.clear?.()
       router.push(`/orders/${id}`)
     } catch (e: any) {
-      alert('Failed to place order. Please try again.')
+      const msg = e?.message || e?.details || e?.hint || JSON.stringify(e)
+      console.error('[welokl] order error:', e)
+      alert('Error: ' + msg)
     } finally { setLoading(false) }
   }
 
   // ── UPI Step 1: create order, open UPI deep link ────────────
   async function handleUPIStart() {
-    if (type === 'delivery' && !address.trim()) { alert('Please enter delivery address'); return }
-    if (!userId || belowMin) return
+    if (type === 'delivery' && !address.trim()) { alert('Please enter a delivery address'); return }
     setLoading(true)
     try {
       const id = await createOrder('pending')

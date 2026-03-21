@@ -3,7 +3,6 @@ import { NextResponse, type NextRequest } from 'next/server'
 
 const MAX_AGE = 60 * 60 * 24 * 365 // 1 year
 
-// ── Role → where they live ────────────────────────────────────
 const ROLE_HOME: Record<string, string> = {
   customer:   '/dashboard/customer',
   shopkeeper: '/dashboard/business',
@@ -12,18 +11,13 @@ const ROLE_HOME: Record<string, string> = {
   admin:      '/dashboard/admin',
 }
 
-// ── Routes each role is BLOCKED from ─────────────────────────
-// customer-facing routes: anyone who isn't a customer gets blocked
 const CUSTOMER_ROUTES = ['/stores', '/cart', '/checkout', '/orders', '/favourites', '/search', '/location']
 
 function isCustomerRoute(pathname: string) {
   return CUSTOMER_ROUTES.some(r => pathname.startsWith(r))
 }
-function isDashboard(pathname: string, role: string) {
-  return pathname.startsWith(`/dashboard/${role}`)
-}
 
-export async function proxy(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
 
   const supabase = createServerClient(
@@ -35,11 +29,9 @@ export async function proxy(request: NextRequest) {
           return request.cookies.getAll()
         },
         setAll(cookiesToSet: { name: string; value: string; options: CookieOptions }[]) {
-          cookiesToSet.forEach(({ name, value }: { name: string; value: string }) =>
-            request.cookies.set(name, value)
-          )
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
           supabaseResponse = NextResponse.next({ request })
-          cookiesToSet.forEach(({ name, value, options }: { name: string; value: string; options: CookieOptions }) =>
+          cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, {
               ...options,
               maxAge: MAX_AGE,
@@ -53,23 +45,22 @@ export async function proxy(request: NextRequest) {
     }
   )
 
-  // Always call getUser() — refreshes expired access tokens using refresh token
+  // Refresh session — this keeps tokens alive
   const { data: { user } } = await supabase.auth.getUser()
 
   const { pathname } = request.nextUrl
 
-  // ── 1. Auth pages: never touch ─────────────────────────────
+  // ── Auth pages ──────────────────────────────────────────────
   if (pathname.startsWith('/auth')) {
-    // If already logged in and visiting login/signup, redirect to their dashboard
+    // Already logged in → go to dashboard
     if (user) {
       const role = user.user_metadata?.role || 'customer'
-      const home = ROLE_HOME[role] || '/dashboard/customer'
-      return NextResponse.redirect(new URL(home, request.url))
+      return NextResponse.redirect(new URL(ROLE_HOME[role] || '/dashboard/customer', request.url))
     }
     return supabaseResponse
   }
 
-  // ── 2. Not logged in: protect gated routes ──────────────────
+  // ── Not logged in ───────────────────────────────────────────
   const isProtected =
     pathname.startsWith('/checkout') ||
     pathname.startsWith('/orders') ||
@@ -81,50 +72,45 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL('/auth/login', request.url))
   }
 
-  // ── 3. Logged in: enforce role boundaries ───────────────────
+  // ── Logged in ───────────────────────────────────────────────
   if (user) {
-    // Fetch role — try metadata first (fast), fallback to DB
     let role: string = user.user_metadata?.role || ''
     if (!role) {
       const { data: profile } = await supabase
-        .from('users')
-        .select('role')
-        .eq('id', user.id)
-        .single()
+        .from('users').select('role').eq('id', user.id).single()
       role = profile?.role || 'customer'
     }
-
     const home = ROLE_HOME[role] || '/dashboard/customer'
 
-    // Homepage (/): landing page is open to everyone — no redirect
-    if (pathname === '/') return supabaseResponse
+    // ROOT → always send logged-in users to their dashboard
+    // This is the key PWA fix — when app opens at /, go straight to dashboard
+    if (pathname === '/') {
+      return NextResponse.redirect(new URL(home, request.url))
+    }
 
-    // Customer-facing routes: only customers allowed
+    // Customer routes: non-customers get bounced to their home
     if (isCustomerRoute(pathname)) {
-      if (role !== 'customer') {
-        return NextResponse.redirect(new URL(home, request.url))
-      }
+      if (role !== 'customer') return NextResponse.redirect(new URL(home, request.url))
       return supabaseResponse
     }
 
-    // Dashboard routes: only the right role can access each one
+    // Dashboard routes: enforce role
     if (pathname.startsWith('/dashboard/')) {
-      const segment = pathname.split('/')[2] // 'customer' | 'business' | 'delivery' | 'admin'
-
+      const segment = pathname.split('/')[2]
       const allowed =
-        (segment === 'customer'  && role === 'customer') ||
-        (segment === 'business'  && (role === 'shopkeeper' || role === 'business')) ||
-        (segment === 'delivery'  && role === 'delivery') ||
-        (segment === 'admin'     && role === 'admin')
-
-      if (!allowed) {
-        return NextResponse.redirect(new URL(home, request.url))
-      }
+        (segment === 'customer' && role === 'customer') ||
+        (segment === 'business' && (role === 'shopkeeper' || role === 'business')) ||
+        (segment === 'delivery' && role === 'delivery') ||
+        (segment === 'admin'    && role === 'admin')
+      if (!allowed) return NextResponse.redirect(new URL(home, request.url))
     }
   }
 
   return supabaseResponse
 }
+
+// Also export as proxy for backwards compat (since your file is proxy.ts)
+export const proxy = middleware
 
 export const config = {
   matcher: [
