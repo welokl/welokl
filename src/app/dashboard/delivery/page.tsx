@@ -29,7 +29,7 @@ export default function DeliveryDashboard() {
 
   const notify = useCallback((text: string, type: 'success' | 'error' = 'success') => {
     setNotification({ text, type })
-    setTimeout(() => setNotification(null), 3000)
+    setTimeout(() => setNotification(null), 5000)
   }, [])
 
   const loadData = useCallback(async () => {
@@ -359,18 +359,30 @@ export default function DeliveryDashboard() {
     {/* Toast notification */}
     {notification && (
       <div style={{
-        position: 'fixed', top: 20, left: '50%', transform: 'translateX(-50%)',
-        zIndex: 9999, padding: '12px 24px', borderRadius: 14,
-        background: notification.type === 'success' ? '#16a34a' : '#ef4444',
-        color: '#fff', fontWeight: 700, fontSize: 14, fontFamily: "'Plus Jakarta Sans', sans-serif",
-        boxShadow: '0 8px 32px rgba(0,0,0,.2)', maxWidth: '90vw', textAlign: 'center',
-        animation: 'slideDown .3s ease',
+        position: 'fixed', top: 18, left: '50%', transform: 'translateX(-50%)',
+        zIndex: 9999, maxWidth: 'min(420px, 92vw)', width: '92vw',
+        background: 'rgba(12,12,14,0.93)', backdropFilter: 'blur(22px)', WebkitBackdropFilter: 'blur(22px)',
+        borderRadius: 20, overflow: 'hidden', boxShadow: '0 12px 48px rgba(0,0,0,.45)',
+        animation: 'wt-in .28s cubic-bezier(.34,1.3,.64,1) forwards',
+        fontFamily: "'Plus Jakarta Sans', sans-serif",
       }}>
-        {notification.text}
+        <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, background: notification.type === 'success' ? '#16a34a' : '#ef4444' }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px 14px 20px' }}>
+          <div style={{ width: 40, height: 40, borderRadius: 12, flexShrink: 0, background: notification.type === 'success' ? 'rgba(22,163,74,.2)' : 'rgba(239,68,68,.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>
+            {notification.type === 'success' ? '✅' : '❌'}
+          </div>
+          <p style={{ flex: 1, fontWeight: 700, fontSize: 14, color: '#fff', lineHeight: 1.4 }}>{notification.text}</p>
+        </div>
+        <div style={{ height: 3, background: 'rgba(255,255,255,.1)' }}>
+          <div style={{ height: '100%', background: notification.type === 'success' ? '#16a34a' : '#ef4444', animation: 'wt-drain 5s linear forwards', borderRadius: '0 2px 2px 0' }} />
+        </div>
       </div>
     )}
 
-    <style>{`@keyframes slideDown { from { opacity:0; transform:translateX(-50%) translateY(-20px) } to { opacity:1; transform:translateX(-50%) translateY(0) } }`}</style>
+    <style>{`
+      @keyframes wt-in    { from { opacity:0; transform:translateX(-50%) translateY(-18px) scale(.95) } to { opacity:1; transform:translateX(-50%) translateY(0) scale(1) } }
+      @keyframes wt-drain { from { width:100% } to { width:0% } }
+    `}</style>
 
     <div className="min-h-screen bg-surface-50">
       <Navbar />

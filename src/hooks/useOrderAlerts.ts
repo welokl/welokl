@@ -33,6 +33,14 @@ function vibrate(pattern: number[]) {
   try { if (navigator.vibrate) navigator.vibrate(pattern) } catch { }
 }
 
+// ── In-app toast (for when the tab is open / active) ─────────
+function inAppToast(title: string, body: string, color = '#FF3008', icon = '🔔') {
+  try {
+    if (typeof window !== 'undefined')
+      window.dispatchEvent(new CustomEvent('welokl-toast', { detail: { title, body, color, icon } }))
+  } catch {}
+}
+
 // ── Notification via Service Worker (survives backgrounding on Android/iOS PWA)
 // Falls back to new Notification() if SW not available
 async function pushNotify(title: string, body: string, tag = 'welokl', url = '/') {
@@ -119,6 +127,7 @@ export function useShopkeeperOrderAlerts(shopId: string | null | undefined) {
           playSound('new_order')
           vibrate([200, 80, 200, 80, 400, 80, 400])
           pushNotify('🛒 New Order!', `Order #${o.order_number || o.id?.slice(0,8)} just arrived`, `order-${o.id}`, '/dashboard/business')
+          inAppToast('🛒 New Order!', `Order #${o.order_number || o.id?.slice(0,8)} just arrived`, '#FF3008', '🛒')
         }
       )
       .subscribe()
@@ -142,18 +151,19 @@ export function useCustomerOrderAlerts(customerId: string | null | undefined) {
           const n = payload.new as any, o = payload.old as any
           if (!n.status || n.status === o.status) return
           playSound('status_update')
-          vibrate([100, 50, 100])
-          const msgs: Record<string, [string, string]> = {
-            accepted:  ['✅ Order Confirmed!',  'Your shop accepted the order'],
-            preparing: ['👨‍🍳 Being Prepared',   'Your order is being prepared'],
-            ready:     ['📦 Ready!',             'Your order is packed and ready'],
-            picked_up: ['🛵 On the Way!',        'Rider picked up your order'],
-            delivered: ['🎉 Delivered!',          'Your order has been delivered!'],
-            cancelled: ['❌ Order Cancelled',      'Your order was cancelled'],
-            rejected:  ['❌ Order Rejected',       'The shop could not accept your order'],
+          vibrate([200, 80, 200, 80, 400])
+          const msgs: Record<string, [string, string, string, string]> = {
+            accepted:  ['✅ Order Confirmed!',  'Your shop accepted the order',    '#16a34a', '✅'],
+            preparing: ['👨‍🍳 Being Prepared',   'Your order is being prepared',    '#f59e0b', '👨‍🍳'],
+            ready:     ['📦 Ready!',             'Your order is packed and ready',  '#2563eb', '📦'],
+            picked_up: ['🛵 On the Way!',        'Rider picked up your order',      '#7c3aed', '🛵'],
+            delivered: ['🎉 Delivered!',          'Your order has been delivered!',  '#16a34a', '🎉'],
+            cancelled: ['❌ Order Cancelled',      'Your order was cancelled',        '#ef4444', '❌'],
+            rejected:  ['❌ Order Rejected',       'The shop could not accept your order', '#ef4444', '❌'],
           }
-          const [title, body] = msgs[n.status] || ['📦 Order Update', `Status: ${n.status}`]
+          const [title, body, color, icon] = msgs[n.status] || ['📦 Order Update', `Status: ${n.status}`, '#FF3008', '📦']
           pushNotify(title, body, `order-${n.order_number}`, '/dashboard/customer')
+          inAppToast(title, body, color, icon)
         }
       )
       .subscribe()
@@ -191,6 +201,7 @@ export function useDeliveryPartnerAlerts(
             playSound('delivery_assigned')
             vibrate([300, 100, 300, 100, 600])
             pushNotify('📦 Pickup Verified!', `Go deliver #${n.order_number}`, `dp-job-${n.order_number}`, '/dashboard/delivery')
+            inAppToast('📦 Pickup Verified!', `Go deliver #${n.order_number}`, '#2563eb', '📦')
           }
         }
       )
@@ -213,6 +224,7 @@ export function useDeliveryPartnerAlerts(
           playSound('new_available')
           vibrate([400, 100, 400, 100, 400, 100, 800])
           pushNotify('🛵 New Order Available!', `Tap to accept — earn ₹20!`, `dp-avail-${n.id}`, '/dashboard/delivery')
+          inAppToast('🛵 New Order Available!', 'Tap to accept — earn ₹20!', '#FF3008', '🛵')
         }
       )
       .subscribe()

@@ -9,6 +9,7 @@ import { ORDER_STATUS_LABELS, ORDER_STATUS_ICONS } from '@/types'
 import { useCustomerOrderAlerts } from '@/hooks/useOrderAlerts'
 import ThemeToggle from '@/components/ThemeToggle'
 import { PhoneGate } from '@/components/PhoneGate'
+import InAppToast from '@/components/InAppToast'
 
 interface Shop {
   id: string; name: string; description: string | null; category_name: string
@@ -225,6 +226,7 @@ export default function CustomerHome() {
 
   return (
     <>
+    <InAppToast />
     {showPhoneGate && user?.id && <PhoneGate userId={user.id} onDone={() => setShowPhoneGate(false)} />}
     <div style={{ minHeight:'100vh', background:'var(--page-bg)', fontFamily:"'Plus Jakarta Sans',sans-serif", paddingBottom:80 }}>
       <style>{`

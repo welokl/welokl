@@ -37,7 +37,7 @@ messaging.onBackgroundMessage(payload => {
     badge:    '/icons/badge-72.png',
     tag,
     renotify: true,
-    vibrate:  [200, 100, 200, 100, 400],
+    vibrate:  [300, 100, 300, 100, 500, 100, 700],
     data:     { url },
   })
 })
@@ -90,7 +90,7 @@ self.addEventListener('push', e => {
       badge:    '/icons/badge-72.png',
       tag:      data.tag,
       renotify: true,
-      vibrate:  [200, 100, 200, 100, 400],
+      vibrate:  [300, 100, 300, 100, 500, 100, 700],
       data:     { url: data.url },
     })
   )
@@ -119,7 +119,7 @@ self.addEventListener('message', e => {
     badge:    '/icons/badge-72.png',
     tag:      tag || 'welokl',
     renotify: true,
-    vibrate:  [200, 100, 200, 100, 400],
+    vibrate:  [300, 100, 300, 100, 500, 100, 700],
     data:     { url: url || '/' },
   })
 })

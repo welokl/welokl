@@ -7,6 +7,7 @@ import type { Order, Shop, Product, User } from '@/types'
 import { ORDER_STATUS_LABELS, ORDER_STATUS_ICONS } from '@/types'
 import { useShopkeeperOrderAlerts, useVisibilityReconnect } from '@/hooks/useOrderAlerts'
 import ThemeToggle from '@/components/ThemeToggle'
+import InAppToast from '@/components/InAppToast'
 import ImageUploader from '@/components/ImageUploader'
 import { uploadShopImage, deleteProductImages, imgUrl } from '@/lib/imageService'
 import BusinessAnalytics from '@/components/BusinessAnalytics'
@@ -265,6 +266,7 @@ export default function BusinessDashboard() {
 
   return (
     <>
+    <InAppToast />
     {showPhoneGate && user?.id && <PhoneGate userId={user.id} onDone={() => setShowPhoneGate(false)} />}
     <div style={{minHeight:"100vh", background:"var(--bg)"}}>
       <div style={{background:"var(--card-bg)", borderBottom:"1px solid var(--border)", padding:"16px"}}>
