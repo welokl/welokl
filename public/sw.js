@@ -43,8 +43,8 @@ messaging.onBackgroundMessage(payload => {
 })
 
 // ── Cache shell ───────────────────────────────────────────────
-const CACHE = 'welokl-v4'
-const SHELL = ['/manifest.json', '/icons/icon-192.png', '/icons/icon-512.png']
+const CACHE = 'welokl-v3'
+const SHELL = ['/', '/stores', '/manifest.json', '/icons/icon-192.png', '/icons/icon-512.png']
 
 self.addEventListener('install', e => {
   e.waitUntil(
@@ -65,23 +65,17 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return
   const url = new URL(e.request.url)
-  // Never cache auth, supabase, api, or navigation pages — only static assets
   if (url.hostname.includes('supabase') || url.pathname.startsWith('/api/')) return
-  if (e.request.mode === 'navigate') return  // never cache page navigations
-
-  // Only cache static assets
-  if (!url.pathname.match(/\.(js|css|png|jpg|ico|svg|woff2?)$/)) return
 
   e.respondWith(
     fetch(e.request)
       .then(res => {
-        if (res.ok) {
-          const clone = res.clone()  // clone BEFORE returning
-          caches.open(CACHE).then(c => c.put(e.request, clone))
+        if (res.ok && (e.request.mode === 'navigate' || url.pathname.match(/\.(js|css|png|jpg|ico|svg|woff2?)$/))) {
+          caches.open(CACHE).then(c => c.put(e.request, res.clone()))
         }
         return res
       })
-      .catch(() => caches.match(e.request))
+      .catch(() => caches.match(e.request).then(r => r || caches.match('/')))
   )
 })
 
