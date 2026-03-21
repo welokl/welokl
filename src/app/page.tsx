@@ -53,6 +53,42 @@ export default function LandingPage() {
   const [heroShop,   setHeroShop]   = useState<any>(null)
   const [heroProds,  setHeroProds]  = useState<any[]>([])
 
+  // ── Auth check — redirect logged-in users away from landing page ──
+  // Runs before render. PWA opens at / → this bounces them to dashboard instantly.
+  useEffect(() => {
+    const sb = createClient()
+    sb.auth.getSession().then(({ data: { session } }) => {
+      if (!session?.user) return  // not logged in, show landing page
+      // Logged in — fetch role and redirect
+      const role = session.user.user_metadata?.role || ''
+      if (role) {
+        const roleMap: Record<string,string> = {
+          customer: '/dashboard/customer',
+          business: '/dashboard/business',
+          shopkeeper: '/dashboard/business',
+          delivery: '/dashboard/delivery',
+          delivery_partner: '/dashboard/delivery',
+          admin: '/dashboard/admin',
+        }
+        window.location.replace(roleMap[role] || '/dashboard/customer')
+        return
+      }
+      // No role in metadata — check DB
+      sb.from('users').select('role').eq('id', session.user.id).single()
+        .then(({ data }) => {
+          const r = data?.role || 'customer'
+          const roleMap: Record<string,string> = {
+            customer: '/dashboard/customer',
+            business: '/dashboard/business',
+            shopkeeper: '/dashboard/business',
+            delivery: '/dashboard/delivery',
+            admin: '/dashboard/admin',
+          }
+          window.location.replace(roleMap[r] || '/dashboard/customer')
+        })
+    })
+  }, [])
+
   // ── Init theme (hydration-safe) ───────────────────────────
   useEffect(() => { setDark(window.matchMedia('(prefers-color-scheme: dark)').matches); setMounted(true) }, [])
 
