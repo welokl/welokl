@@ -79,7 +79,7 @@ function SignupPageInner() {
       })
       if (error) { setErr(error.message); setLoading(false); return }
       if (role === 'delivery_partner') {
-        await supabase.from('delivery_partners').insert({ user_id: user.id, is_online: false })
+        await supabase.from('delivery_partners').insert({ user_id: user.id, is_online: false, verification_status: 'pending' })
       }
     } else {
       const { data: authData, error: authError } = await supabase.auth.signUp({

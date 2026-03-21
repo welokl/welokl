@@ -78,11 +78,12 @@ export default function LandingPage() {
         .then(({ data }) => {
           const r = data?.role || 'customer'
           const roleMap: Record<string,string> = {
-            customer: '/dashboard/customer',
-            business: '/dashboard/business',
-            shopkeeper: '/dashboard/business',
-            delivery: '/dashboard/delivery',
-            admin: '/dashboard/admin',
+            customer:         '/dashboard/customer',
+            business:         '/dashboard/business',
+            shopkeeper:       '/dashboard/business',
+            delivery:         '/dashboard/delivery',
+            delivery_partner: '/dashboard/delivery',
+            admin:            '/dashboard/admin',
           }
           window.location.replace(roleMap[r] || '/dashboard/customer')
         })

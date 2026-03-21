@@ -20,6 +20,8 @@ export default function DeliveryDashboard() {
   const [accepting, setAccepting] = useState<string | null>(null)
   const [showPhoneGate, setShowPhoneGate] = useState(false)
   const [notification, setNotification] = useState<{ text: string; type: 'success' | 'error' } | null>(null)
+  const [verStatus, setVerStatus] = useState<'pending' | 'approved' | 'rejected' | null>(null)
+  const [verNote, setVerNote]     = useState<string | null>(null)
   const [riderPos, setRiderPos] = useState<{ lat: number; lng: number } | null>(null)
   const [mapReady, setMapReady] = useState(false)
   const mapRef = useRef<HTMLDivElement>(null)
@@ -51,6 +53,8 @@ export default function DeliveryDashboard() {
     ])
 
     setPartner(partnerData)
+    setVerStatus((partnerData as any)?.verification_status ?? 'pending')
+    setVerNote((partnerData as any)?.verification_note ?? null)
     if (partnerData?.current_lat && partnerData?.current_long) {
       setRiderPos({ lat: partnerData.current_lat, lng: partnerData.current_long })
     }
@@ -108,6 +112,7 @@ export default function DeliveryDashboard() {
     const channel = supabase
       .channel('delivery-orders')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, loadData)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'delivery_partners' }, loadData)
       .subscribe()
 
     return () => { supabase.removeChannel(channel) }
@@ -348,6 +353,59 @@ export default function DeliveryDashboard() {
       <Navbar />
       <div className="max-w-lg mx-auto px-4 py-10 animate-pulse space-y-4">
         {[...Array(3)].map((_, i) => <div key={i} className="h-32 bg-surface-200 rounded-3xl" />)}
+      </div>
+    </div>
+  )
+
+  if (!loading && verStatus === 'pending') return (
+    <div style={{ minHeight: '100vh', background: 'var(--bg, #fafaf9)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+      <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 24, padding: '40px 32px', maxWidth: 460, width: '100%', textAlign: 'center', boxShadow: '0 4px 32px rgba(0,0,0,.08)' }}>
+        <div style={{ width: 80, height: 80, borderRadius: '50%', background: 'rgba(245,158,11,0.12)', border: '3px solid rgba(245,158,11,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 36, margin: '0 auto 24px' }}>⏳</div>
+        <h2 style={{ fontWeight: 900, fontSize: 22, color: '#111', marginBottom: 10 }}>Application Under Review</h2>
+        <p style={{ fontSize: 14, color: '#6b7280', lineHeight: 1.7, marginBottom: 28 }}>
+          Your rider account is being reviewed by our team.<br />
+          We&apos;ll approve it within <strong style={{ color: '#d97706' }}>24–48 hours</strong>.
+        </p>
+        <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 16, padding: '18px 20px', marginBottom: 24, textAlign: 'left' }}>
+          <p style={{ fontSize: 11, fontWeight: 800, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 14 }}>What happens next</p>
+          {[
+            { n: '1', t: 'Admin verifies your details',    d: 'Name, phone, and vehicle type' },
+            { n: '2', t: 'You get notified on approval',   d: "Log back in to start accepting orders" },
+            { n: '3', t: 'Go online & earn!',              d: 'Set yourself online and receive deliveries' },
+          ].map(s => (
+            <div key={s.n} style={{ display: 'flex', gap: 12, marginBottom: 10, alignItems: 'flex-start' }}>
+              <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'rgba(245,158,11,0.18)', color: '#d97706', fontWeight: 900, fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{s.n}</div>
+              <div>
+                <p style={{ fontWeight: 700, fontSize: 13, color: '#111' }}>{s.t}</p>
+                <p style={{ fontSize: 12, color: '#9ca3af', marginTop: 2 }}>{s.d}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+        <p style={{ fontSize: 12, color: '#9ca3af', marginBottom: 16 }}>Questions? support@welokl.com</p>
+        <button onClick={async () => { await createClient().auth.signOut(); window.location.href = '/' }}
+          style={{ fontSize: 13, color: '#9ca3af', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>Sign out</button>
+      </div>
+    </div>
+  )
+
+  if (!loading && verStatus === 'rejected') return (
+    <div style={{ minHeight: '100vh', background: 'var(--bg, #fafaf9)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+      <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 24, padding: '40px 32px', maxWidth: 460, width: '100%', textAlign: 'center', boxShadow: '0 4px 32px rgba(0,0,0,.08)' }}>
+        <div style={{ width: 80, height: 80, borderRadius: '50%', background: 'rgba(239,68,68,0.1)', border: '3px solid rgba(239,68,68,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 36, margin: '0 auto 24px' }}>❌</div>
+        <h2 style={{ fontWeight: 900, fontSize: 22, color: '#ef4444', marginBottom: 10 }}>Application Not Approved</h2>
+        <p style={{ fontSize: 14, color: '#6b7280', lineHeight: 1.7, marginBottom: verNote ? 16 : 28 }}>
+          Your rider application was not approved at this time.
+        </p>
+        {verNote && (
+          <div style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 14, padding: '14px 18px', marginBottom: 24, textAlign: 'left' }}>
+            <p style={{ fontSize: 12, fontWeight: 800, color: '#ef4444', marginBottom: 6 }}>Reason from admin:</p>
+            <p style={{ fontSize: 13, color: '#ef4444', lineHeight: 1.5 }}>{verNote}</p>
+          </div>
+        )}
+        <p style={{ fontSize: 12, color: '#9ca3af', marginBottom: 16 }}>Contact support@welokl.com for assistance.</p>
+        <button onClick={async () => { await createClient().auth.signOut(); window.location.href = '/' }}
+          style={{ fontSize: 13, color: '#9ca3af', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>Sign out</button>
       </div>
     </div>
   )

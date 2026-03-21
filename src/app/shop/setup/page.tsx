@@ -101,7 +101,7 @@ export default function ShopSetupPage() {
       avg_delivery_time: parseInt(form.avg_delivery_time) || 30,
       opens_at: form.opens_at,
       closes_at: form.closes_at,
-      is_active: true, is_open: true, rating: 5.0,
+      is_active: false, is_open: false, rating: 5.0, verification_status: 'pending',
     }).select().single()
 
     if (err || !shop) { setError('Could not create shop: ' + (err?.message || 'unknown')); setLoading(false); return }
