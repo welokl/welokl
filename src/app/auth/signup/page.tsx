@@ -130,7 +130,7 @@ function SignupPageInner() {
 
           {fromGoogle && googleReady && (
             <div style={{ background:'#EEF2FF', border:'1px solid #C7D2FE', borderRadius:14, padding:'12px 16px', marginBottom:20, fontSize:13, color:'#4f46e5', fontWeight:600 }}>
-              ✓ Google account verified. Choose your role and complete signup below.
+              Google account verified. Choose your role and complete signup below.
             </div>
           )}
 
@@ -140,7 +140,19 @@ function SignupPageInner() {
             </div>
           )}
 
-          {/* Google button */}
+          {/* ── Role selector — ALWAYS shown first ── */}
+          <p style={{ fontSize:13, fontWeight:700, color:'var(--text-secondary)', marginBottom:10 }}>I want to join as</p>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8, marginBottom:20 }}>
+            {ROLES.map(r => (
+              <button key={r.id} type="button" onClick={() => setRole(r.id)}
+                style={{ padding:'12px 8px', borderRadius:14, border:`2px solid ${role===r.id?'#FF3008':'var(--divider)'}`, background:role===r.id?'var(--red-light)':'var(--page-bg)', cursor:'pointer', fontFamily:'inherit', textAlign:'center', transition:'all .15s' }}>
+                <p style={{ fontWeight:800, fontSize:11, color:role===r.id?'#FF3008':'var(--text-primary)', marginBottom:3 }}>{r.label}</p>
+                <p style={{ fontSize:10, color:'var(--text-faint)', fontWeight:500 }}>{r.sub}</p>
+              </button>
+            ))}
+          </div>
+
+          {/* ── Google button — now BELOW role selector ── */}
           {!fromGoogle && (
             <>
               <button onClick={handleGoogleSignup} disabled={googleLoad}
@@ -160,18 +172,6 @@ function SignupPageInner() {
               </div>
             </>
           )}
-
-          {/* Role selector */}
-          <p style={{ fontSize:13, fontWeight:700, color:'var(--text-secondary)', marginBottom:10 }}>I want to join as</p>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8, marginBottom:20 }}>
-            {ROLES.map(r => (
-              <button key={r.id} type="button" onClick={() => setRole(r.id)}
-                style={{ padding:'12px 8px', borderRadius:14, border:`2px solid ${role===r.id?'#FF3008':'var(--divider)'}`, background:role===r.id?'var(--red-light)':'var(--page-bg)', cursor:'pointer', fontFamily:'inherit', textAlign:'center', transition:'all .15s' }}>
-                <p style={{ fontWeight:800, fontSize:11, color:role===r.id?'#FF3008':'var(--text-primary)', marginBottom:3 }}>{r.label}</p>
-                <p style={{ fontSize:10, color:'var(--text-faint)', fontWeight:500 }}>{r.sub}</p>
-              </button>
-            ))}
-          </div>
 
           <form onSubmit={handleSignup} style={{ display:'flex', flexDirection:'column', gap:14 }}>
             {/* Name */}

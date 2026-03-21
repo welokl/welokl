@@ -4,11 +4,12 @@ import { NextResponse, type NextRequest } from 'next/server'
 const MAX_AGE = 60 * 60 * 24 * 365 // 1 year
 
 const ROLE_HOME: Record<string, string> = {
-  customer:   '/dashboard/customer',
-  shopkeeper: '/dashboard/business',
-  business:   '/dashboard/business',
-  delivery:   '/dashboard/delivery',
-  admin:      '/dashboard/admin',
+  customer:         '/dashboard/customer',
+  shopkeeper:       '/dashboard/business',
+  business:         '/dashboard/business',
+  delivery:         '/dashboard/delivery',
+  delivery_partner: '/dashboard/delivery',
+  admin:            '/dashboard/admin',
 }
 
 const CUSTOMER_ROUTES = ['/stores', '/cart', '/checkout', '/orders', '/favourites', '/search', '/location']
@@ -50,14 +51,23 @@ export async function proxy(request: NextRequest) {
   // Always call getUser() — refreshes expired access tokens using refresh token
   const { data: { user } } = await supabase.auth.getUser()
 
-  const { pathname } = request.nextUrl
+  const { pathname, searchParams } = request.nextUrl
 
   // ── 1. Auth pages ───────────────────────────────────────────
   if (pathname.startsWith('/auth')) {
     if (user) {
-      const role = user.user_metadata?.role || 'customer'
-      const home = ROLE_HOME[role] || '/dashboard/customer'
-      return NextResponse.redirect(new URL(home, request.url))
+      // Allow new Google users through to signup to complete their profile
+      const isGoogleSignupReturn =
+        pathname === '/auth/signup' && searchParams.get('from') === 'google'
+
+      // Also allow the callback itself to process
+      const isCallback = pathname === '/auth/callback'
+
+      if (!isGoogleSignupReturn && !isCallback) {
+        const role = user.user_metadata?.role || 'customer'
+        const home = ROLE_HOME[role] || '/dashboard/customer'
+        return NextResponse.redirect(new URL(home, request.url))
+      }
     }
     return supabaseResponse
   }
@@ -102,7 +112,7 @@ export async function proxy(request: NextRequest) {
       const allowed =
         (segment === 'customer' && role === 'customer') ||
         (segment === 'business' && (role === 'shopkeeper' || role === 'business')) ||
-        (segment === 'delivery' && role === 'delivery') ||
+        (segment === 'delivery' && (role === 'delivery' || role === 'delivery_partner')) ||
         (segment === 'admin'    && role === 'admin')
       if (!allowed) return NextResponse.redirect(new URL(home, request.url))
     }
