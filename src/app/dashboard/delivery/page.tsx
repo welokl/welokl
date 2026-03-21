@@ -2,8 +2,9 @@
 // src/app/dashboard/delivery/page.tsx
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { PhoneGate } from '@/components/PhoneGate'
 import toast from 'react-hot-toast'
-import { Navigation, MapPin, Package, DollarSign, ToggleLeft, ToggleRight, Phone } from 'lucide-react'
+import { Navigation, MapPin, Package, DollarSign, Phone } from 'lucide-react'
 import type { Order, DeliveryPartner, Wallet } from '@/types'
 import Navbar from '@/components/Navbar'
 
@@ -19,8 +20,15 @@ export default function DeliveryDashboard() {
 
   const loadData = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
+    if (!user) { window.location.href = '/auth/login'; return }
     setUserId(user.id)
+    // Role guard — read from users table
+    const { data: roleRow } = await supabase.from('users').select('role, phone').eq('id', user.id).single()
+    if (!roleRow?.phone) setShowPhoneGate(true)
+    const role = roleRow?.role || ''
+    if (role === 'customer')                              { window.location.replace('/dashboard/customer'); return }
+    if (role === 'business' || role === 'shopkeeper')     { window.location.replace('/dashboard/business'); return }
+    if (role === 'admin')                                 { window.location.replace('/dashboard/admin');    return }
 
     const [{ data: partnerData }, { data: walletData }] = await Promise.all([
       supabase.from('delivery_partners').select('*, user:users(name)').eq('user_id', user.id).single(),
@@ -164,6 +172,8 @@ export default function DeliveryDashboard() {
   )
 
   return (
+    <>
+    {showPhoneGate && userId && <PhoneGate userId={userId} onDone={() => setShowPhoneGate(false)} />}
     <div className="min-h-screen bg-surface-50">
       <Navbar />
 
@@ -179,11 +189,22 @@ export default function DeliveryDashboard() {
                 {partner?.is_online ? 'Waiting for orders...' : 'Go online to receive deliveries'}
               </p>
             </div>
-            <button onClick={toggleOnline}
-              className={`p-1 rounded-full transition-all ${partner?.is_online ? 'text-green-500' : 'text-surface-300'}`}>
-              {partner?.is_online
-                ? <ToggleRight size={52} className="transition-all" />
-                : <ToggleLeft size={52} className="transition-all" />}
+            <button
+              onClick={toggleOnline}
+              style={{
+                width: 64, height: 34, borderRadius: 999, border: 'none', cursor: 'pointer',
+                padding: 3, transition: 'background .25s',
+                background: partner?.is_online ? '#16a34a' : '#d1d5db',
+                WebkitTapHighlightColor: 'transparent',
+                touchAction: 'manipulation',
+                display: 'flex', alignItems: 'center',
+              }}>
+              <span style={{
+                width: 28, height: 28, borderRadius: '50%', background: '#fff',
+                display: 'block', boxShadow: '0 2px 6px rgba(0,0,0,.2)',
+                transform: partner?.is_online ? 'translateX(30px)' : 'translateX(0)',
+                transition: 'transform .25s',
+              }} />
             </button>
           </div>
         </div>
@@ -280,5 +301,6 @@ export default function DeliveryDashboard() {
         )}
       </div>
     </div>
+    </>
   )
 }
