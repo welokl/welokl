@@ -66,7 +66,7 @@ export default function DeliveryDashboard() {
       // Find active assigned order (joined with shops, not businesses)
       const { data: activeOrder } = await supabase
         .from('orders')
-        .select('*, shop:shops(name, address, phone, latitude, longitude), customer:users!orders_customer_id_fkey(name, phone)')
+        .select('*, shop:shops(name, address, phone, latitude, longitude), customer:users!customer_id(name, phone)')
         .eq('delivery_partner_id', user.id)
         .in('status', ['accepted', 'preparing', 'ready', 'picked_up'])
         .maybeSingle()
@@ -77,7 +77,7 @@ export default function DeliveryDashboard() {
       if (partnerData.is_online && !activeOrder) {
         const { data: readyOrders } = await supabase
           .from('orders')
-          .select('*, shop:shops(name, address, phone, latitude, longitude), customer:users!orders_customer_id_fkey(name, phone)')
+          .select('*, shop:shops(name, address, phone, latitude, longitude), customer:users!customer_id(name, phone)')
           .eq('status', 'ready')
           .is('delivery_partner_id', null)
           .eq('type', 'delivery')
