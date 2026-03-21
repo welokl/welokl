@@ -60,14 +60,22 @@ export default function LoginPage() {
     }
 
     if (data.user) {
-      const { data: profile } = await supabase.from('users').select('role').eq('id', data.user.id).single()
-      const redirects: Record<string,string> = {
+      let role = data.user.user_metadata?.role
+      if (!role) {
+        const { data: profile } = await supabase.from('users').select('role').eq('id', data.user.id).single()
+        role = profile?.role || 'customer'
+      }
+      const roleMap: Record<string,string> = {
         customer:         '/dashboard/customer',
         business:         '/dashboard/business',
+        shopkeeper:       '/dashboard/business',
+        delivery:         '/dashboard/delivery',
         delivery_partner: '/dashboard/delivery',
         admin:            '/dashboard/admin',
       }
-      router.push(redirects[profile?.role ?? 'customer'] ?? '/dashboard/customer')
+      // Hard redirect — forces full page reload so middleware picks up session cookie
+      await new Promise(r => setTimeout(r, 200))
+      window.location.replace(roleMap[role] ?? '/dashboard/customer')
     }
   }
 

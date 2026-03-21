@@ -17,7 +17,7 @@ function isCustomerRoute(pathname: string) {
   return CUSTOMER_ROUTES.some(r => pathname.startsWith(r))
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
 
   const supabase = createServerClient(
@@ -29,9 +29,11 @@ export async function middleware(request: NextRequest) {
           return request.cookies.getAll()
         },
         setAll(cookiesToSet: { name: string; value: string; options: CookieOptions }[]) {
-          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
+          cookiesToSet.forEach(({ name, value }: { name: string; value: string }) =>
+            request.cookies.set(name, value)
+          )
           supabaseResponse = NextResponse.next({ request })
-          cookiesToSet.forEach(({ name, value, options }) =>
+          cookiesToSet.forEach(({ name, value, options }: { name: string; value: string; options: CookieOptions }) =>
             supabaseResponse.cookies.set(name, value, {
               ...options,
               maxAge: MAX_AGE,
@@ -45,22 +47,22 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  // Refresh session — this keeps tokens alive
+  // Always call getUser() — refreshes expired access tokens using refresh token
   const { data: { user } } = await supabase.auth.getUser()
 
   const { pathname } = request.nextUrl
 
-  // ── Auth pages ──────────────────────────────────────────────
+  // ── 1. Auth pages ───────────────────────────────────────────
   if (pathname.startsWith('/auth')) {
-    // Already logged in → go to dashboard
     if (user) {
       const role = user.user_metadata?.role || 'customer'
-      return NextResponse.redirect(new URL(ROLE_HOME[role] || '/dashboard/customer', request.url))
+      const home = ROLE_HOME[role] || '/dashboard/customer'
+      return NextResponse.redirect(new URL(home, request.url))
     }
     return supabaseResponse
   }
 
-  // ── Not logged in ───────────────────────────────────────────
+  // ── 2. Not logged in — protect gated routes ─────────────────
   const isProtected =
     pathname.startsWith('/checkout') ||
     pathname.startsWith('/orders') ||
@@ -72,7 +74,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/auth/login', request.url))
   }
 
-  // ── Logged in ───────────────────────────────────────────────
+  // ── 3. Logged in ────────────────────────────────────────────
   if (user) {
     let role: string = user.user_metadata?.role || ''
     if (!role) {
@@ -80,15 +82,15 @@ export async function middleware(request: NextRequest) {
         .from('users').select('role').eq('id', user.id).single()
       role = profile?.role || 'customer'
     }
+
     const home = ROLE_HOME[role] || '/dashboard/customer'
 
-    // ROOT → always send logged-in users to their dashboard
-    // This is the key PWA fix — when app opens at /, go straight to dashboard
+    // Root: redirect logged-in users to their dashboard (fixes PWA open behaviour)
     if (pathname === '/') {
       return NextResponse.redirect(new URL(home, request.url))
     }
 
-    // Customer routes: non-customers get bounced to their home
+    // Customer routes: non-customers bounced home
     if (isCustomerRoute(pathname)) {
       if (role !== 'customer') return NextResponse.redirect(new URL(home, request.url))
       return supabaseResponse
@@ -108,9 +110,6 @@ export async function middleware(request: NextRequest) {
 
   return supabaseResponse
 }
-
-// Also export as proxy for backwards compat (since your file is proxy.ts)
-export const proxy = middleware
 
 export const config = {
   matcher: [
