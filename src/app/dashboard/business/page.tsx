@@ -22,6 +22,7 @@ export default function BusinessDashboard() {
   const [products, setProducts] = useState<Product[]>([])
   const [tab, setTab] = useState<Tab>('orders')
   const [loading, setLoading] = useState(true)
+  const scheduleSegmentRef = useRef<string | null>(null) // tracks last boundary auto-applied
   const [showAddProduct, setShowAddProduct] = useState(false)
   const [editingProduct, setEditingProduct] = useState<any>(null)
   const [verStatus, setVerStatus] = useState<'pending' | 'approved' | 'rejected' | null>(null)
@@ -62,26 +63,37 @@ export default function BusinessDashboard() {
   useVisibilityReconnect(loadData)
 
   // ── Auto open/close based on shop hours ─────────────────────
+  // Rules:
+  //   • At opening time  → auto-open  (overrides any manual close)
+  //   • At closing time  → auto-close (overrides any manual open)
+  //   • Between boundaries → manual toggle wins; schedule does NOT fight it
   useEffect(() => {
     const s = shop as any
-    if (!s?.opening_time || !s?.closing_time) return
-    async function syncOpen() {
+    if (!s?.id || !s?.opening_time || !s?.closing_time) return
+    scheduleSegmentRef.current = null // reset when shop / hours change
+
+    function getSegment(): { shouldBeOpen: boolean; key: string } {
       const now = new Date()
-      const [oh, om] = (s.opening_time || '09:00').split(':').map(Number)
-      const [ch, cm] = (s.closing_time  || '21:00').split(':').map(Number)
-      const cur   = now.getHours() * 60 + now.getMinutes()
-      const open  = oh * 60 + om
-      const close = ch * 60 + cm
-      const shouldBeOpen = cur >= open && cur < close
-      if (shouldBeOpen !== shop?.is_open) {
-        await createClient().from('shops').update({ is_open: shouldBeOpen }).eq('id', s.id)
-        setShop(prev => prev ? { ...prev, is_open: shouldBeOpen } : prev)
-      }
+      const [oh, om] = (s.opening_time as string).split(':').map(Number)
+      const [ch, cm] = (s.closing_time  as string).split(':').map(Number)
+      const cur = now.getHours() * 60 + now.getMinutes()
+      const shouldBeOpen = cur >= oh * 60 + om && cur < ch * 60 + cm
+      const day = now.toISOString().split('T')[0]
+      return { shouldBeOpen, key: `${shouldBeOpen ? 'open' : 'closed'}-${day}` }
     }
-    syncOpen()
-    const t = setInterval(syncOpen, 60_000)
+
+    async function tick() {
+      const { shouldBeOpen, key } = getSegment()
+      if (scheduleSegmentRef.current === key) return // still in same boundary — manual wins
+      scheduleSegmentRef.current = key
+      await createClient().from('shops').update({ is_open: shouldBeOpen }).eq('id', s.id)
+      setShop(prev => prev ? { ...prev, is_open: shouldBeOpen } : prev)
+    }
+
+    tick()
+    const t = setInterval(tick, 60_000)
     return () => clearInterval(t)
-  }, [(shop as any)?.id, (shop as any)?.opening_time, (shop as any)?.closing_time, shop?.is_open])
+  }, [(shop as any)?.id, (shop as any)?.opening_time, (shop as any)?.closing_time]) // is_open intentionally excluded
 
   useEffect(() => {
     loadData()

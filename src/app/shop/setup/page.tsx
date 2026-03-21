@@ -21,7 +21,7 @@ export default function ShopSetupPage() {
     latitude: '', longitude: '',
     delivery_enabled: true, pickup_enabled: true,
     min_order_amount: '0', avg_delivery_time: '30',
-    opens_at: '09:00', closes_at: '22:00',
+    opening_time: '09:00', closing_time: '22:00',
   })
 
   useEffect(() => {
@@ -99,8 +99,8 @@ export default function ShopSetupPage() {
       pickup_enabled: form.pickup_enabled,
       min_order_amount: parseInt(form.min_order_amount) || 0,
       avg_delivery_time: parseInt(form.avg_delivery_time) || 30,
-      opens_at: form.opens_at,
-      closes_at: form.closes_at,
+      opening_time: form.opening_time,
+      closing_time: form.closing_time,
       is_active: false, is_open: false, rating: 5.0, verification_status: 'pending',
     }).select().single()
 
@@ -266,11 +266,11 @@ export default function ShopSetupPage() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-sm font-bold mb-1.5">Opens at</label>
-                <input type="time" value={form.opens_at} onChange={e => up('opens_at', e.target.value)} className="input-field" />
+                <input type="time" value={form.opening_time} onChange={e => up('opening_time', e.target.value)} className="input-field" />
               </div>
               <div>
                 <label className="block text-sm font-bold mb-1.5">Closes at</label>
-                <input type="time" value={form.closes_at} onChange={e => up('closes_at', e.target.value)} className="input-field" />
+                <input type="time" value={form.closing_time} onChange={e => up('closing_time', e.target.value)} className="input-field" />
               </div>
             </div>
           </div>
