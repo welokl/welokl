@@ -16,6 +16,7 @@ export default function DeliveryDashboard() {
   const [wallet, setWallet] = useState<Wallet | null>(null)
   const [todayEarnings, setTodayEarnings] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [showPhoneGate, setShowPhoneGate] = useState(false)
   const supabase = createClient()
 
   const loadData = useCallback(async () => {
@@ -156,7 +157,7 @@ export default function DeliveryDashboard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orderId: assignedOrder.id, partnerId: partner.id }),
       })
-      toast.success(`Delivery complete! ₹${assignedOrder.partner_payout} added to wallet 💰`)
+      toast.success(`Delivery complete! ₹${(assignedOrder as any).partner_payout} added to wallet 💰`)
     }
 
     loadData()
@@ -241,11 +242,11 @@ export default function DeliveryDashboard() {
                 </div>
                 <div className="flex-1">
                   <p className="font-semibold text-sm">Pickup from</p>
-                  <p className="text-surface-500 text-sm">{(assignedOrder.business as any)?.name}</p>
-                  <p className="text-surface-400 text-xs">{(assignedOrder.business as any)?.address}</p>
+                  <p className="text-surface-500 text-sm">{((assignedOrder as any).business as any)?.name}</p>
+                  <p className="text-surface-400 text-xs">{((assignedOrder as any).business as any)?.address}</p>
                 </div>
-                {(assignedOrder.business as any)?.phone && (
-                  <a href={`tel:${(assignedOrder.business as any).phone}`}
+                {((assignedOrder as any).business as any)?.phone && (
+                  <a href={`tel:${((assignedOrder as any).business as any).phone}`}
                     className="p-2 bg-surface-100 rounded-xl hover:bg-surface-200 transition-colors">
                     <Phone size={16} className="text-surface-400" />
                   </a>
@@ -258,11 +259,11 @@ export default function DeliveryDashboard() {
                 </div>
                 <div className="flex-1">
                   <p className="font-semibold text-sm">Deliver to</p>
-                  <p className="text-surface-500 text-sm">{(assignedOrder.customer as any)?.name}</p>
+                  <p className="text-surface-500 text-sm">{((assignedOrder as any).customer as any)?.name}</p>
                   <p className="text-surface-400 text-xs">{assignedOrder.delivery_address}</p>
                 </div>
-                {(assignedOrder.customer as any)?.phone && (
-                  <a href={`tel:${(assignedOrder.customer as any).phone}`}
+                {((assignedOrder as any).customer as any)?.phone && (
+                  <a href={`tel:${((assignedOrder as any).customer as any).phone}`}
                     className="p-2 bg-surface-100 rounded-xl hover:bg-surface-200 transition-colors">
                     <Phone size={16} className="text-surface-400" />
                   </a>
@@ -272,7 +273,7 @@ export default function DeliveryDashboard() {
 
             <div className="flex items-center justify-between mb-4 p-3 bg-surface-50 rounded-2xl">
               <span className="text-surface-500 text-sm">Your earnings</span>
-              <span className="font-bold text-brand-500">₹{assignedOrder.partner_payout}</span>
+              <span className="font-bold text-brand-500">₹{(assignedOrder as any).partner_payout}</span>
             </div>
 
             <div className="flex gap-3">
