@@ -215,7 +215,8 @@ export function useDeliveryPartnerAlerts(
         payload => {
           if (!ready.current || !isOnline) return
           const n = payload.new as any, o = payload.old as any
-          if (n.status !== 'ready' || o.status === 'ready') return
+          // Alert at 'preparing' — earliest possible signal to nearby riders
+          if (n.status !== 'preparing' || o.status === 'preparing') return
           if (n.delivery_partner_id != null) return
           if (n.type !== 'delivery') return
           if (lastAlerted.current === n.id) return

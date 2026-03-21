@@ -135,9 +135,11 @@ export default function BusinessDashboard() {
     const supabase = createClient()
     await supabase.from('orders').update({ status }).eq('id', orderId)
     await supabase.from('order_status_log').insert({ order_id: orderId, status, message: `Status: ${status}` })
-    if (status === 'accepted' && shop) {
-      await fetch('/api/orders/assign', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId, shopLat: shop.latitude, shopLng: shop.longitude }) })
+    if (status === 'preparing' && shop) {
+      // Broadcast to nearby riders: try auto-assign nearest; if none available the
+      // order stays unassigned and appears in ALL online riders' available-orders list
+      fetch('/api/orders/assign', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId, shopLat: shop.latitude, shopLng: shop.longitude }) }).catch(() => {})
     }
     loadData()
   }

@@ -68,17 +68,18 @@ export default function DeliveryDashboard() {
         .from('orders')
         .select('*, shop:shops(name, address, phone, latitude, longitude), customer:users!customer_id(name, phone)')
         .eq('delivery_partner_id', user.id)
-        .in('status', ['accepted', 'preparing', 'ready', 'picked_up'])
+        .in('status', ['accepted', 'preparing', 'ready', 'picked_up'])  // includes preparing — pre-assigned rider sees order early
         .maybeSingle()
 
       setAssignedOrder(activeOrder)
 
-      // Fetch available orders (ready, no rider assigned)
+      // Fetch available orders — show 'preparing' AND 'ready' with no rider assigned
+      // so all nearby riders see the request as soon as the shop starts preparing
       if (partnerData.is_online && !activeOrder) {
         const { data: readyOrders } = await supabase
           .from('orders')
           .select('*, shop:shops(name, address, phone, latitude, longitude), customer:users!customer_id(name, phone)')
-          .eq('status', 'ready')
+          .in('status', ['preparing', 'ready'])
           .is('delivery_partner_id', null)
           .eq('type', 'delivery')
           .order('created_at', { ascending: false })
@@ -301,7 +302,7 @@ export default function DeliveryDashboard() {
         // Status stays 'ready' — moves to 'picked_up' when shop verifies OTP
       })
       .eq('id', orderId)
-      .eq('status', 'ready')
+      .in('status', ['preparing', 'ready'])
       .is('delivery_partner_id', null)
 
     if (error) {

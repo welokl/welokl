@@ -311,8 +311,8 @@ export default function OrderPage() {
           )}
         </div>
 
-        {/* Delivery partner */}
-        {partner && !showMap && (
+        {/* Delivery partner — shown whenever assigned, until delivered */}
+        {partner && order.status !== 'delivered' && (
           <div style={{ background:'var(--card-white)', borderRadius:20, padding:'16px 18px' }}>
             <p style={{ fontWeight:800, fontSize:14, color:'var(--text-primary)', marginBottom:12 }}>Delivery partner</p>
             <div style={{ display:'flex', alignItems:'center', gap:12 }}>
@@ -324,8 +324,9 @@ export default function OrderPage() {
                 <p style={{ fontSize:12, color:'var(--text-muted)' }}>{partner.vehicle_type || 'Bike'}{partner.rating ? ` · ★ ${Number(partner.rating).toFixed(1)}` : ''}</p>
               </div>
               {partner.phone && (
-                <a href={`tel:${partner.phone}`} style={{ width:40, height:40, borderRadius:12, background:'var(--green-light)', display:'flex', alignItems:'center', justifyContent:'center', textDecoration:'none', flexShrink:0 }}>
-                  <svg viewBox="0 0 24 24" fill="none" width={18} height={18}><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 014.9 12.63 19.79 19.79 0 011.82 4.05 2 2 0 013.8 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" stroke="#16a34a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                <a href={`tel:${partner.phone}`} style={{ display:'flex', alignItems:'center', gap:8, padding:'10px 16px', borderRadius:14, background:'#16a34a', textDecoration:'none', flexShrink:0 }}>
+                  <svg viewBox="0 0 24 24" fill="none" width={16} height={16}><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 014.9 12.63 19.79 19.79 0 011.82 4.05 2 2 0 013.8 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  <span style={{ fontSize:13, fontWeight:800, color:'#fff' }}>{partner.phone}</span>
                 </a>
               )}
             </div>
