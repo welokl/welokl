@@ -7,6 +7,7 @@ import { Navigation, MapPin, Package, DollarSign, Phone, Clock, TrendingUp } fro
 import type { Order, DeliveryPartner, Wallet } from '@/types'
 import Navbar from '@/components/Navbar'
 import Link from 'next/link'
+import { useVisibilityReconnect } from '@/hooks/useOrderAlerts'
 
 export default function DeliveryDashboard() {
   const [partner, setPartner] = useState<DeliveryPartner | null>(null)
@@ -68,7 +69,7 @@ export default function DeliveryDashboard() {
         .select('*, shop:shops(name, address, phone, latitude, longitude), customer:users!orders_customer_id_fkey(name, phone)')
         .eq('delivery_partner_id', user.id)
         .in('status', ['accepted', 'preparing', 'ready', 'picked_up'])
-        .single()
+        .maybeSingle()
 
       setAssignedOrder(activeOrder)
 
@@ -106,16 +107,24 @@ export default function DeliveryDashboard() {
   // Cleanup GPS watch and map on unmount
   useEffect(() => { return () => { stopGPSWatch(); leafletRef.current?.remove() } }, [])
 
+  // Re-fetch when app comes back from background (phone lock / tab switch)
+  useVisibilityReconnect(loadData)
+
   useEffect(() => {
     loadData()
 
+    // Unique channel per user so multiple riders don't share a channel
+    const channelId = `delivery-orders-${Date.now()}`
     const channel = supabase
-      .channel('delivery-orders')
+      .channel(channelId)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, loadData)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'delivery_partners' }, loadData)
       .subscribe()
 
-    return () => { supabase.removeChannel(channel) }
+    // Polling fallback: if realtime misses an event (websocket gap), refresh every 20s
+    const poll = setInterval(loadData, 20_000)
+
+    return () => { supabase.removeChannel(channel); clearInterval(poll) }
   }, [loadData])
 
   // Init Leaflet map when active order is assigned

@@ -14,10 +14,10 @@ export async function assignNearestPartner(orderId: string, shopLat: number, sho
   // 1. Get ALL online partners with location
   const { data: partners } = await supabase
     .from('delivery_partners')
-    .select('user_id, current_lat, current_lng, rating')
+    .select('user_id, current_lat, current_long, rating')
     .eq('is_online', true)
     .not('current_lat', 'is', null)
-    .not('current_lng', 'is', null)
+    .not('current_long', 'is', null)
 
   if (!partners || partners.length === 0) {
     // No partners online — log it but DON'T block order
@@ -43,7 +43,7 @@ export async function assignNearestPartner(orderId: string, shopLat: number, sho
     .filter((p: any) => !busyIds.has(p.user_id))
     .map((p: any) => ({
       ...p,
-      distance: haversine(shopLat, shopLng, Number(p.current_lat), Number(p.current_lng)),
+      distance: haversine(shopLat, shopLng, Number(p.current_lat), Number(p.current_long)),
     }))
     .sort((a: any, b: any) => a.distance - b.distance)
 
