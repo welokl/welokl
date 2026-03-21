@@ -18,6 +18,17 @@ function isCustomerRoute(pathname: string) {
   return CUSTOMER_ROUTES.some(r => pathname.startsWith(r))
 }
 
+async function getRole(supabase: ReturnType<typeof createServerClient>, user: { id: string; user_metadata?: Record<string, string> }): Promise<string> {
+  // 1. Try metadata first (set by email signup)
+  const metaRole = user.user_metadata?.role
+  if (metaRole) return metaRole
+
+  // 2. Fallback: query users table (needed for Google OAuth users)
+  const { data: profile } = await supabase
+    .from('users').select('role').eq('id', user.id).single()
+  return profile?.role || 'customer'
+}
+
 export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
 
@@ -64,7 +75,7 @@ export async function proxy(request: NextRequest) {
       const isCallback = pathname === '/auth/callback'
 
       if (!isGoogleSignupReturn && !isCallback) {
-        const role = user.user_metadata?.role || 'customer'
+        const role = await getRole(supabase, user)
         const home = ROLE_HOME[role] || '/dashboard/customer'
         return NextResponse.redirect(new URL(home, request.url))
       }
@@ -86,13 +97,7 @@ export async function proxy(request: NextRequest) {
 
   // ── 3. Logged in ────────────────────────────────────────────
   if (user) {
-    let role: string = user.user_metadata?.role || ''
-    if (!role) {
-      const { data: profile } = await supabase
-        .from('users').select('role').eq('id', user.id).single()
-      role = profile?.role || 'customer'
-    }
-
+    const role = await getRole(supabase, user)
     const home = ROLE_HOME[role] || '/dashboard/customer'
 
     // Root: redirect logged-in users to their dashboard (fixes PWA open behaviour)
