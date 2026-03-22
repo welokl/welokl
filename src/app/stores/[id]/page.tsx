@@ -28,6 +28,12 @@ export default function StorePage() {
   const cart     = useCart() as any
   const [shop,       setShop]      = useState<Shop | null>(null)
   const [products,   setProducts]  = useState<Product[]>([])
+  const [plans,      setPlans]     = useState<any[]>([])
+  const [userId,     setUserId]    = useState<string | null>(null)
+  const [mySubIds,   setMySubIds]  = useState<Set<string>>(new Set())
+  const [subModal,   setSubModal]  = useState<any | null>(null)  // plan being subscribed to
+  const [subAddr,    setSubAddr]   = useState('')
+  const [subSaving,  setSubSaving] = useState(false)
   const [loading,    setLoading]   = useState(true)
   const [diffWarn,   setDiffWarn]  = useState(false)
   const [activeCat,  setActiveCat] = useState('all')
@@ -39,9 +45,14 @@ export default function StorePage() {
   async function load() {
     if (!id) return
     const sb = createClient()
-    const [{ data: s }, { data: p, error: pe }] = await Promise.all([
+    const { data: { user } } = await sb.auth.getUser()
+    setUserId(user?.id ?? null)
+
+    const [{ data: s }, { data: p, error: pe }, { data: planRows }, { data: subRows }] = await Promise.all([
       sb.from('shops').select('*').eq('id', id).single(),
       sb.from('products').select('id,name,description,price,original_price,image_url,is_veg,is_available,shop_id,category,category_name').eq('shop_id', id).order('name'),
+      sb.from('subscription_plans').select('*').eq('shop_id', id).order('price'),
+      user ? sb.from('customer_subscriptions').select('plan_id').eq('customer_id', user.id).eq('shop_id', id).neq('status', 'cancelled') : Promise.resolve({ data: [] }),
     ])
     if (pe) {
       const { data: p2 } = await sb.from('products').select('*').eq('shop_id', id)
@@ -50,7 +61,28 @@ export default function StorePage() {
       setProducts((p ?? []) as Product[])
     }
     setShop(s)
+    setPlans((planRows ?? []).filter((p: any) => p.is_active !== false))
+    setMySubIds(new Set((subRows ?? []).map((r: any) => r.plan_id)))
     setLoading(false)
+  }
+
+  async function subscribeToPlan(plan: any) {
+    if (!userId) { window.location.href = '/auth/login'; return }
+    if (!subAddr.trim()) { alert('Please enter your delivery address'); return }
+    setSubSaving(true)
+    const sb = createClient()
+    await sb.from('customer_subscriptions').upsert({
+      customer_id:      userId,
+      shop_id:          id,
+      plan_id:          plan.id,
+      status:           'active',
+      delivery_address: subAddr.trim(),
+      delivery_time:    plan.delivery_time,
+    }, { onConflict: 'customer_id,plan_id' })
+    setMySubIds(prev => new Set([...prev, plan.id]))
+    setSubModal(null)
+    setSubAddr('')
+    setSubSaving(false)
   }
 
   function handleAdd(product: Product) {
@@ -206,6 +238,65 @@ export default function StorePage() {
           )}
         </div>
       </div>
+
+      {/* Subscription plans — shown if shop has active plans */}
+      {plans.length > 0 && (
+        <div style={{ background:'#fff', padding:'18px 16px', marginBottom:10, borderBottom:'1px solid #f0eeec' }}>
+          <div style={{ maxWidth:760, margin:'0 auto' }}>
+            <p style={{ fontSize:12, fontWeight:800, color:'#aaa', textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:12 }}>Subscribe & Save</p>
+            <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+              {plans.map(plan => {
+                const subscribed = mySubIds.has(plan.id)
+                return (
+                  <div key={plan.id} style={{ display:'flex', alignItems:'center', gap:14, padding:'14px 16px', background:'#fafaf9', borderRadius:16, border:`1.5px solid ${subscribed ? 'rgba(22,163,74,.35)' : '#ebebeb'}` }}>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <p style={{ fontWeight:800, fontSize:14, color:'#111', marginBottom:2 }}>{plan.name}</p>
+                      {plan.description && <p style={{ fontSize:12, color:'#888', marginBottom:4 }}>{plan.description}</p>}
+                      <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+                        <span style={{ fontSize:14, fontWeight:900, color:'#FF3008' }}>₹{plan.price}<span style={{ fontSize:11, color:'#aaa', fontWeight:600 }}>/day</span></span>
+                        <span style={{ fontSize:11, color:'#888', background:'#f0eeec', padding:'2px 8px', borderRadius:999 }}>Delivery by {plan.delivery_time}</span>
+                        <span style={{ fontSize:11, color:'#888', background:'#f0eeec', padding:'2px 8px', borderRadius:999, textTransform:'capitalize' }}>{plan.frequency}</span>
+                      </div>
+                    </div>
+                    {subscribed ? (
+                      <span style={{ fontSize:12, fontWeight:800, color:'#16a34a', background:'rgba(22,163,74,.1)', padding:'7px 14px', borderRadius:10, whiteSpace:'nowrap' }}>Subscribed</span>
+                    ) : (
+                      <button onClick={() => setSubModal(plan)}
+                        style={{ padding:'9px 18px', borderRadius:12, border:'none', background:'#FF3008', color:'#fff', fontWeight:800, fontSize:13, cursor:'pointer', fontFamily:'inherit', whiteSpace:'nowrap', boxShadow:'0 3px 10px rgba(255,48,8,.25)' }}>
+                        Subscribe
+                      </button>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Subscribe modal */}
+      {subModal && (
+        <div style={{ position:'fixed', inset:0, zIndex:200, background:'rgba(0,0,0,.55)', display:'flex', alignItems:'flex-end', justifyContent:'center' }} onClick={e => { if (e.target === e.currentTarget) setSubModal(null) }}>
+          <div style={{ background:'#fff', borderRadius:'24px 24px 0 0', padding:'28px 20px 40px', width:'100%', maxWidth:480 }}>
+            <p style={{ fontWeight:900, fontSize:17, color:'#111', marginBottom:4 }}>Subscribe to {subModal.name}</p>
+            <p style={{ fontSize:13, color:'#888', marginBottom:18 }}>₹{subModal.price}/day · Delivered by {subModal.delivery_time}</p>
+            <p style={{ fontSize:12, fontWeight:700, color:'#555', marginBottom:6 }}>Delivery address</p>
+            <textarea
+              value={subAddr} onChange={e => setSubAddr(e.target.value)}
+              placeholder="Enter your full delivery address..."
+              rows={3}
+              style={{ width:'100%', padding:'12px 14px', borderRadius:14, border:'1.5px solid #e0ded9', fontSize:14, fontFamily:'inherit', outline:'none', resize:'none', boxSizing:'border-box', color:'#111' }}
+            />
+            <button onClick={() => subscribeToPlan(subModal)} disabled={subSaving || !subAddr.trim()}
+              style={{ marginTop:14, width:'100%', padding:'15px', borderRadius:16, border:'none', background: subAddr.trim() ? '#FF3008' : '#f0eeec', color: subAddr.trim() ? '#fff' : '#bbb', fontWeight:900, fontSize:16, cursor:'pointer', fontFamily:'inherit', boxShadow: subAddr.trim() ? '0 6px 20px rgba(255,48,8,.3)' : 'none' }}>
+              {subSaving ? 'Subscribing...' : 'Confirm Subscription'}
+            </button>
+            <button onClick={() => setSubModal(null)} style={{ marginTop:10, width:'100%', padding:'11px', borderRadius:14, border:'none', background:'none', color:'#aaa', fontWeight:700, fontSize:14, cursor:'pointer', fontFamily:'inherit' }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Search bar */}
       <div style={{ padding:'0 12px', marginBottom:10 }}>

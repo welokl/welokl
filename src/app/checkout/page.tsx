@@ -5,16 +5,24 @@ import { createClient } from '@/lib/supabase/client'
 import { useCart } from '@/store/cart'
 import Link from 'next/link'
 
-const FREE_DELIVERY    = 299
-const DELIVERY_FEE     = 30
-const PLATFORM_FEE     = 5
-const WELOKL_UPI_ID    = 'welokl@upi'   // ← replace with your real UPI ID
 const WELOKL_UPI_NAME  = 'Welokl'
+
+// Fallback constants — overridden at runtime by platform_config table values
+const DEFAULT_DELIVERY_FEE  = 30
+const DEFAULT_FREE_DELIVERY = 299
+const DEFAULT_PLATFORM_FEE  = 5
+const DEFAULT_UPI_ID        = 'welokl@upi'
 
 export default function CheckoutPage() {
   const router = useRouter()
   const cart   = useCart() as any
 
+  const [platformCfg, setPlatformCfg] = useState({
+    delivery_fee: DEFAULT_DELIVERY_FEE,
+    free_delivery_threshold: DEFAULT_FREE_DELIVERY,
+    platform_fee: DEFAULT_PLATFORM_FEE,
+    upi_id: DEFAULT_UPI_ID,
+  })
   const [address,       setAddress]       = useState('')
   const [savedAddrs,    setSavedAddrs]    = useState<{id:string;label:string;address:string}[]>([])
   const [saveLabel,     setSaveLabel]     = useState('')
@@ -36,6 +44,20 @@ export default function CheckoutPage() {
     setMounted(true)
 
     const sb = createClient()
+
+    // ── Load platform config (pricing + UPI) from DB ───────────
+    sb.from('platform_config').select('key,value').then(({ data: cfg }) => {
+      if (!cfg?.length) return
+      const get = (key: string, fb: number) => Number(cfg.find(c => c.key === key)?.value ?? fb)
+      const getStr = (key: string, fb: string) => cfg.find(c => c.key === key)?.value ?? fb
+      setPlatformCfg({
+        delivery_fee:            get('delivery_fee_base', DEFAULT_DELIVERY_FEE),
+        free_delivery_threshold: get('free_delivery_above', DEFAULT_FREE_DELIVERY),
+        platform_fee:            get('platform_fee_flat', DEFAULT_PLATFORM_FEE),
+        upi_id:                  getStr('upi_id', DEFAULT_UPI_ID),
+      })
+    })
+
     sb.auth.getUser().then(({ data }) => {
       if (!data.user) { router.push('/auth/login'); return }
       setUserId(data.user.id)
@@ -114,8 +136,8 @@ export default function CheckoutPage() {
     </div>
   )
 
-  const delivery_fee = type === 'pickup' ? 0 : subtotal >= FREE_DELIVERY ? 0 : DELIVERY_FEE
-  const total        = subtotal + delivery_fee + PLATFORM_FEE
+  const delivery_fee = type === 'pickup' ? 0 : subtotal >= platformCfg.free_delivery_threshold ? 0 : platformCfg.delivery_fee
+  const total        = subtotal + delivery_fee + platformCfg.platform_fee
   const minOrder     = 0   // minimum order check disabled
   const belowMin     = false
 
@@ -139,7 +161,7 @@ export default function CheckoutPage() {
       delivery_instructions: note?.trim() || null,
       subtotal:              subtotal,
       delivery_fee:          delivery_fee,
-      platform_fee:          PLATFORM_FEE,
+      platform_fee:          platformCfg.platform_fee,
       discount:              0,
       total_amount:          total,
       payment_method:        payment === 'upi' ? 'online' : payment === 'wallet' ? 'wallet' : 'cod',
@@ -231,7 +253,7 @@ export default function CheckoutPage() {
 
       // Build UPI deep link
       const upiNote = encodeURIComponent(`Welokl order - ${cart.shop_name}`)
-      const upiUrl  = `upi://pay?pa=${WELOKL_UPI_ID}&pn=${encodeURIComponent(WELOKL_UPI_NAME)}&am=${total}&cu=INR&tn=${upiNote}`
+      const upiUrl  = `upi://pay?pa=${platformCfg.upi_id}&pn=${encodeURIComponent(WELOKL_UPI_NAME)}&am=${total}&cu=INR&tn=${upiNote}`
 
       // Open UPI app
       window.location.href = upiUrl
@@ -327,7 +349,7 @@ export default function CheckoutPage() {
         <p style={{ fontWeight:900, fontSize:20, color:'var(--text-primary)', marginBottom:8, letterSpacing:'-0.02em' }}>Complete your payment</p>
         <p style={{ fontSize:14, color:'var(--text-muted)', marginBottom:6 }}>Pay <strong style={{ color:'var(--text-primary)' }}>₹{total}</strong> to</p>
         <div style={{ background:'var(--page-bg)', borderRadius:14, padding:'12px 20px', marginBottom:6, display:'inline-block' }}>
-          <p style={{ fontSize:16, fontWeight:800, color:'#4f46e5', letterSpacing:'0.01em' }}>{WELOKL_UPI_ID}</p>
+          <p style={{ fontSize:16, fontWeight:800, color:'#4f46e5', letterSpacing:'0.01em' }}>{platformCfg.upi_id}</p>
         </div>
         <p style={{ fontSize:12, color:'var(--text-faint)', marginBottom:28 }}>via Google Pay, PhonePe, Paytm or any UPI app</p>
 
@@ -335,7 +357,7 @@ export default function CheckoutPage() {
         <button
           onClick={() => {
             const upiNote = encodeURIComponent(`Welokl order - ${cart.shop_name}`)
-            window.location.href = `upi://pay?pa=${WELOKL_UPI_ID}&pn=${encodeURIComponent(WELOKL_UPI_NAME)}&am=${total}&cu=INR&tn=${upiNote}`
+            window.location.href = `upi://pay?pa=${platformCfg.upi_id}&pn=${encodeURIComponent(WELOKL_UPI_NAME)}&am=${total}&cu=INR&tn=${upiNote}`
           }}
           style={{ width:'100%', padding:'14px', borderRadius:16, border:'2px solid #4f46e5', background:'var(--blue-light)', color:'#4f46e5', fontWeight:800, fontSize:15, cursor:'pointer', fontFamily:'inherit', marginBottom:10 }}>
           Open UPI app →
@@ -549,7 +571,7 @@ export default function CheckoutPage() {
           {[
             { label:'Item total', val:`₹${subtotal}`, green:false },
             { label:`Delivery${delivery_fee===0&&type==='delivery'?' (Free!)':type==='pickup'?' (Pickup)':''}`, val:delivery_fee===0?'FREE':`₹${delivery_fee}`, green:delivery_fee===0 },
-            { label:'Platform fee', val:`₹${PLATFORM_FEE}`, green:false },
+            { label:'Platform fee', val:`₹${platformCfg.platform_fee}`, green:false },
           ].map(r => (
             <div key={r.label} style={{ display:'flex', justifyContent:'space-between', marginBottom:10, fontSize:14 }}>
               <span style={{ color:'var(--text-secondary)' }}>{r.label}</span>

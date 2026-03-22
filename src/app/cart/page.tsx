@@ -3,15 +3,27 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useCart } from '@/store/cart'
-
-const FREE_DELIVERY_THRESHOLD = 199
-const DELIVERY_FEE = 25
+import { createClient } from '@/lib/supabase/client'
 
 export default function CartPage() {
   const router  = useRouter()
   const cart    = useCart()
   const [mounted, setMounted] = useState(false)
-  useEffect(() => { cart._hydrate?.(); setMounted(true) }, [])
+  const [platformCfg, setPlatformCfg] = useState({ delivery_fee: 30, free_delivery_threshold: 299, platform_fee: 5 })
+
+  useEffect(() => {
+    cart._hydrate?.()
+    setMounted(true)
+    createClient().from('platform_config').select('key,value').then(({ data: cfg }: any) => {
+      if (!cfg?.length) return
+      const get = (key: string, fb: number) => Number(cfg.find((c: any) => c.key === key)?.value ?? fb)
+      setPlatformCfg({
+        delivery_fee:            get('delivery_fee_base', 30),
+        free_delivery_threshold: get('free_delivery_above', 299),
+        platform_fee:            get('platform_fee_flat', 5),
+      })
+    })
+  }, [])
 
   if (!mounted) return (
     <div style={{ minHeight:'100vh', background:'var(--page-bg)', display:'flex', alignItems:'center', justifyContent:'center' }}>
@@ -21,10 +33,10 @@ export default function CartPage() {
   )
 
   const subtotal     = cart.subtotal()
-  const delivery_fee = subtotal >= FREE_DELIVERY_THRESHOLD ? 0 : DELIVERY_FEE
-  const platform_fee = 5  // flat ₹5 per order (admin-controlled)
+  const delivery_fee = subtotal >= platformCfg.free_delivery_threshold ? 0 : platformCfg.delivery_fee
+  const platform_fee = platformCfg.platform_fee
   const total        = subtotal + delivery_fee + platform_fee
-  const toFreeDelivery = FREE_DELIVERY_THRESHOLD - subtotal
+  const toFreeDelivery = platformCfg.free_delivery_threshold - subtotal
 
   if (cart.items.length === 0) return (
     <div style={{ minHeight:'100vh', background:'var(--page-bg)', display:'flex', alignItems:'center', justifyContent:'center', fontFamily:"'Plus Jakarta Sans',sans-serif" }}>
@@ -69,7 +81,7 @@ export default function CartPage() {
               </span>
             </div>
             <div style={{ height:5, background:'var(--page-bg)', borderRadius:999, overflow:'hidden' }}>
-              <div style={{ height:'100%', width:`${Math.min(100, (subtotal/FREE_DELIVERY_THRESHOLD)*100)}%`, background:'#FF3008', borderRadius:999, transition:'width .4s' }} />
+              <div style={{ height:'100%', width:`${Math.min(100, (subtotal/platformCfg.free_delivery_threshold)*100)}%`, background:'#FF3008', borderRadius:999, transition:'width .4s' }} />
             </div>
           </div>
         )}

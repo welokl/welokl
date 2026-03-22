@@ -12,7 +12,7 @@ import { uploadShopImage, deleteProductImages, imgUrl } from '@/lib/imageService
 import BusinessAnalytics from '@/components/BusinessAnalytics'
 import { PhoneGate } from '@/components/PhoneGate'
 
-type Tab = 'orders' | 'products' | 'analytics' | 'settings'
+type Tab = 'orders' | 'products' | 'analytics' | 'subscriptions' | 'settings'
 
 export default function BusinessDashboard() {
   const [user, setUser] = useState<User | null>(null)
@@ -299,10 +299,10 @@ export default function BusinessDashboard() {
 
       <div style={{background:"var(--card-bg)", borderBottom:"1px solid var(--border)", padding:"0 16px"}}>
         <div className="biz-tab-bar max-w-4xl mx-auto flex">
-          {(['orders','products','analytics','settings'] as Tab[]).map(t => (
+          {(['orders','products','analytics','subscriptions','settings'] as Tab[]).map(t => (
             <button key={t} onClick={() => setTab(t)}
               style={{padding:'12px 16px', fontSize:13, fontWeight:700, textTransform:'capitalize', borderBottom:`2px solid ${tab===t?'#FF3008':'transparent'}`, color:tab===t?'#FF3008':'var(--text-3)', background:'none', cursor:'pointer', fontFamily:'inherit', transition:'all .15s', whiteSpace:'nowrap', flexShrink:0}}>
-              {t === 'settings' ? '⚙ Settings' : t}{t === 'orders' && newOrders.length > 0 && <span className="ml-1.5 bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5">{newOrders.length}</span>}
+              {t === 'settings' ? '⚙ Settings' : t === 'subscriptions' ? 'Plans' : t}{t === 'orders' && newOrders.length > 0 && <span className="ml-1.5 bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5">{newOrders.length}</span>}
             </button>
           ))}
         </div>
@@ -449,6 +449,7 @@ export default function BusinessDashboard() {
         )}
 
         {tab === 'analytics' && shop && <BusinessAnalytics shopId={shop.id} />}
+        {tab === 'subscriptions' && shop && <SubscriptionPlans shopId={shop.id} />}
         {tab === 'settings' && shop && <ShopSettings shop={shop} onSaved={loadData} />}
       </div>
 
@@ -469,6 +470,195 @@ const SHOP_CATEGORIES = [
   'Fashion','Stationery','Hardware','Salon & Beauty','Pet Supplies','Flowers & Gifts',
 ]
 
+// ── Subscription Plans manager ──────────────────────────────────────────────
+function SubscriptionPlans({ shopId }: { shopId: string }) {
+  const [plans, setPlans]         = useState<any[]>([])
+  const [subs,  setSubs]          = useState<any[]>([])  // all active subscriber rows
+  const [loading, setLoading]     = useState(true)
+  const [saving,  setSaving]      = useState(false)
+  const [showForm, setShowForm]   = useState(false)
+  const [form, setForm] = useState({ name: '', description: '', price: '', delivery_time: '07:00', frequency: 'daily' })
+
+  const load = useCallback(async () => {
+    const sb = createClient()
+    const [{ data: planRows }, { data: subRows }] = await Promise.all([
+      sb.from('subscription_plans').select('*').eq('shop_id', shopId).order('created_at', { ascending: false }),
+      sb.from('customer_subscriptions').select('*, customer:users!customer_id(name, phone)').eq('shop_id', shopId).neq('status', 'cancelled'),
+    ])
+    setPlans(planRows ?? [])
+    setSubs(subRows ?? [])
+    setLoading(false)
+  }, [shopId])
+
+  useEffect(() => { load() }, [load])
+
+  async function savePlan() {
+    if (!form.name.trim() || !form.price) return
+    setSaving(true)
+    const sb = createClient()
+    await sb.from('subscription_plans').insert({
+      shop_id:       shopId,
+      name:          form.name.trim(),
+      description:   form.description.trim() || null,
+      price:         parseFloat(form.price),
+      delivery_time: form.delivery_time,
+      frequency:     form.frequency,
+      is_active:     true,
+    })
+    setForm({ name: '', description: '', price: '', delivery_time: '07:00', frequency: 'daily' })
+    setShowForm(false)
+    setSaving(false)
+    load()
+  }
+
+  async function togglePlan(id: string, current: boolean) {
+    await createClient().from('subscription_plans').update({ is_active: !current }).eq('id', id)
+    setPlans(p => p.map(x => x.id === id ? { ...x, is_active: !current } : x))
+  }
+
+  async function deletePlan(id: string) {
+    if (!confirm('Delete this plan? Existing subscribers will keep their subscriptions.')) return
+    await createClient().from('subscription_plans').delete().eq('id', id)
+    setPlans(p => p.filter(x => x.id !== id))
+  }
+
+  const inp: React.CSSProperties = {
+    width: '100%', padding: '11px 13px', borderRadius: 12, border: '1.5px solid var(--border)',
+    background: 'var(--input-bg)', color: 'var(--text)', fontSize: 14, fontFamily: 'inherit',
+    outline: 'none', boxSizing: 'border-box',
+  }
+
+  if (loading) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-3)' }}>Loading...</div>
+
+  return (
+    <div style={{ maxWidth: 640 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 10 }}>
+        <div>
+          <h2 style={{ fontWeight: 900, fontSize: 18, color: 'var(--text)', margin: 0 }}>Subscription Plans</h2>
+          <p style={{ fontSize: 13, color: 'var(--text-3)', marginTop: 3 }}>
+            {subs.filter(s => s.status === 'active').length} active subscriber{subs.filter(s => s.status === 'active').length !== 1 ? 's' : ''}
+          </p>
+        </div>
+        <button onClick={() => setShowForm(v => !v)}
+          style={{ padding: '10px 20px', borderRadius: 12, border: 'none', background: '#FF3008', color: '#fff', fontWeight: 800, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}>
+          {showForm ? 'Cancel' : '+ New Plan'}
+        </button>
+      </div>
+
+      {/* Create plan form */}
+      {showForm && (
+        <div style={{ background: 'var(--card-bg)', border: '1.5px solid #FF3008', borderRadius: 18, padding: '20px 18px', marginBottom: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <p style={{ fontWeight: 800, fontSize: 15, color: 'var(--text)', margin: 0 }}>Create a new plan</p>
+          <input placeholder="Plan name (e.g. Daily Milk 500ml)" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} style={inp} />
+          <input placeholder="Description (optional)" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} style={inp} />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div>
+              <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', marginBottom: 5 }}>Price per delivery (₹)</p>
+              <input type="number" placeholder="e.g. 50" min="1" value={form.price} onChange={e => setForm(f => ({ ...f, price: e.target.value }))} style={inp} />
+            </div>
+            <div>
+              <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', marginBottom: 5 }}>Delivery time</p>
+              <input type="time" value={form.delivery_time} onChange={e => setForm(f => ({ ...f, delivery_time: e.target.value }))} style={inp} />
+            </div>
+          </div>
+          <div>
+            <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', marginBottom: 5 }}>Frequency</p>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {['daily', 'weekdays', 'custom'].map(opt => (
+                <button key={opt} onClick={() => setForm(f => ({ ...f, frequency: opt }))}
+                  style={{ padding: '8px 16px', borderRadius: 10, border: `1.5px solid ${form.frequency === opt ? '#FF3008' : 'var(--border)'}`, background: form.frequency === opt ? 'rgba(255,48,8,.08)' : 'var(--card-bg)', color: form.frequency === opt ? '#FF3008' : 'var(--text-3)', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', textTransform: 'capitalize' }}>
+                  {opt}
+                </button>
+              ))}
+            </div>
+          </div>
+          <button onClick={savePlan} disabled={saving || !form.name.trim() || !form.price}
+            style={{ padding: '13px', borderRadius: 13, border: 'none', background: form.name && form.price ? '#FF3008' : 'var(--bg-3)', color: form.name && form.price ? '#fff' : 'var(--text-4)', fontWeight: 800, fontSize: 15, cursor: 'pointer', fontFamily: 'inherit' }}>
+            {saving ? 'Creating...' : 'Create Plan'}
+          </button>
+        </div>
+      )}
+
+      {/* Plans list */}
+      {plans.length === 0 ? (
+        <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 18, padding: '48px 24px', textAlign: 'center' }}>
+          <div style={{ width: 60, height: 60, borderRadius: 18, background: 'rgba(255,48,8,.07)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
+            <svg viewBox="0 0 24 24" fill="none" width={28} height={28}><path d="M4 4h16v2H4zM4 8h16M6 12h12M8 16h8M10 20h4" stroke="#FF3008" strokeWidth="1.5" strokeLinecap="round"/></svg>
+          </div>
+          <p style={{ fontWeight: 800, fontSize: 15, color: 'var(--text)', marginBottom: 6 }}>No plans yet</p>
+          <p style={{ fontSize: 13, color: 'var(--text-3)', lineHeight: 1.6 }}>Create plans like "Daily Milk", "Morning Tiffin" that customers can subscribe to.</p>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {plans.map(plan => {
+            const planSubs = subs.filter(s => s.plan_id === plan.id)
+            const activeSubs = planSubs.filter(s => s.status === 'active')
+            return (
+              <div key={plan.id} style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 18, overflow: 'hidden', opacity: plan.is_active ? 1 : 0.65 }}>
+                <div style={{ padding: '16px 18px' }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                        <p style={{ fontWeight: 800, fontSize: 15, color: 'var(--text)', margin: 0 }}>{plan.name}</p>
+                        <span style={{ fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 999, background: plan.is_active ? 'rgba(22,163,74,.1)' : 'rgba(150,150,150,.1)', color: plan.is_active ? '#16a34a' : 'var(--text-3)' }}>
+                          {plan.is_active ? 'ACTIVE' : 'INACTIVE'}
+                        </span>
+                      </div>
+                      {plan.description && <p style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 6 }}>{plan.description}</p>}
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                        <span style={{ fontSize: 16, fontWeight: 900, color: '#FF3008' }}>₹{plan.price}<span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)' }}>/delivery</span></span>
+                        <span style={{ fontSize: 12, color: 'var(--text-3)', background: 'var(--bg-2)', padding: '2px 9px', borderRadius: 999 }}>
+                          {plan.delivery_time} · {plan.frequency}
+                        </span>
+                        <span style={{ fontSize: 12, color: activeSubs.length > 0 ? '#16a34a' : 'var(--text-3)', background: activeSubs.length > 0 ? 'rgba(22,163,74,.1)' : 'var(--bg-2)', padding: '2px 9px', borderRadius: 999, fontWeight: 700 }}>
+                          {activeSubs.length} subscriber{activeSubs.length !== 1 ? 's' : ''}
+                        </span>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                      <button onClick={() => togglePlan(plan.id, plan.is_active)}
+                        style={{ padding: '7px 12px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg-1)', color: 'var(--text-3)', fontWeight: 700, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
+                        {plan.is_active ? 'Pause' : 'Resume'}
+                      </button>
+                      <button onClick={() => deletePlan(plan.id)}
+                        style={{ padding: '7px 12px', borderRadius: 10, border: '1px solid rgba(239,68,68,.25)', background: 'rgba(239,68,68,.06)', color: '#ef4444', fontWeight: 700, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Subscribers */}
+                {activeSubs.length > 0 && (
+                  <div style={{ borderTop: '1px solid var(--border)', padding: '12px 18px', background: 'var(--bg-1)' }}>
+                    <p style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Subscribers</p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {activeSubs.map((s: any) => (
+                        <div key={s.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                          <div>
+                            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{s.customer?.name || '—'}</span>
+                            {s.delivery_address && <span style={{ fontSize: 11, color: 'var(--text-3)', marginLeft: 8 }}>{s.delivery_address}</span>}
+                          </div>
+                          {s.customer?.phone && (
+                            <a href={`tel:${s.customer.phone}`} style={{ fontSize: 11, fontWeight: 800, color: '#fff', background: '#16a34a', padding: '3px 10px', borderRadius: 8, textDecoration: 'none' }}>
+                              Call
+                            </a>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── ShopSettings ─────────────────────────────────────────────────────────────
 function ShopSettings({ shop, onSaved }: { shop: any; onSaved: () => void }) {
   const [section, setSection] = useState<'info'|'hours'|'delivery'|'images'|'offers'>('info')
   const [saving, setSaving]   = useState(false)

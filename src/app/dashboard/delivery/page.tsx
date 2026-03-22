@@ -23,6 +23,7 @@ export default function DeliveryDashboard() {
   const [notification, setNotification] = useState<{ text: string; type: 'success' | 'error' } | null>(null)
   const [verStatus, setVerStatus] = useState<'pending' | 'approved' | 'rejected' | null>(null)
   const [verNote, setVerNote]     = useState<string | null>(null)
+  const [partnerPayout, setPartnerPayout] = useState(20)
   const [riderPos, setRiderPos] = useState<{ lat: number; lng: number } | null>(null)
   const [mapReady, setMapReady] = useState(false)
   const mapRef = useRef<HTMLDivElement>(null)
@@ -39,6 +40,10 @@ export default function DeliveryDashboard() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { window.location.href = '/auth/login'; return }
     setUserId(user.id)
+
+    // Load partner payout from platform config
+    supabase.from('platform_config').select('key,value').eq('key', 'partner_payout').single()
+      .then(({ data }) => { if (data?.value) setPartnerPayout(Number(data.value)) })
 
     // Role guard
     const { data: roleRow } = await supabase.from('users').select('role, phone').eq('id', user.id).single()
@@ -625,6 +630,33 @@ export default function DeliveryDashboard() {
               )
             })()}
 
+            {/* Post-pickup: prominent navigate-to-customer banner */}
+            {assignedOrder.status === 'picked_up' && (() => {
+              const destLat = assignedOrder.delivery_lat as number | null
+              const destLng = (assignedOrder as any).delivery_lng as number | null
+              const mapsUrl = destLat && destLng
+                ? `https://www.google.com/maps/dir/?api=1&destination=${destLat},${destLng}&travelmode=driving`
+                : null
+              return (
+                <div style={{ background: 'linear-gradient(135deg, #16a34a, #15803d)', borderRadius: 18, padding: '18px 20px', marginBottom: 16 }}>
+                  <p style={{ fontSize: 12, fontWeight: 800, color: 'rgba(255,255,255,.75)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Order picked up</p>
+                  <p style={{ fontSize: 16, fontWeight: 900, color: '#fff', marginBottom: 12 }}>
+                    Now deliver to {(assignedOrder as any).customer?.name || 'Customer'}
+                  </p>
+                  <p style={{ fontSize: 12, color: 'rgba(255,255,255,.8)', marginBottom: 14 }}>{assignedOrder.delivery_address}</p>
+                  {mapsUrl ? (
+                    <a href={mapsUrl} target="_blank" rel="noopener noreferrer"
+                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: '#fff', color: '#15803d', fontWeight: 900, fontSize: 15, padding: '13px 20px', borderRadius: 13, textDecoration: 'none' }}>
+                      <Navigation size={18} />
+                      Navigate to Customer
+                    </a>
+                  ) : (
+                    <p style={{ fontSize: 12, color: 'rgba(255,255,255,.6)' }}>No GPS coordinates for this address</p>
+                  )}
+                </div>
+              )
+            })()}
+
             <div className="flex items-center justify-between mb-4 p-3 bg-surface-50 rounded-2xl">
               <span className="text-surface-500 text-sm">Order total</span>
               <span className="font-bold text-brand-500">{'\u20B9'}{assignedOrder.total_amount}</span>
@@ -688,11 +720,17 @@ export default function DeliveryDashboard() {
                 </div>
 
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm font-bold text-surface-900">{'\u20B9'}{order.total_amount}</span>
-                    <span className="text-xs text-surface-400">
-                      {order.payment_method === 'cod' ? 'Cash on delivery' : 'Paid online'}
-                    </span>
+                  <div className="flex flex-col gap-1">
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-bold text-surface-900">{'\u20B9'}{order.total_amount}</span>
+                      <span className="text-xs text-surface-400">
+                        {order.payment_method === 'cod' ? 'Cash on delivery' : 'Paid online'}
+                      </span>
+                    </div>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'rgba(22,163,74,0.1)', border: '1px solid rgba(22,163,74,0.25)', borderRadius: 8, padding: '3px 9px', width: 'fit-content' }}>
+                      <svg viewBox="0 0 16 16" fill="none" width={11} height={11}><circle cx="8" cy="8" r="7" stroke="#16a34a" strokeWidth="1.5"/><path d="M8 4.5V5M8 11V11.5M10 6.5C10 5.7 9.1 5 8 5S6 5.7 6 6.5 7.2 7.5 8 7.5 10 8.3 10 9.5 9 11 8 11 6 10.3 6 9.5" stroke="#16a34a" strokeWidth="1.3" strokeLinecap="round"/></svg>
+                      <span style={{ fontSize: 11, fontWeight: 800, color: '#15803d' }}>You earn ₹{partnerPayout}</span>
+                    </div>
                   </div>
                   <button
                     onClick={() => acceptOrder(order.id)}
