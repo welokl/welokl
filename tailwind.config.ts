@@ -31,9 +31,9 @@ const config: Config = {
         }
       },
       fontFamily: {
-        sans: ['Plus Jakarta Sans', 'system-ui', 'sans-serif'],
-        display: ['Syne', 'system-ui', 'sans-serif'],
-        mono: ['monospace'],
+        sans:    ['var(--font-jakarta)', 'Plus Jakarta Sans', 'system-ui', 'sans-serif'],
+        display: ['var(--font-syne)',    'Syne',              'system-ui', 'sans-serif'],
+        mono:    ['monospace'],
       },
       animation: {
         'fade-in':   'fadeIn 0.5s ease-out',

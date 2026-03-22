@@ -47,7 +47,7 @@ export default function BusinessDashboard() {
     const { data: shopData } = await supabase.from('shops').select('*').eq('owner_id', authUser.id).single()
     if (!shopData) { setLoading(false); return }
     setShop(shopData)
-    setVerStatus((shopData as any).verification_status ?? 'approved')
+    setVerStatus((shopData as any).verification_status ?? 'pending')
     setVerNote((shopData as any).verification_note ?? null)
     const [{ data: orderData }, { data: productData }] = await Promise.all([
       supabase.from('orders').select('*, delivery_partner_id, pickup_code, items:order_items(*)').eq('shop_id', shopData.id).order('created_at', { ascending: false }).limit(50),

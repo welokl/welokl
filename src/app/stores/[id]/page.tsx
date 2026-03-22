@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import Image from 'next/image'
 import { createClient } from '@/lib/supabase/client'
 import { useCart } from '@/store/cart'
 import FavouriteButton from '@/components/FavouriteButton'
@@ -132,7 +133,7 @@ export default function StorePage() {
         <div style={{ position:'relative', height: shop.banner_url ? 180 : 130, overflow:'visible' }}>
           {shop.banner_url ? (
             <div style={{ height:180, overflow:'hidden', borderRadius:0, position:'relative' }}>
-              <img src={shop.banner_url} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+              <Image src={shop.banner_url} alt="" fill sizes="100vw" className="object-cover" />
               <div style={{ position:'absolute', inset:0, background:'linear-gradient(to top, rgba(0,0,0,.55) 0%, rgba(0,0,0,.05) 55%)' }} />
             </div>
           ) : (
@@ -144,7 +145,7 @@ export default function StorePage() {
           {/* DP — absolute at bottom of banner, fully visible below it */}
           <div style={{ position:'absolute', bottom:-38, left:16, width:80, height:80, borderRadius:22, background:'#fff', border:'4px solid #fff', overflow:'hidden', boxShadow:'0 4px 20px rgba(0,0,0,.15)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:10 }}>
             {shop.image_url
-              ? <img src={shop.image_url} alt={shop.name} style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+              ? <Image src={shop.image_url} alt={shop.name} fill sizes="80px" className="object-cover" />
               : <span style={{ fontSize:36 }}>🏪</span>
             }
           </div>
@@ -166,7 +167,7 @@ export default function StorePage() {
           {/* Stats row */}
           <div style={{ display:'flex', alignItems:'center', gap:16, marginBottom:14, flexWrap:'wrap' }}>
             <div style={{ display:'flex', alignItems:'center', gap:5 }}>
-              <span style={{ fontSize:13, fontWeight:900, color:'#d97706' }}>★ {shop.rating?.toFixed(1) || '4.0'}</span>
+              <span style={{ fontSize:13, fontWeight:900, color:'#d97706' }}>★ {(shop.rating ?? 0).toFixed(1)}</span>
             </div>
             {shop.delivery_enabled && (
               <>
@@ -353,7 +354,7 @@ function ProductCard({ product, qty, onAdd, onRemove, onUpdate }: {
       {/* Image — right side */}
       <div style={{ width:120, height:120, flexShrink:0, background:'#F8F8F8', position:'relative', overflow:'hidden', margin:10, borderRadius:14 }}>
         {product.image_url
-          ? <img src={product.image_url} alt={product.name} style={{ width:'100%', height:'100%', objectFit:'cover' }} onError={e => { (e.currentTarget as HTMLImageElement).style.display='none' }} />
+          ? <Image src={product.image_url} alt={product.name} fill sizes="120px" className="object-cover" />
           : <div style={{ width:'100%', height:'100%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:38, opacity:.15 }}>🛍️</div>
         }
         {disc > 0 && <div style={{ position:'absolute', top:6, left:6, background:'#FF3008', color:'#fff', fontSize:10, fontWeight:900, padding:'2px 7px', borderRadius:7 }}>-{disc}%</div>}

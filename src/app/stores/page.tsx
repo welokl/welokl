@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 import { createClient } from '@/lib/supabase/client'
 import type { Shop } from '@/types'
 import BottomNav from '@/components/BottomNav'
@@ -297,7 +298,7 @@ function ShopCard({ shop, index }: { shop: any; index: number }) {
       {/* Image */}
       <div style={{ width:96, height:96, flexShrink:0, background: cat.bg, display:'flex', alignItems:'center', justifyContent:'center', position:'relative', overflow:'hidden', color: cat.color }}>
         {shop.image_url
-          ? <img src={shop.image_url} alt={shop.name} style={{ width:'100%', height:'100%', objectFit:'cover' }} onError={e => { (e.currentTarget as HTMLImageElement).style.display='none' }} />
+          ? <Image src={shop.image_url} alt={shop.name} fill sizes="96px" className="object-cover" />
           : <span style={{ color: cat.color, opacity:.7 }}>{cat.svg}</span>
         }
         <div style={{ position:'absolute', bottom:5, left:5 }}>
@@ -329,7 +330,7 @@ function ShopCard({ shop, index }: { shop: any; index: number }) {
             <svg viewBox="0 0 24 24" fill="#f59e0b" width={12} height={12}>
               <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
             </svg>
-            {(shop.rating||4.0).toFixed(1)}
+            {(shop.rating ?? 0).toFixed(1)}
           </div>
           {shop.delivery_enabled && (
             <>

@@ -3,6 +3,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { useFCM } from '@/hooks/useFCM'
 import { useCart } from '@/store/cart'
 import Link from 'next/link'
+import Image from 'next/image'
 import { createClient } from '@/lib/supabase/client'
 import type { Order, User } from '@/types'
 import { ORDER_STATUS_LABELS, ORDER_STATUS_ICONS } from '@/types'
@@ -505,7 +506,7 @@ function ShopCard({ shop, index }: { shop: Shop & { km: number | null }; index: 
       {/* Image */}
       <div style={{ width:90, height:90, flexShrink:0, background:`${color}15`, display:'flex', alignItems:'center', justifyContent:'center', position:'relative', overflow:'hidden' }}>
         {shop.image_url
-          ? <img src={shop.image_url} alt={shop.name} style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+          ? <Image src={shop.image_url} alt={shop.name} fill sizes="90px" className="object-cover" />
           : <span style={{ color: color, opacity:.6 }}>{CAT_ICON_SVG[catKey] || CAT_ICON_SVG['default']}</span>
         }
         <div style={{ position:'absolute', bottom:5, left:5 }}>
@@ -531,7 +532,7 @@ function ShopCard({ shop, index }: { shop: Shop & { km: number | null }; index: 
         <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
           <span style={{ display:'flex', alignItems:'center', gap:3, fontSize:11, fontWeight:700, color:'var(--text-primary)' }}>
             <svg viewBox="0 0 24 24" fill="#f59e0b" width={12} height={12}><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-            {shop.rating?.toFixed(1) || '4.0'}
+            {(shop.rating ?? 0).toFixed(1)}
           </span>
           <span style={{ width:3, height:3, borderRadius:'50%', background:'var(--text-faint)' }} />
           <span style={{ display:'flex', alignItems:'center', gap:3, fontSize:11, color:'var(--text-muted)' }}>
@@ -569,7 +570,7 @@ function ProductCard({ product }: { product: Product }) {
     <Link href={`/stores/${product.shop_id}`} className="prod-card" style={{ width:140, flexShrink:0 }}>
       <div style={{ height:130, background:'var(--chip-bg)', position:'relative', overflow:'hidden' }}>
         {product.image_url
-          ? <img src={product.image_url} alt={product.name} style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+          ? <Image src={product.image_url} alt={product.name} fill sizes="140px" className="object-cover" />
           : <div style={{ width:'100%', height:'100%', display:'flex', alignItems:'center', justifyContent:'center' }}><svg viewBox="0 0 24 24" fill="none" width={40} height={40}><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4zM3 6h18M16 10a4 4 0 01-8 0" stroke="var(--text-faint)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></div>
         }
         {disc && (

@@ -26,7 +26,9 @@ export default function OrderPage() {
   const [partner,    setPartner]    = useState<any>(null)
   const [riderPos,   setRiderPos]   = useState<{lat:number;lng:number}|null>(null)
   const [loading,    setLoading]    = useState(true)
-  const [cancelling, setCancelling] = useState(false)
+  const [shopRating,     setShopRating]     = useState(0)
+  const [ratingDone,     setRatingDone]     = useState(false)
+  const [ratingLoading,  setRatingLoading]  = useState(false)
 
   const isValidUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id ?? '')
 
@@ -180,11 +182,27 @@ export default function OrderPage() {
     setLoading(false)
   }
 
-  async function cancelOrder() {
-    setCancelling(true)
-    await createClient().from('orders').update({ status:'cancelled' }).eq('id', id)
-    loadOrder()
-    setCancelling(false)
+  async function submitRating(stars: number) {
+    if (ratingDone || ratingLoading || !order?.shop_id) return
+    setShopRating(stars)
+    setRatingLoading(true)
+    const sb = createClient()
+    const { data: { user } } = await sb.auth.getUser()
+    // Upsert rating (idempotent per order)
+    await sb.from('order_ratings').upsert({
+      order_id: id,
+      shop_id: order.shop_id,
+      customer_id: user?.id,
+      rating: stars,
+    }, { onConflict: 'order_id' })
+    // Recalculate shop average
+    const { data: ratings } = await sb.from('order_ratings').select('rating').eq('shop_id', order.shop_id)
+    if (ratings && ratings.length > 0) {
+      const avg = ratings.reduce((s: number, r: any) => s + r.rating, 0) / ratings.length
+      await sb.from('shops').update({ rating: Math.round(avg * 10) / 10 }).eq('id', order.shop_id)
+    }
+    setRatingDone(true)
+    setRatingLoading(false)
   }
 
   if (!isValidUUID) return (
@@ -218,7 +236,6 @@ export default function OrderPage() {
   const stepIdx  = STATUS_STEPS.findIndex(s => s.key === order.status)
   const isCancelled = ['cancelled','rejected'].includes(order.status)
   const isActive    = !isCancelled && order.status !== 'delivered'
-  const canCancel   = ['placed','accepted'].includes(order.status)
   const showMap     = ['ready', 'picked_up'].includes(order.status) && !!order.delivery_partner_id && !!riderPos
 
   return (
@@ -387,15 +404,41 @@ export default function OrderPage() {
           </div>
         </div>
 
-        {/* Cancel */}
-        {canCancel && (
-          <button onClick={cancelOrder} disabled={cancelling}
-            style={{ width:'100%', padding:'14px', borderRadius:16, border:'1.5px solid rgba(239,68,68,.3)', background:'var(--error-light)', color:'#ef4444', fontWeight:800, fontSize:14, cursor:'pointer', fontFamily:'inherit' }}>
-            {cancelling ? 'Cancelling…' : 'Cancel order'}
-          </button>
+        {/* Rate your order — shown once delivered */}
+        {order.status === 'delivered' && (
+          <div style={{ background:'var(--card-white)', borderRadius:20, padding:'20px 18px' }}>
+            {ratingDone ? (
+              <div style={{ textAlign:'center', padding:'8px 0' }}>
+                <div style={{ fontSize:36, marginBottom:8 }}>🙏</div>
+                <p style={{ fontWeight:800, fontSize:15, color:'var(--text-primary)', marginBottom:4 }}>Thanks for rating!</p>
+                <p style={{ fontSize:13, color:'var(--text-muted)' }}>Your feedback helps other customers</p>
+                <div style={{ display:'flex', justifyContent:'center', gap:4, marginTop:12 }}>
+                  {[1,2,3,4,5].map(s => (
+                    <span key={s} style={{ fontSize:26, color: s <= shopRating ? '#f59e0b' : 'var(--divider)' }}>★</span>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <>
+                <p style={{ fontWeight:800, fontSize:15, color:'var(--text-primary)', marginBottom:4 }}>Rate your experience</p>
+                <p style={{ fontSize:13, color:'var(--text-muted)', marginBottom:16 }}>How was your order from {shopName}?</p>
+                <div style={{ display:'flex', justifyContent:'center', gap:6, marginBottom:8 }}>
+                  {[1,2,3,4,5].map(s => (
+                    <button key={s} onClick={() => submitRating(s)} disabled={ratingLoading}
+                      style={{ fontSize:36, background:'none', border:'none', cursor:'pointer', padding:'4px', lineHeight:1, color: s <= shopRating ? '#f59e0b' : '#ddd', transition:'color .15s, transform .1s', transform: s <= shopRating ? 'scale(1.15)' : 'scale(1)' }}>
+                      ★
+                    </button>
+                  ))}
+                </div>
+                <p style={{ fontSize:12, color:'var(--text-faint)', textAlign:'center' }}>
+                  {shopRating === 0 ? 'Tap a star' : shopRating === 5 ? 'Excellent!' : shopRating >= 4 ? 'Great!' : shopRating >= 3 ? 'Good' : shopRating >= 2 ? 'Could be better' : 'Poor experience'}
+                </p>
+              </>
+            )}
+          </div>
         )}
 
-        {/* Reorder */}
+        {/* Order again */}
         {order.status === 'delivered' && (
           <Link href={`/stores/${order.shop_id || order.business_id}`}
             style={{ display:'block', padding:'14px', borderRadius:16, background:'#FF3008', color:'#fff', fontWeight:800, fontSize:15, textDecoration:'none', textAlign:'center', boxShadow:'0 8px 24px rgba(255,48,8,.3)' }}>

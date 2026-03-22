@@ -124,8 +124,8 @@ export default function AdminDashboard() {
   const delivFees  = delivOrds.reduce((s, o) => s + Math.max(0, (o.total_amount || 0) - (o.subtotal || 0) - cfg('platform_fee_flat', 5)), 0)
   const netRev     = commEarned + platFees + Math.max(0, delivFees - partPay)
  
-  const pendingShops  = shops.filter(s => s.verification_status === 'pending')
-  const pendingRiders = pendingDel.filter(d => d.verification_status === 'pending')
+  const pendingShops  = shops.filter(s => !s.verification_status || s.verification_status === 'pending')
+  const pendingRiders = pendingDel.filter(d => !d.verification_status || d.verification_status === 'pending')
   const totalPending  = pendingShops.length + pendingRiders.length
  
   async function saveConfig() {
