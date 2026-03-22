@@ -91,16 +91,47 @@ export default function ManagementDashboard() {
 
   const unresponded = orders.filter(o => o.status === 'placed')
 
+  // Summary stats
+  const totalOrders   = orders.length
+  const distinctShops = new Set(orders.map(o => o.shop?.name).filter(Boolean)).size
+  const activeOrders  = orders.filter(o => !['delivered','cancelled','rejected'].includes(o.status)).length
+  const todayGMV      = orders
+    .filter(o => new Date(o.created_at).toDateString() === new Date().toDateString())
+    .reduce((s, o) => s + (o.total_amount || 0), 0)
+
   return (
     <div style={{ minHeight: '100dvh', background: 'var(--bg)', padding: '24px 16px', maxWidth: 700, margin: '0 auto' }}>
       <InAppToast />
 
       {/* Header */}
-      <div style={{ marginBottom: 24 }}>
+      <div style={{ marginBottom: 20 }}>
         <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 4 }}>Management</p>
         <h1 style={{ fontSize: 22, fontWeight: 900, color: 'var(--text)', margin: 0 }}>Operations Feed</h1>
-        <p style={{ fontSize: 13, color: 'var(--text-3)', marginTop: 4 }}>All incoming orders — you are notified for every new order</p>
+        {!loading && totalOrders > 0 && (
+          <p style={{ fontSize: 13, color: 'var(--text-3)', marginTop: 5, fontWeight: 500 }}>
+            <span style={{ color: 'var(--text)', fontWeight: 800 }}>{totalOrders}</span> order{totalOrders !== 1 ? 's' : ''} from{' '}
+            <span style={{ color: 'var(--text)', fontWeight: 800 }}>{distinctShops}</span> shop{distinctShops !== 1 ? 's' : ''}
+          </p>
+        )}
       </div>
+
+      {/* Stats row */}
+      {!loading && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 20 }}>
+          <div style={{ background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.18)', borderRadius: 14, padding: '12px 14px' }}>
+            <p style={{ fontSize: 22, fontWeight: 900, color: '#3b82f6', margin: 0 }}>{totalOrders}</p>
+            <p style={{ fontSize: 11, fontWeight: 700, color: '#3b82f6', margin: '2px 0 0', opacity: 0.8 }}>Total Orders</p>
+          </div>
+          <div style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 14, padding: '12px 14px' }}>
+            <p style={{ fontSize: 22, fontWeight: 900, color: '#d97706', margin: 0 }}>{activeOrders}</p>
+            <p style={{ fontSize: 11, fontWeight: 700, color: '#d97706', margin: '2px 0 0', opacity: 0.8 }}>Active Now</p>
+          </div>
+          <div style={{ background: 'rgba(21,128,61,0.08)', border: '1px solid rgba(21,128,61,0.18)', borderRadius: 14, padding: '12px 14px' }}>
+            <p style={{ fontSize: 22, fontWeight: 900, color: '#15803d', margin: 0 }}>₹{todayGMV.toLocaleString('en-IN')}</p>
+            <p style={{ fontSize: 11, fontWeight: 700, color: '#15803d', margin: '2px 0 0', opacity: 0.8 }}>Today's GMV</p>
+          </div>
+        </div>
+      )}
 
       {/* Unresponded alert */}
       {!loading && unresponded.length > 0 && (
