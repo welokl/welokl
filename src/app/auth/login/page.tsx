@@ -45,14 +45,10 @@ export default function LoginPage() {
 
     if (error) {
       setLoading(false)
-      // "Invalid login credentials" = wrong password OR email doesn't exist
-      if (error.message.toLowerCase().includes('invalid login') || error.message.toLowerCase().includes('invalid credentials')) {
-        // Check if the email is registered at all
-        const { data: methods } = await supabase.auth.signInWithOtp({ email, options: { shouldCreateUser: false } })
-        // If OTP request succeeds for non-existing user it errors too
-        // Simpler: just show "not found" prompt
+      const msg = error.message.toLowerCase()
+      if (msg.includes('invalid login') || msg.includes('invalid credentials') || msg.includes('email not confirmed')) {
         setNotFound(true)
-        setMsg({ text: 'No account found with this email.', type:'error' })
+        setMsg({ text: 'Wrong email or password. Try again or sign up.', type:'error' })
       } else {
         setMsg({ text: error.message, type:'error' })
       }
@@ -72,9 +68,8 @@ export default function LoginPage() {
         delivery:         '/dashboard/delivery',
         delivery_partner: '/dashboard/delivery',
         admin:            '/dashboard/admin',
+        management:       '/dashboard/management',
       }
-      // Hard redirect — forces full page reload so middleware picks up session cookie
-      await new Promise(r => setTimeout(r, 200))
       window.location.replace(roleMap[role] ?? '/dashboard/customer')
     }
   }

@@ -10,6 +10,7 @@ const ROLE_HOME: Record<string, string> = {
   delivery:         '/dashboard/delivery',
   delivery_partner: '/dashboard/delivery',
   admin:            '/dashboard/admin',
+  management:       '/dashboard/management',
 }
 
 const CUSTOMER_ROUTES = ['/stores', '/cart', '/checkout', '/orders', '/favourites', '/search', '/location']
@@ -115,10 +116,11 @@ export async function proxy(request: NextRequest) {
     if (pathname.startsWith('/dashboard/')) {
       const segment = pathname.split('/')[2]
       const allowed =
-        (segment === 'customer' && role === 'customer') ||
-        (segment === 'business' && (role === 'shopkeeper' || role === 'business')) ||
-        (segment === 'delivery' && (role === 'delivery' || role === 'delivery_partner')) ||
-        (segment === 'admin'    && role === 'admin')
+        (segment === 'customer'   && role === 'customer') ||
+        (segment === 'business'   && (role === 'shopkeeper' || role === 'business')) ||
+        (segment === 'delivery'   && (role === 'delivery' || role === 'delivery_partner')) ||
+        (segment === 'admin'      && role === 'admin') ||
+        (segment === 'management' && role === 'management')
       if (!allowed) return NextResponse.redirect(new URL(home, request.url))
     }
   }
