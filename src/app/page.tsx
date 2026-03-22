@@ -155,11 +155,13 @@ export default function LandingPage() {
     border:'rgba(255,255,255,.08)', text:'#f0f0f0', text2:'rgba(255,255,255,.5)', text3:'rgba(255,255,255,.22)',
     nav:'rgba(6,6,6,.88)', input:'rgba(255,255,255,.06)',
     bentoCard:'#111111', bentoBorder:'rgba(255,255,255,.08)', bentoShadow:'none',
+    cardShadow:'none',
   } : {
     bg:'#fafaf9', bg2:'#f0efec', bg3:'#e5e4e0', card:'#ffffff',
-    border:'rgba(0,0,0,.1)', text:'#0c0c0c', text2:'rgba(0,0,0,.52)', text3:'rgba(0,0,0,.24)',
+    border:'rgba(0,0,0,.12)', text:'#0c0c0c', text2:'rgba(0,0,0,.52)', text3:'rgba(0,0,0,.24)',
     nav:'rgba(250,250,249,.92)', input:'rgba(0,0,0,.04)',
-    bentoCard:'#ffffff', bentoBorder:'rgba(0,0,0,.1)', bentoShadow:'0 2px 12px rgba(0,0,0,.06)',
+    bentoCard:'#ffffff', bentoBorder:'rgba(0,0,0,.12)', bentoShadow:'0 2px 12px rgba(0,0,0,.07)',
+    cardShadow:'0 2px 20px rgba(0,0,0,.08), 0 1px 4px rgba(0,0,0,.05)',
   }
 
   const getCatColor = (cat:string) => { const k = Object.keys(CAT_MAP).find(k => cat?.toLowerCase().includes(k)); return k ? CAT_MAP[k] : CAT_MAP.default }
@@ -755,7 +757,7 @@ export default function LandingPage() {
           </div>
           <div className="cat-g">
             {CATS.map(({ id, label, Icon, color, bg }) => (
-              <Link key={id} href={`/stores?category=${id}`} className="lift" style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:10, padding:'22px 8px 18px', background:t.card, borderRadius:22, border:`1.5px solid ${t.border}`, position:'relative', overflow:'hidden' }}>
+              <Link key={id} href={`/stores?category=${id}`} className="lift" style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:10, padding:'22px 8px 18px', background:t.card, borderRadius:22, border:`1.5px solid ${t.border}`, boxShadow:t.cardShadow, position:'relative', overflow:'hidden' }}>
                 <div style={{ position:'absolute', top:0, left:'50%', transform:'translateX(-50%)', width:60, height:60, borderRadius:'50%', background:bg, filter:'blur(20px)', opacity:.6, pointerEvents:'none' }} />
                 <div style={{ width:54, height:54, borderRadius:17, background:bg, display:'flex', alignItems:'center', justifyContent:'center', color, position:'relative' }}>
                   <Icon />
@@ -768,108 +770,121 @@ export default function LandingPage() {
       </section>
 
       {/* ── LIVE SHOPS GRID ──────────────────────────────────── */}
-      {liveShops.length > 0 && (
-        <section className="sec" style={{ padding:'80px 20px', background:t.bg2 }}>
-          <div style={{ maxWidth:1200, margin:'0 auto' }}>
-            <div style={{ display:'flex', alignItems:'flex-end', justifyContent:'space-between', marginBottom:36, flexWrap:'wrap', gap:12 }}>
-              <div>
-                <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
-                  <span className="pulse" style={{ width:8, height:8, borderRadius:'50%', background:'#16a34a', display:'block' }} />
-                  <span style={{ fontSize:12, fontWeight:700, color:'#16a34a', textTransform:'uppercase', letterSpacing:'.08em' }}>Live now</span>
-                </div>
-                <h2 className="syne" style={{ fontSize:'clamp(24px,4vw,38px)', fontWeight:800, color:t.text, letterSpacing:'-0.04em' }}>Shops open near you</h2>
+      <section className="sec" style={{ padding:'80px 20px', background:t.bg2 }}>
+        <div style={{ maxWidth:1200, margin:'0 auto' }}>
+          <div style={{ display:'flex', alignItems:'flex-end', justifyContent:'space-between', marginBottom:36, flexWrap:'wrap', gap:12 }}>
+            <div>
+              <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
+                <span className="pulse" style={{ width:8, height:8, borderRadius:'50%', background:'#16a34a', display:'block' }} />
+                <span style={{ fontSize:12, fontWeight:700, color:'#16a34a', textTransform:'uppercase', letterSpacing:'.08em' }}>Live now</span>
               </div>
-              <Link href="/stores" className="ghost" style={{ display:'inline-flex', alignItems:'center', gap:7, padding:'11px 20px', borderRadius:13, border:`1.5px solid ${t.border}`, fontSize:14, fontWeight:700, color:t.text }}>
-                See all shops <IcoArrow />
-              </Link>
+              <h2 className="syne" style={{ fontSize:'clamp(24px,4vw,38px)', fontWeight:800, color:t.text, letterSpacing:'-0.04em' }}>Shops open near you</h2>
             </div>
-            <div className="shops-g">
-              {liveShops.map(shop => {
-                const color = getCatColor(shop.category_name||'')
-                return (
-                  <Link key={shop.id} href={`/stores/${shop.id}`} className="lift" style={{ display:'block', background:t.card, borderRadius:22, overflow:'hidden', border:`1.5px solid ${t.border}` }}>
-                    <div style={{ height:130, background:shop.banner_url?'none':`linear-gradient(135deg,${color}15,${color}30)`, position:'relative', overflow:'hidden' }}>
-                      {shop.banner_url && <img src={shop.banner_url} alt="" className="iz" style={{ width:'100%', height:'100%', objectFit:'cover' }} onError={e => (e.currentTarget.style.display='none')} />}
-                      <div style={{ position:'absolute', inset:0, background:'linear-gradient(to top,rgba(0,0,0,.3),transparent 60%)' }} />
-                      <div style={{ position:'absolute', top:12, right:12, display:'flex', alignItems:'center', gap:5, background:shop.is_open?'rgba(22,163,74,.88)':'rgba(60,60,60,.85)', borderRadius:999, padding:'4px 10px' }}>
-                        <span style={{ width:5, height:5, borderRadius:'50%', background:'#fff', display:'block' }} />
-                        <span style={{ fontSize:11, fontWeight:700, color:'#fff' }}>{shop.is_open ? 'Open' : 'Closed'}</span>
-                      </div>
-                      <div style={{ position:'absolute', bottom:-18, left:16, width:44, height:44, borderRadius:14, background:t.card, border:`3px solid ${t.card}`, overflow:'hidden', display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 4px 14px rgba(0,0,0,.12)' }}>
-                        {shop.image_url
-                          ? <img src={shop.image_url} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} onError={e => (e.currentTarget.style.display='none')} />
-                          : <span style={{ color, fontSize:18 }}><IcoGrocery size={20} /></span>
-                        }
-                      </div>
-                    </div>
-                    <div style={{ padding:'26px 18px 18px' }}>
-                      <p style={{ fontWeight:800, fontSize:15, color:t.text, marginBottom:6 }}>{shop.name}</p>
-                      <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
-                        {shop.rating && <span style={{ display:'flex', alignItems:'center', gap:3, color:'#d97706', fontSize:12, fontWeight:700 }}><IcoStar /> {Number(shop.rating).toFixed(1)}</span>}
-                        {shop.avg_delivery_time && <><span style={{ color:t.text3 }}>·</span><span style={{ display:'flex', alignItems:'center', gap:3, color:t.text2, fontSize:12, fontWeight:600 }}><IcoClock /> {shop.avg_delivery_time} min</span></>}
-                        {shop.category_name && <><span style={{ color:t.text3 }}>·</span><span style={{ fontSize:11, fontWeight:600, color, background:`${color}15`, padding:'2px 8px', borderRadius:999 }}>{shop.category_name.split(' ')[0]}</span></>}
-                      </div>
-                    </div>
-                  </Link>
-                )
-              })}
-            </div>
+            <Link href="/stores" className="ghost" style={{ display:'inline-flex', alignItems:'center', gap:7, padding:'11px 20px', borderRadius:13, border:`1.5px solid ${t.border}`, fontSize:14, fontWeight:700, color:t.text }}>
+              See all shops <IcoArrow />
+            </Link>
           </div>
-        </section>
-      )}
-
-      {/* ── PRODUCTS GRID ────────────────────────────────────── */}
-      {products.length > 0 && (
-        <section className="sec" style={{ padding:'80px 20px', background:t.bg }}>
-          <div style={{ maxWidth:1200, margin:'0 auto' }}>
-            <div style={{ display:'flex', alignItems:'flex-end', justifyContent:'space-between', marginBottom:36, flexWrap:'wrap', gap:12 }}>
-              <div>
-                <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
-                  <IcoFlash />
-                  <span style={{ fontSize:12, fontWeight:700, color:'#FF3008', textTransform:'uppercase', letterSpacing:'.08em' }}>Available now</span>
-                </div>
-                <h2 className="syne" style={{ fontSize:'clamp(24px,4vw,38px)', fontWeight:800, color:t.text, letterSpacing:'-0.04em' }}>Fresh from local shops</h2>
-              </div>
-              <Link href="/search" className="ghost" style={{ display:'inline-flex', alignItems:'center', gap:7, padding:'11px 20px', borderRadius:13, border:`1.5px solid ${t.border}`, fontSize:14, fontWeight:700, color:t.text }}>
-                Search all <IcoArrow />
-              </Link>
-            </div>
-            <div className="prod-g">
-              {products.map((p:any) => {
-                const disc = p.original_price && p.original_price > p.price ? Math.round((1 - p.price / p.original_price) * 100) : 0
-                return (
-                  <div key={p.id} className="lift" style={{ background:t.card, borderRadius:20, overflow:'hidden', border:`1.5px solid ${t.border}` }}>
-                    <div style={{ aspectRatio:'1/1', background:t.bg3, position:'relative', overflow:'hidden' }}>
-                      {p.image_url
-                        ? <img src={p.image_url} alt={p.name} className="iz" style={{ width:'100%', height:'100%', objectFit:'cover' }} onError={e => (e.currentTarget.style.display='none')} />
-                        : <div style={{ width:'100%', height:'100%', display:'flex', alignItems:'center', justifyContent:'center', color:t.text3 }}><IcoGrocery size={40} /></div>
-                      }
-                      {disc > 0 && (
-                        <div style={{ position:'absolute', top:10, left:10, background:'#FF3008', color:'#fff', fontSize:11, fontWeight:900, padding:'3px 9px', borderRadius:9 }}>-{disc}%</div>
-                      )}
+          <div className="shops-g">
+            {liveShops.length > 0 ? liveShops.map(shop => {
+              const color = getCatColor(shop.category_name||'')
+              return (
+                <Link key={shop.id} href={`/stores/${shop.id}`} className="lift" style={{ display:'block', background:t.card, borderRadius:22, overflow:'hidden', border:`1.5px solid ${t.border}`, boxShadow:t.cardShadow }}>
+                  <div style={{ height:130, background:shop.banner_url?'none':`linear-gradient(135deg,${color}15,${color}30)`, position:'relative', overflow:'hidden' }}>
+                    {shop.banner_url && <img src={shop.banner_url} alt="" className="iz" style={{ width:'100%', height:'100%', objectFit:'cover' }} onError={e => (e.currentTarget.style.display='none')} />}
+                    <div style={{ position:'absolute', inset:0, background:'linear-gradient(to top,rgba(0,0,0,.3),transparent 60%)' }} />
+                    <div style={{ position:'absolute', top:12, right:12, display:'flex', alignItems:'center', gap:5, background:shop.is_open?'rgba(22,163,74,.88)':'rgba(60,60,60,.85)', borderRadius:999, padding:'4px 10px' }}>
+                      <span style={{ width:5, height:5, borderRadius:'50%', background:'#fff', display:'block' }} />
+                      <span style={{ fontSize:11, fontWeight:700, color:'#fff' }}>{shop.is_open ? 'Open' : 'Closed'}</span>
                     </div>
-                    <div style={{ padding:'14px 16px 16px' }}>
-                      <p style={{ fontWeight:700, fontSize:14, color:t.text, marginBottom:3, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.name}</p>
-                      {p.shop?.name && (
-                        <p style={{ fontSize:11.5, color:t.text2, marginBottom:10, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.shop.name}{p.shop.area ? ` · ${p.shop.area}` : ''}</p>
-                      )}
-                      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-                        <div>
-                          <span style={{ fontWeight:900, fontSize:16, color:t.text }}>&#8377;{p.price}</span>
-                          {disc > 0 && <span style={{ fontSize:12, color:t.text3, textDecoration:'line-through', marginLeft:6 }}>&#8377;{p.original_price}</span>}
-                        </div>
-                        <Link href={`/stores/${p.shop_id}`} style={{ width:32, height:32, borderRadius:10, background:'#FF3008', display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', flexShrink:0 }}>
-                          <IcoArrow />
-                        </Link>
-                      </div>
+                    <div style={{ position:'absolute', bottom:-18, left:16, width:44, height:44, borderRadius:14, background:t.card, border:`3px solid ${t.card}`, overflow:'hidden', display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 4px 14px rgba(0,0,0,.12)' }}>
+                      {shop.image_url
+                        ? <img src={shop.image_url} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} onError={e => (e.currentTarget.style.display='none')} />
+                        : <span style={{ color, fontSize:18 }}><IcoGrocery size={20} /></span>
+                      }
                     </div>
                   </div>
-                )
-              })}
-            </div>
+                  <div style={{ padding:'26px 18px 18px' }}>
+                    <p style={{ fontWeight:800, fontSize:15, color:t.text, marginBottom:6 }}>{shop.name}</p>
+                    <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+                      {shop.rating && <span style={{ display:'flex', alignItems:'center', gap:3, color:'#d97706', fontSize:12, fontWeight:700 }}><IcoStar /> {Number(shop.rating).toFixed(1)}</span>}
+                      {shop.avg_delivery_time && <><span style={{ color:t.text3 }}>·</span><span style={{ display:'flex', alignItems:'center', gap:3, color:t.text2, fontSize:12, fontWeight:600 }}><IcoClock /> {shop.avg_delivery_time} min</span></>}
+                      {shop.category_name && <><span style={{ color:t.text3 }}>·</span><span style={{ fontSize:11, fontWeight:600, color, background:`${color}15`, padding:'2px 8px', borderRadius:999 }}>{shop.category_name.split(' ')[0]}</span></>}
+                    </div>
+                  </div>
+                </Link>
+              )
+            }) : [1,2,3,4,5,6].map(i => (
+              <div key={i} style={{ background:t.card, borderRadius:22, overflow:'hidden', border:`1.5px solid ${t.border}`, boxShadow:t.cardShadow }}>
+                <div className="sk" style={{ height:130 }} />
+                <div style={{ padding:'26px 18px 18px' }}>
+                  <div className="sk" style={{ height:16, borderRadius:8, marginBottom:10, width:'60%' }} />
+                  <div className="sk" style={{ height:12, borderRadius:6, width:'80%' }} />
+                </div>
+              </div>
+            ))}
           </div>
-        </section>
-      )}
+        </div>
+      </section>
+
+      {/* ── PRODUCTS GRID ────────────────────────────────────── */}
+      <section className="sec" style={{ padding:'80px 20px', background:t.bg }}>
+        <div style={{ maxWidth:1200, margin:'0 auto' }}>
+          <div style={{ display:'flex', alignItems:'flex-end', justifyContent:'space-between', marginBottom:36, flexWrap:'wrap', gap:12 }}>
+            <div>
+              <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
+                <IcoFlash />
+                <span style={{ fontSize:12, fontWeight:700, color:'#FF3008', textTransform:'uppercase', letterSpacing:'.08em' }}>Available now</span>
+              </div>
+              <h2 className="syne" style={{ fontSize:'clamp(24px,4vw,38px)', fontWeight:800, color:t.text, letterSpacing:'-0.04em' }}>Fresh from local shops</h2>
+            </div>
+            <Link href="/stores" className="ghost" style={{ display:'inline-flex', alignItems:'center', gap:7, padding:'11px 20px', borderRadius:13, border:`1.5px solid ${t.border}`, fontSize:14, fontWeight:700, color:t.text }}>
+              Browse all <IcoArrow />
+            </Link>
+          </div>
+          <div className="prod-g">
+            {products.length > 0 ? products.map((p:any) => {
+              const disc = p.original_price && p.original_price > p.price ? Math.round((1 - p.price / p.original_price) * 100) : 0
+              return (
+                <div key={p.id} className="lift" style={{ background:t.card, borderRadius:20, overflow:'hidden', border:`1.5px solid ${t.border}`, boxShadow:t.cardShadow }}>
+                  <div style={{ aspectRatio:'1/1', background:t.bg3, position:'relative', overflow:'hidden' }}>
+                    {p.image_url
+                      ? <img src={p.image_url} alt={p.name} className="iz" style={{ width:'100%', height:'100%', objectFit:'cover' }} onError={e => (e.currentTarget.style.display='none')} />
+                      : <div style={{ width:'100%', height:'100%', display:'flex', alignItems:'center', justifyContent:'center', color:t.text3 }}><IcoGrocery size={40} /></div>
+                    }
+                    {disc > 0 && (
+                      <div style={{ position:'absolute', top:10, left:10, background:'#FF3008', color:'#fff', fontSize:11, fontWeight:900, padding:'3px 9px', borderRadius:9 }}>-{disc}%</div>
+                    )}
+                  </div>
+                  <div style={{ padding:'14px 16px 16px' }}>
+                    <p style={{ fontWeight:700, fontSize:14, color:t.text, marginBottom:3, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.name}</p>
+                    {p.shop?.name && (
+                      <p style={{ fontSize:11.5, color:t.text2, marginBottom:10, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.shop.name}{p.shop.area ? ` · ${p.shop.area}` : ''}</p>
+                    )}
+                    <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                      <div>
+                        <span style={{ fontWeight:900, fontSize:16, color:t.text }}>&#8377;{p.price}</span>
+                        {disc > 0 && <span style={{ fontSize:12, color:t.text3, textDecoration:'line-through', marginLeft:6 }}>&#8377;{p.original_price}</span>}
+                      </div>
+                      <Link href={`/stores/${p.shop_id}`} style={{ width:32, height:32, borderRadius:10, background:'#FF3008', display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', flexShrink:0 }}>
+                        <IcoArrow />
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+              )
+            }) : [1,2,3,4,5,6,7,8].map(i => (
+              <div key={i} style={{ background:t.card, borderRadius:20, overflow:'hidden', border:`1.5px solid ${t.border}`, boxShadow:t.cardShadow }}>
+                <div className="sk" style={{ aspectRatio:'1/1' }} />
+                <div style={{ padding:'14px 16px 16px' }}>
+                  <div className="sk" style={{ height:14, borderRadius:6, marginBottom:8, width:'70%' }} />
+                  <div className="sk" style={{ height:11, borderRadius:5, marginBottom:12, width:'50%' }} />
+                  <div className="sk" style={{ height:18, borderRadius:7, width:'40%' }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
 
       {/* ── HOW IT WORKS ─────────────────────────────────────── */}
       <section className="sec" style={{ padding:'80px 20px', background:t.bg2 }}>

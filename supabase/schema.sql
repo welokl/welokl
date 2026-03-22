@@ -90,7 +90,7 @@ CREATE TABLE IF NOT EXISTS orders (
   discount INT DEFAULT 0,
   total_amount INT NOT NULL,
   -- payment
-  payment_method TEXT NOT NULL DEFAULT 'cod' CHECK (payment_method IN ('cod','upi')),
+  payment_method TEXT NOT NULL DEFAULT 'cod' CHECK (payment_method IN ('cod','upi','online','wallet')),
   payment_status TEXT DEFAULT 'pending' CHECK (payment_status IN ('pending','paid','failed','refunded')),
   upi_transaction_id TEXT,
   -- delivery info

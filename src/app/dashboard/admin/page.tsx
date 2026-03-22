@@ -174,15 +174,17 @@ export default function AdminDashboard() {
     if (!userId || !amount || !description) return
     setCreditSaving(true)
     const sb = createClient()
-    const wallet = wallets.find(w => w.user_id === userId)
-    if (!wallet) { alert('No wallet found for this user'); setCreditSaving(false); return }
+    // Always fetch fresh wallet from DB — never trust stale component state for financial ops
+    const { data: wallet, error: fetchErr } = await sb.from('wallets').select('id, balance, total_earned, total_spent').eq('user_id', userId).single()
+    if (fetchErr || !wallet) { alert('No wallet found for this user'); setCreditSaving(false); return }
     const newBalance = type === 'credit' ? wallet.balance + amount : wallet.balance - amount
     if (type === 'debit' && newBalance < 0) { alert('Insufficient balance'); setCreditSaving(false); return }
-    await sb.from('wallets').update({
-      balance: newBalance,
+    const { error: updateErr } = await sb.from('wallets').update({
+      balance:      newBalance,
       total_earned: type === 'credit' ? wallet.total_earned + amount : wallet.total_earned,
       total_spent:  type === 'debit'  ? wallet.total_spent  + amount : wallet.total_spent,
     }).eq('id', wallet.id)
+    if (updateErr) { alert('Wallet update failed: ' + updateErr.message); setCreditSaving(false); return }
     await sb.from('transactions').insert({ wallet_id: wallet.id, amount, type, description })
     setCreditUserId(''); setCreditAmt(''); setCreditDesc('')
     load()
@@ -229,18 +231,18 @@ export default function AdminDashboard() {
               <p style={{ fontSize: 15, fontWeight: 900, color: '#fff', lineHeight: 1.1 }}>Welokl Platform</p>
             </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+          <div className="admin-topbar-right" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             {totalPending > 0 && (
               <button onClick={() => setTab('verify')}
-                style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, fontWeight: 800, padding: '6px 14px', borderRadius: 10, background: 'rgba(245,158,11,0.2)', color: '#fbbf24', border: '1px solid rgba(245,158,11,0.4)', cursor: 'pointer', fontFamily: 'inherit' }}>
-                {totalPending} pending verification{totalPending > 1 ? 's' : ''}
+                style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, fontWeight: 800, padding: '6px 14px', borderRadius: 10, background: 'rgba(245,158,11,0.2)', color: '#fbbf24', border: '1px solid rgba(245,158,11,0.4)', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+                {totalPending} pending
               </button>
             )}
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#4ade80', display: 'inline-block' }} />
               <span style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.4)' }}>Live</span>
             </div>
-            <div style={{ display: 'flex', gap: 16, fontSize: 12, fontWeight: 700 }}>
+            <div className="admin-stat-pill" style={{ display: 'flex', gap: 12, fontSize: 12, fontWeight: 700 }}>
               <span style={{ color: '#ff5a1f' }}>GMV Rs.{gmv.toLocaleString('en-IN')}</span>
               <span style={{ color: '#4ade80' }}>Rev Rs.{netRev.toLocaleString('en-IN')}</span>
             </div>
@@ -370,7 +372,7 @@ export default function AdminDashboard() {
                 <h2 style={{ fontWeight: 900, fontSize: 18, color: 'var(--text)' }}>Orders ({filteredOrders.length})</h2>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search order, shop, customer..."
-                    style={{ width: 220, fontSize: 13, border: '1px solid var(--border-2)', borderRadius: 10, padding: '8px 12px', background: 'var(--input-bg)', color: 'var(--text)', fontFamily: 'inherit', outline: 'none' }} />
+                    style={{ width: 220, maxWidth: '100%', minWidth: 0, fontSize: 13, border: '1px solid var(--border-2)', borderRadius: 10, padding: '8px 12px', background: 'var(--input-bg)', color: 'var(--text)', fontFamily: 'inherit', outline: 'none' }} />
                   <select value={statusFilter} onChange={e => setFilter(e.target.value)}
                     style={{ fontSize: 13, border: '1px solid var(--border-2)', borderRadius: 10, padding: '8px 12px', background: 'var(--input-bg)', color: 'var(--text)', fontWeight: 600, fontFamily: 'inherit', outline: 'none' }}>
                     <option value="all">All statuses</option>
@@ -420,7 +422,7 @@ export default function AdminDashboard() {
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
                 <h2 style={{ fontWeight: 900, fontSize: 18, color: 'var(--text)' }}>Shops ({filteredShops.length})</h2>
                 <input value={shopSearch} onChange={e => setShopSearch(e.target.value)} placeholder="Search name, area, owner..."
-                  style={{ width: 220, fontSize: 13, border: '1px solid var(--border-2)', borderRadius: 10, padding: '8px 12px', background: 'var(--input-bg)', color: 'var(--text)', fontFamily: 'inherit', outline: 'none' }} />
+                  style={{ width: 220, maxWidth: '100%', minWidth: 0, fontSize: 13, border: '1px solid var(--border-2)', borderRadius: 10, padding: '8px 12px', background: 'var(--input-bg)', color: 'var(--text)', fontFamily: 'inherit', outline: 'none' }} />
               </div>
               {filteredShops.map(shop => (
                 <div key={shop.id} style={{ ...card, display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -464,7 +466,7 @@ export default function AdminDashboard() {
                 <h2 style={{ fontWeight: 900, fontSize: 18, color: 'var(--text)' }}>Users ({filteredUsers.length})</h2>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                   <input value={userSearch} onChange={e => setUserSearch(e.target.value)} placeholder="Search name, email, phone..."
-                    style={{ width: 200, fontSize: 13, border: '1px solid var(--border-2)', borderRadius: 10, padding: '8px 12px', background: 'var(--input-bg)', color: 'var(--text)', fontFamily: 'inherit', outline: 'none' }} />
+                    style={{ width: 200, maxWidth: '100%', minWidth: 0, fontSize: 13, border: '1px solid var(--border-2)', borderRadius: 10, padding: '8px 12px', background: 'var(--input-bg)', color: 'var(--text)', fontFamily: 'inherit', outline: 'none' }} />
                   {['customer','business','delivery_partner','admin'].map(r => (
                     <span key={r} style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 999, background: 'var(--bg-3)', color: 'var(--text-2)' }}>
                       {r === 'delivery_partner' ? 'riders' : r}: {users.filter(u => u.role === r).length}
@@ -490,7 +492,7 @@ export default function AdminDashboard() {
                         <td style={{ padding: '11px 16px' }}>
                           <select value={u.role} onChange={e => createClient().from('users').update({ role: e.target.value }).eq('id', u.id).then(load)}
                             style={{ fontSize: 12, border: '1px solid var(--border-2)', borderRadius: 8, padding: '5px 8px', background: 'var(--input-bg)', color: 'var(--text)', fontFamily: 'inherit', outline: 'none', fontWeight: 700 }}>
-                            {['customer','business','delivery_partner','admin'].map(r => <option key={r} value={r}>{r}</option>)}
+                            {['customer','business','delivery_partner','admin','management'].map(r => <option key={r} value={r}>{r}</option>)}
                           </select>
                         </td>
                         <td style={{ padding: '11px 16px', fontSize: 12, color: 'var(--text-3)', whiteSpace: 'nowrap' }}>{new Date(u.created_at).toLocaleDateString('en-IN')}</td>

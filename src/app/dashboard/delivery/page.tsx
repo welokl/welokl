@@ -347,10 +347,10 @@ export default function DeliveryDashboard() {
     }).catch(() => {})
 
     if (status === 'delivered') {
-      await fetch('/api/orders/complete-delivery', {
+      await fetch('/api/orders/complete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId: assignedOrder.id, partnerId: partner.id }),
+        body: JSON.stringify({ orderId: assignedOrder.id, partnerId: userId }),
       })
       notify(`Delivery complete! Earnings added to wallet.`)
     }
@@ -564,18 +564,66 @@ export default function DeliveryDashboard() {
             </div>
 
             {/* Live map — shop (red pin) + customer (green pin) + rider (blue dot) */}
-            <div style={{ borderRadius: 16, overflow: 'hidden', marginBottom: 16, border: '1px solid #e5e7eb' }}>
-              <div style={{ padding: '10px 14px', background: '#f9fafb', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid #e5e7eb' }}>
-                <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#2563eb', display: 'inline-block', boxShadow: '0 0 0 3px rgba(37,99,235,.2)' }} />
-                <span style={{ fontSize: 12, fontWeight: 700, color: '#374151', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>Live map</span>
-                <span style={{ fontSize: 11, color: '#9ca3af', marginLeft: 'auto' }}>
-                  <span style={{ color: '#FF3008' }}>● </span>Pickup &nbsp;
-                  <span style={{ color: '#16a34a' }}>● </span>Drop &nbsp;
-                  <span style={{ color: '#2563eb' }}>● </span>You
-                </span>
-              </div>
-              <div ref={mapRef} style={{ height: 220, width: '100%', background: '#e5e7eb' }} />
-            </div>
+            {(() => {
+              const shopLat  = (assignedOrder as any).shop?.latitude  as number | null
+              const shopLng  = (assignedOrder as any).shop?.longitude as number | null
+              const destLat  = assignedOrder.delivery_lat             as number | null
+              const destLng  = (assignedOrder as any).delivery_lng    as number | null
+              const isPickup = assignedOrder.status !== 'picked_up'
+              const navLat   = isPickup ? shopLat  : destLat
+              const navLng   = isPickup ? shopLng  : destLng
+              const navLabel = isPickup ? 'Navigate to Pickup' : 'Navigate to Drop'
+              const mapsUrl  = navLat && navLng
+                ? `https://www.google.com/maps/dir/?api=1&destination=${navLat},${navLng}&travelmode=driving`
+                : null
+              return (
+                <>
+                  {/* Navigate button */}
+                  {mapsUrl && (
+                    <a href={mapsUrl} target="_blank" rel="noopener noreferrer"
+                      style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                        background: isPickup ? '#FF3008' : '#16a34a',
+                        color: '#fff', fontWeight: 800, fontSize: 15,
+                        padding: '13px 20px', borderRadius: 14, marginBottom: 12,
+                        textDecoration: 'none', letterSpacing: '0.01em',
+                      }}>
+                      <Navigation size={18} />
+                      {navLabel}
+                    </a>
+                  )}
+                  <div style={{ borderRadius: 16, overflow: 'hidden', marginBottom: 16, border: '1px solid #e5e7eb' }}>
+                    <div style={{ padding: '10px 14px', background: '#f9fafb', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid #e5e7eb' }}>
+                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#2563eb', display: 'inline-block', boxShadow: '0 0 0 3px rgba(37,99,235,.2)' }} />
+                      <span style={{ fontSize: 12, fontWeight: 700, color: '#374151', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>Live map</span>
+                      <span style={{ fontSize: 11, color: '#9ca3af', marginLeft: 'auto' }}>
+                        <span style={{ color: '#FF3008' }}>● </span>Pickup &nbsp;
+                        <span style={{ color: '#16a34a' }}>● </span>Drop &nbsp;
+                        <span style={{ color: '#2563eb' }}>● </span>You
+                      </span>
+                    </div>
+                    {/* Tap overlay opens Google Maps */}
+                    <div style={{ position: 'relative' }}>
+                      <div ref={mapRef} style={{ height: 220, width: '100%', background: '#e5e7eb' }} />
+                      {mapsUrl && (
+                        <a href={mapsUrl} target="_blank" rel="noopener noreferrer"
+                          style={{
+                            position: 'absolute', inset: 0, display: 'flex', alignItems: 'flex-end',
+                            justifyContent: 'flex-end', padding: 10, textDecoration: 'none',
+                          }}>
+                          <span style={{
+                            background: 'rgba(0,0,0,0.65)', color: '#fff', fontSize: 11, fontWeight: 700,
+                            padding: '5px 10px', borderRadius: 8, backdropFilter: 'blur(4px)',
+                          }}>
+                            Open in Maps ↗
+                          </span>
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )
+            })()}
 
             <div className="flex items-center justify-between mb-4 p-3 bg-surface-50 rounded-2xl">
               <span className="text-surface-500 text-sm">Order total</span>

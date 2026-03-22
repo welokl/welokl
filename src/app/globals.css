@@ -777,3 +777,47 @@ html.dark {
   --lp-shadow-lg: 0 8px 40px rgba(0,0,0,.5);
   --lp-nav-bg:    rgba(19,8,0,.92);
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   MOBILE FIXES — prevents layout distortion on small screens
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* Admin top bar: hide GMV/revenue on small screens */
+@media (max-width: 640px) {
+  .admin-stat-pill { display: none !important; }
+  .admin-topbar-right { flex-wrap: wrap !important; row-gap: 8px !important; justify-content: flex-end !important; }
+}
+
+/* Business dashboard tab bar — scroll horizontally */
+.biz-tab-bar { overflow-x: auto !important; scrollbar-width: none !important; -webkit-overflow-scrolling: touch; }
+.biz-tab-bar::-webkit-scrollbar { display: none !important; }
+
+/* Business header actions — wrap on mobile */
+@media (max-width: 480px) {
+  .biz-header-actions { flex-wrap: wrap !important; justify-content: flex-end !important; row-gap: 6px !important; }
+}
+
+/* Business stats — 2 cols on very small screens */
+@media (max-width: 380px) {
+  .biz-stats-grid { grid-template-columns: repeat(2, 1fr) !important; }
+}
+
+/* General: flex rows with fixed-width search inputs */
+@media (max-width: 520px) {
+  .filter-row { flex-wrap: wrap !important; }
+  .filter-row input { width: 100% !important; min-width: 0 !important; }
+}
+
+/* Ensure tables never break the page on mobile */
+.table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+/* Delivery dashboard navigate button safe area */
+@media (max-width: 400px) {
+  .nav-btn-label { font-size: 13px !important; }
+}
+
+/* Management dashboard cards */
+@media (max-width: 480px) {
+  .mgmt-card-row { flex-direction: column !important; align-items: flex-start !important; }
+  .mgmt-card-right { text-align: left !important; }
+}

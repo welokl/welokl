@@ -16,7 +16,8 @@ export default function CheckoutPage() {
   const cart   = useCart() as any
 
   const [address,       setAddress]       = useState('')
-  const [savedAddrs,    setSavedAddrs]    = useState<{label:string;address:string}[]>([])
+  const [savedAddrs,    setSavedAddrs]    = useState<{id:string;label:string;address:string}[]>([])
+  const [saveLabel,     setSaveLabel]     = useState('')
   const [note,          setNote]          = useState('')
   const [payment,       setPayment]       = useState<'cod'|'upi'|'wallet'>('cod')
   const [walletBalance, setWalletBalance] = useState(0)
@@ -38,15 +39,15 @@ export default function CheckoutPage() {
     sb.auth.getUser().then(({ data }) => {
       if (!data.user) { router.push('/auth/login'); return }
       setUserId(data.user.id)
+      // ── Load saved addresses from DB ─────────────────────────
+      sb.from('user_addresses').select('id,label,address').eq('user_id', data.user.id).order('created_at', { ascending: false })
+        .then(({ data: rows }) => {
+          if (rows?.length) {
+            setSavedAddrs(rows as any)
+            setAddress(prev => prev || rows[0].address)
+          }
+        })
     })
-
-    // ── Auto-fill address from saved location ──────────────────
-    try {
-      const saved = JSON.parse(localStorage.getItem(`welokl_addresses_${userId}`) || '[]')
-      setSavedAddrs(saved)
-      // Pre-fill with first saved address
-      if (saved.length > 0 && !address) setAddress(saved[0].address)
-    } catch {}
 
     // ── Try to get readable address from saved GPS coords ──────
     try {
@@ -176,16 +177,15 @@ export default function CheckoutPage() {
       // Don't throw — order was placed, items error is non-fatal
     }
 
-    // Save address
-    if (address.trim()) {
-      try {
-        const addrKey = `welokl_addresses_${uid}`
-        const addrs = JSON.parse(localStorage.getItem(addrKey) || '[]')
-        if (!addrs.find((a:any) => a.address === address)) {
-          addrs.unshift({ label:'other', address: address.trim() })
-          localStorage.setItem(addrKey, JSON.stringify(addrs.slice(0, 5)))
-        }
-      } catch {}
+    // Save address to DB if it's new
+    if (address.trim() && !savedAddrs.find(a => a.address === address.trim())) {
+      sb.from('user_addresses').insert({
+        user_id: uid,
+        label:   saveLabel.trim() || 'Home',
+        address: address.trim(),
+      }).then(({ data: newRow }) => {
+        if (newRow) setSavedAddrs(prev => [newRow[0], ...prev])
+      })
     }
 
     // Notify shop owner — push notification even when their app is closed
@@ -273,11 +273,13 @@ export default function CheckoutPage() {
     setLoading(true)
     try {
       const sb = createClient()
-      // Deduct from wallet before creating order
-      const { data: freshWallet } = await sb.from('wallets').select('total_spent').eq('id', walletId).single()
+      // Deduct from wallet — always read fresh balance from DB, never use stale state
+      const { data: freshWallet, error: fetchErr } = await sb.from('wallets').select('balance, total_spent').eq('id', walletId).single()
+      if (fetchErr || !freshWallet) throw new Error('Could not read wallet balance')
+      if (freshWallet.balance < total) throw new Error('Insufficient wallet balance')
       const { error: walletErr } = await sb.from('wallets').update({
-        balance:     walletBalance - total,
-        total_spent: (freshWallet?.total_spent ?? 0) + total,
+        balance:     freshWallet.balance - total,
+        total_spent: (freshWallet.total_spent ?? 0) + total,
       }).eq('id', walletId)
       if (walletErr) throw walletErr
 
@@ -414,20 +416,46 @@ export default function CheckoutPage() {
             {savedAddrs.length > 0 && (
               <div style={{ display:'flex', gap:8, overflowX:'auto', marginBottom:10, paddingBottom:2, scrollbarWidth:'none' }}>
                 {savedAddrs.map(a => (
-                  <button key={a.label+a.address} onClick={() => setAddress(a.address)}
-                    style={{ flexShrink:0, padding:'7px 14px', borderRadius:999, border:`1.5px solid ${address===a.address ? '#FF3008' : 'var(--divider)'}`, background:address===a.address ? 'var(--red-light)' : 'var(--chip-bg)', color:address===a.address ? '#FF3008' : 'var(--text-muted)', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:'inherit', textTransform:'capitalize' }}>
-                    {a.label}
-                  </button>
+                  <div key={a.id} style={{ display:'flex', alignItems:'center', flexShrink:0, borderRadius:999, border:`1.5px solid ${address===a.address ? '#FF3008' : 'var(--divider)'}`, background:address===a.address ? 'var(--red-light)' : 'var(--chip-bg)', overflow:'hidden' }}>
+                    <button onClick={() => setAddress(a.address)}
+                      style={{ padding:'7px 10px 7px 14px', border:'none', background:'transparent', color:address===a.address ? '#FF3008' : 'var(--text-muted)', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>
+                      {a.label}
+                    </button>
+                    <button onClick={() => {
+                      createClient().from('user_addresses').delete().eq('id', a.id).then(() => {
+                        setSavedAddrs(prev => prev.filter(x => x.id !== a.id))
+                        if (address === a.address) setAddress('')
+                      })
+                    }} style={{ padding:'7px 10px 7px 4px', border:'none', background:'transparent', color:address===a.address ? '#FF3008' : 'var(--text-muted)', fontSize:13, cursor:'pointer', lineHeight:1, opacity:0.6 }}>✕</button>
+                  </div>
                 ))}
               </div>
             )}
 
-            <textarea value={address} onChange={e => setAddress(e.target.value)}
+            <textarea value={address} onChange={e => { setAddress(e.target.value); setSaveLabel('') }}
               placeholder="Full delivery address — building, street, landmark…"
               rows={3} style={{ ...inp, resize:'none' }}
               onFocus={e => e.currentTarget.style.borderColor='#FF3008'}
               onBlur={e => e.currentTarget.style.borderColor='var(--divider)'}
             />
+
+            {/* Save label — only shown when typing a new address */}
+            {address.trim() && !savedAddrs.find(a => a.address === address.trim()) && (
+              <div style={{ marginTop:8, display:'flex', gap:6, alignItems:'center', flexWrap:'wrap' }}>
+                <span style={{ fontSize:11, color:'var(--text-muted)', fontWeight:600 }}>Save as:</span>
+                {['Home','Work','Other'].map(l => (
+                  <button key={l} onClick={() => setSaveLabel(l)}
+                    style={{ padding:'5px 12px', borderRadius:999, border:`1.5px solid ${saveLabel===l ? '#FF3008' : 'var(--divider)'}`, background:saveLabel===l ? 'var(--red-light)' : 'transparent', color:saveLabel===l ? '#FF3008' : 'var(--text-muted)', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>
+                    {l}
+                  </button>
+                ))}
+                <input value={!['Home','Work','Other'].includes(saveLabel) ? saveLabel : ''}
+                  onChange={e => setSaveLabel(e.target.value)}
+                  placeholder="Custom…"
+                  style={{ width:80, padding:'5px 10px', borderRadius:999, border:'1.5px solid var(--divider)', background:'transparent', color:'var(--text-primary)', fontSize:11, fontFamily:'inherit', outline:'none' }}
+                />
+              </div>
+            )}
           </div>
         )}
 

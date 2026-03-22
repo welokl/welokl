@@ -109,9 +109,10 @@ export default function CustomerHome() {
 
     // Role guard — read from DB, not JWT metadata
     const role = profile.role || ''
-    if (role === 'business' || role === 'shopkeeper')           { window.location.replace('/dashboard/business'); return }
-    if (role === 'delivery' || role === 'delivery_partner')     { window.location.replace('/dashboard/delivery'); return }
-    if (role === 'admin')                                       { window.location.replace('/dashboard/admin');    return }
+    if (role === 'business' || role === 'shopkeeper')           { window.location.replace('/dashboard/business');    return }
+    if (role === 'delivery' || role === 'delivery_partner')     { window.location.replace('/dashboard/delivery');    return }
+    if (role === 'admin')                                       { window.location.replace('/dashboard/admin');       return }
+    if (role === 'management')                                  { window.location.replace('/dashboard/management'); return }
 
     if (!profile.phone) setShowPhoneGate(true)
     setUser(profile)

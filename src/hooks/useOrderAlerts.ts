@@ -172,7 +172,45 @@ export function useCustomerOrderAlerts(customerId: string | null | undefined) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// HOOK 3: Delivery Partner
+// HOOK 3: Management — every new order placed, with customer + shop info
+// ─────────────────────────────────────────────────────────────
+export function useManagementAlerts(userId: string | null | undefined) {
+  const supabase = createClient()
+  const ready = useRef(false)
+
+  useEffect(() => {
+    if (!userId) return
+    const t = setTimeout(() => { ready.current = true }, 1500)
+    const ch = supabase
+      .channel(`mgmt-alerts-${userId}`)
+      .on('postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'orders' },
+        async payload => {
+          if (!ready.current) return
+          const o = payload.new as any
+          // Fetch customer + shop details
+          const [{ data: customer }, { data: shop }] = await Promise.all([
+            supabase.from('users').select('name, phone').eq('id', o.customer_id).single(),
+            supabase.from('shops').select('name').eq('id', o.shop_id).single(),
+          ])
+          const custName  = customer?.name  || 'Unknown'
+          const custPhone = customer?.phone || 'No phone'
+          const shopName  = shop?.name      || 'Unknown shop'
+          const title = `🛒 New Order at ${shopName}`
+          const body  = `${custName} • ${custPhone}`
+          playSound('new_order')
+          vibrate([400, 100, 400, 100, 400, 100, 800])
+          pushNotify(title, body, `ops-order-${o.id}`, '/dashboard/customer')
+          inAppToast(title, body, '#7c3aed', '🛒')
+        }
+      )
+      .subscribe()
+    return () => { clearTimeout(t); supabase.removeChannel(ch) }
+  }, [userId]) // eslint-disable-line
+}
+
+// ─────────────────────────────────────────────────────────────
+// HOOK 4: Delivery Partner
 //   Channel A — orders assigned to them (active order updates)
 //   Channel B — any order going 'ready' with no partner yet
 // ─────────────────────────────────────────────────────────────

@@ -252,13 +252,13 @@ export default function BusinessDashboard() {
     <div style={{minHeight:"100vh", background:"var(--bg)"}}>
       <div style={{background:"var(--card-bg)", borderBottom:"1px solid var(--border)", padding:"16px"}}>
         <div className="max-w-4xl mx-auto">
-          <div className="flex items-center justify-between mb-3">
-            <div>
+          <div className="flex items-start justify-between mb-3 gap-2 flex-wrap">
+            <div style={{ minWidth: 0 }}>
               <p style={{fontSize:11,color:"var(--text-3)"}}>Business Dashboard</p>
               <h1 className="font-bold text-lg">{shop?.name || 'My Shop'}</h1>
               <p style={{fontSize:11,color:"var(--text-3)"}}>{shop?.area}, {shop?.city}</p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="biz-header-actions flex items-center gap-2">
               <button onClick={async () => { const s = createClient(); await s.from('shops').update({ is_open: !shop?.is_open }).eq('id', shop?.id || ''); loadData() }}
                 className={`text-xs font-bold px-3 py-1.5 rounded-full border ${shop?.is_open ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-600 border-red-200'}`}>
                 {shop?.is_open ? '● Open' : '● Closed'}
@@ -278,7 +278,7 @@ export default function BusinessDashboard() {
                 style={{fontSize:12, color:"var(--text-3)", background:"none", border:"none", cursor:"pointer", fontFamily:"inherit", padding:"0 8px"}}>Logout</button>
             </div>
           </div>
-          <div className="grid grid-cols-4 gap-2">
+          <div className="biz-stats-grid grid grid-cols-4 gap-2">
             {[
               { label: 'New', value: newOrders.length, color: 'text-blue-600' },
               { label: 'Active', value: activeOrders.length, color: 'text-amber-600' },
@@ -298,10 +298,10 @@ export default function BusinessDashboard() {
       </div>
 
       <div style={{background:"var(--card-bg)", borderBottom:"1px solid var(--border)", padding:"0 16px"}}>
-        <div className="max-w-4xl mx-auto flex">
+        <div className="biz-tab-bar max-w-4xl mx-auto flex">
           {(['orders','products','analytics','settings'] as Tab[]).map(t => (
             <button key={t} onClick={() => setTab(t)}
-              style={{padding:'12px 20px', fontSize:13, fontWeight:700, textTransform:'capitalize', borderBottom:`2px solid ${tab===t?'#FF3008':'transparent'}`, color:tab===t?'#FF3008':'var(--text-3)', background:'none', cursor:'pointer', fontFamily:'inherit', transition:'all .15s'}}>
+              style={{padding:'12px 16px', fontSize:13, fontWeight:700, textTransform:'capitalize', borderBottom:`2px solid ${tab===t?'#FF3008':'transparent'}`, color:tab===t?'#FF3008':'var(--text-3)', background:'none', cursor:'pointer', fontFamily:'inherit', transition:'all .15s', whiteSpace:'nowrap', flexShrink:0}}>
               {t === 'settings' ? '⚙ Settings' : t}{t === 'orders' && newOrders.length > 0 && <span className="ml-1.5 bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5">{newOrders.length}</span>}
             </button>
           ))}

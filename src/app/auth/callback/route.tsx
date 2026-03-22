@@ -64,6 +64,7 @@ export async function GET(request: Request) {
         delivery:         '/dashboard/delivery',
         delivery_partner: '/dashboard/delivery',
         admin:            '/dashboard/admin',
+        management:       '/dashboard/management',
       }
       return NextResponse.redirect(new URL(roleMap[role] ?? '/dashboard/customer', origin))
     }
