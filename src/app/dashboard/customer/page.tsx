@@ -18,6 +18,9 @@ interface Shop {
   delivery_enabled: boolean; pickup_enabled: boolean; min_order_amount: number
   area: string; image_url: string | null; latitude: number | null; longitude: number | null
   offer_text?: string | null; free_delivery_above?: number | null
+  // Boost fields (joined at query time — 0/null means no active boost)
+  boost_weight?: number; boost_badge?: string | null; boost_badge_color?: string | null
+  today_impressions?: number
 }
 interface Product {
   id: string; name: string; price: number; original_price: number | null
@@ -40,6 +43,7 @@ const CAT_SVG: Record<string, JSX.Element> = {
   hardware:    <svg viewBox="0 0 24 24" fill="none" width={28} height={28}><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>,
   gifts:       <svg viewBox="0 0 24 24" fill="none" width={28} height={28}><path d="M20 12v10H4V12M22 7H2v5h20V7zM12 22V7M12 7H7.5a2.5 2.5 0 010-5C11 2 12 7 12 7zM12 7h4.5a2.5 2.5 0 000-5C13 2 12 7 12 7z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>,
   pet:         <svg viewBox="0 0 24 24" fill="none" width={28} height={28}><path d="M10 5.172C10 3.782 8.423 2.679 6.5 3c-2 .336-3.5 2.057-3.5 4 0 .75.562 1.931 1 2.5M14 5.172C14 3.782 15.577 2.679 17.5 3c2 .336 3.5 2.057 3.5 4 0 .75-.562 1.931-1 2.5M12 19c-4 0-7-1.5-7-5 0-2 1-3.5 3.5-4.5M12 19c4 0 7-1.5 7-5 0-2-1-3.5-3.5-4.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>,
+  default:     <svg viewBox="0 0 24 24" fill="none" width={28} height={28}><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><polyline points="9 22 9 12 15 12 15 22" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>,
 }
 
 const CATS = [
@@ -128,11 +132,39 @@ export default function CustomerHome() {
 
   const loadShops = useCallback(async () => {
     const sb = createClient()
-    const [{ data: shops }, { data: cats }] = await Promise.all([
+    const today = new Date().toISOString().slice(0, 10)
+    const [{ data: shops }, { data: cats }, { data: boosts }, { data: metrics }] = await Promise.all([
       sb.from('shops').select('*').eq('is_active', true).order('rating', { ascending: false }),
       sb.from('categories').select('*').eq('is_active', true),
+      // Active boosts only — join plan for badge label + weight
+      sb.from('vendor_boosts')
+        .select('shop_id, plan:boost_plans(boost_weight, badge_label, badge_color)')
+        .eq('status', 'active')
+        .gte('end_date', new Date().toISOString().slice(0, 10)),
+      // Today's impression counts for rotation fairness
+      sb.from('vendor_boost_metrics').select('shop_id, impressions').eq('date', today),
     ])
-    setAllShops(shops || [])
+
+    // Merge boost + metrics into shop records
+    const boostMap: Record<string, { boost_weight: number; boost_badge: string; boost_badge_color: string }> = {}
+    ;(boosts || []).forEach((b: any) => {
+      if (b.plan) boostMap[b.shop_id] = {
+        boost_weight:      b.plan.boost_weight  ?? 0,
+        boost_badge:       b.plan.badge_label   ?? null,
+        boost_badge_color: b.plan.badge_color   ?? '#6b7280',
+      }
+    })
+    const impMap: Record<string, number> = {}
+    ;(metrics || []).forEach((m: any) => { impMap[m.shop_id] = m.impressions ?? 0 })
+
+    const enriched = (shops || []).map((s: any) => ({
+      ...s,
+      boost_weight:      boostMap[s.id]?.boost_weight      ?? 0,
+      boost_badge:       boostMap[s.id]?.boost_badge       ?? null,
+      boost_badge_color: boostMap[s.id]?.boost_badge_color ?? null,
+      today_impressions: impMap[s.id] ?? 0,
+    }))
+    setAllShops(enriched)
     setShopsLoaded(true)
     if (cats?.length) {
       // Map DB categories to our SVG keys
@@ -156,6 +188,17 @@ export default function CustomerHome() {
     // Filter unavailable in JS — avoids broken .or() query
     const available = (data || []).filter((p: any) => p.is_available !== false)
     setProducts(available.map((p: any) => ({ ...p, shop_name: p.shops?.name })))
+  }, [])
+
+  // Track boost impressions — called after shops render, debounced 3s
+  // Uses RPC to atomically increment daily counters
+  const trackBoostImpressions = useCallback(async (shopIds: string[]) => {
+    if (!shopIds.length) return
+    const sb = createClient()
+    const today = new Date().toISOString().slice(0, 10)
+    await Promise.all(shopIds.map(id =>
+      sb.rpc('increment_boost_impression', { p_shop_id: id, p_date: today })
+    ))
   }, [])
 
   function detectLocation() {
@@ -204,27 +247,143 @@ export default function CustomerHome() {
     return () => { if (channel) sb.removeChannel(channel) }
   }, [loadOrders])
 
+  // Track impressions for boosted shops — fires 3s after feed renders, once per session per shop set
   useEffect(() => {
+    if (!shopsLoaded) return
+    const boostedIds = displayShops.filter(s => (s.boost_weight ?? 0) > 0).map(s => s.id)
+    if (!boostedIds.length) return
+    const timer = setTimeout(() => trackBoostImpressions(boostedIds), 3000)
+    return () => clearTimeout(timer)
+  }, [shopsLoaded, displayShops, trackBoostImpressions])
+
+  useEffect(() => {
+    // ── Personalization signals from order history ─────────────
+    const shopFreq: Record<string, number> = {}   // weighted order count per shop
+    const catFreq:  Record<string, number> = {}   // weighted order count per category
+    const thirtyDays = 30 * 24 * 60 * 60 * 1000
+    const now = Date.now()
+
+    orders.filter(o => o.status === 'delivered').forEach(o => {
+      const sid = (o as any).shop_id
+      const cat = ((o as any).shop?.category_name || '').toLowerCase()
+      // Recent orders (≤30 days) count double — recency×frequency signal
+      const recent = now - new Date((o as any).created_at || 0).getTime() < thirtyDays
+      const w = recent ? 2 : 1
+      if (sid) shopFreq[sid] = (shopFreq[sid] || 0) + w
+      if (cat) catFreq[cat]  = (catFreq[cat]  || 0) + w
+    })
+
+    // Top preferred categories (ordered by score)
+    const preferredCats = Object.entries(catFreq).sort((a, b) => b[1] - a[1]).map(([c]) => c)
+
+    // Time-of-day meal period: breakfast / lunch / dinner
+    const h = new Date().getHours()
+    const isMealTime = (h >= 7 && h <= 10) || (h >= 12 && h <= 14) || (h >= 19 && h <= 21)
+
+    // ── Personalized shop score ────────────────────────────────
+    // Target impressions per boosted shop per day (rotation resets after this)
+    const DAILY_IMP_TARGET = 60
+    function scoreShop(s: { id: string; rating: number; km: number | null; is_open: boolean; avg_delivery_time: number; category_name?: string | null; boost_weight?: number; today_impressions?: number }): number {
+      let pts = 0
+      // ── PAID BOOST (dominant signal) ──────────────────────────
+      const bw = s.boost_weight ?? 0
+      if (bw > 0) {
+        // Rotation fairness: penalise shops that have already had high exposure today
+        // Max 40% reduction — a Premium shop (100) will never fall below 60 pts from boost alone
+        const imp = s.today_impressions ?? 0
+        const rotationPenalty = Math.min(imp / DAILY_IMP_TARGET, 0.4) * bw
+        pts += bw - rotationPenalty
+      }
+      // ── ORGANIC SIGNALS ───────────────────────────────────────
+      // Frequency: +10 per weighted order, cap at 50
+      pts += Math.min((shopFreq[s.id] || 0) * 10, 50)
+      // Category preference: +35 for #1 preferred, +20 for #2
+      const cat = (s.category_name || '').toLowerCase()
+      if (preferredCats[0] && cat.includes(preferredCats[0])) pts += 35
+      else if (preferredCats[1] && cat.includes(preferredCats[1])) pts += 20
+      // Rating: +12.5 per star above 3.0, cap at 25
+      pts += Math.max(0, Math.min((s.rating - 3) * 12.5, 25))
+      // Distance: -6 per km, cap at -30
+      if (s.km !== null) pts -= Math.min(s.km * 6, 30)
+      // Meal-time speed bonus
+      if (isMealTime && s.is_open && s.avg_delivery_time <= 30) pts += 12
+      return pts
+    }
+
     let shops = allShops.map(s => ({
       ...s,
-      km: (userLat && userLng && s.latitude && s.longitude) ? dist(userLat, userLng, Number(s.latitude), Number(s.longitude)) : null,
+      km: (userLat && userLng && s.latitude && s.longitude)
+        ? dist(userLat, userLng, Number(s.latitude), Number(s.longitude)) : null,
     }))
     if (userLat && userLng) shops = shops.filter(s => s.km !== null && s.km <= radius)
     if (activeCategory)     shops = shops.filter(s => s.category_name?.toLowerCase().includes(activeCategory))
-    shops.sort((a, b) => { if (a.is_open !== b.is_open) return a.is_open ? -1 : 1; if (a.km !== null && b.km !== null) return a.km - b.km; return b.rating - a.rating })
+
+    // Open first → personalized score within each group
+    shops.sort((a, b) => {
+      if (a.is_open !== b.is_open) return a.is_open ? -1 : 1
+      return scoreShop(b) - scoreShop(a)
+    })
+
     setDisplayShops(shops)
     if (locStatus === 'granted' || locStatus === 'denied') {
       const ids = shops.filter(s => s.is_open).map(s => s.id)
       loadProducts(ids.length ? ids : shops.map(s => s.id))
     }
-  }, [allShops, userLat, userLng, radius, activeCategory, locStatus, loadProducts])
+  }, [allShops, userLat, userLng, radius, activeCategory, locStatus, loadProducts, orders])
 
   const activeOrders   = orders.filter(o => !['delivered','cancelled','rejected'].includes(o.status))
+  const lastDelivered  = orders.find(o => o.status === 'delivered')
+
+  function reorder(order: Order) {
+    const items = (order as any).items as any[] | undefined
+    if (!items?.length) { window.location.href = `/stores/${(order as any).shop_id}`; return }
+    cart.clear()
+    items.forEach((item: any) => {
+      if (!item.product_id) return
+      cart.addItem(
+        { id: item.product_id, name: item.product_name, price: item.price, image_url: item.product_image || null, shop_id: (order as any).shop_id },
+        (order as any).shop_id,
+        (order as any).shop?.name || ''
+      )
+    })
+    window.location.href = '/cart'
+  }
+
   const openShops      = displayShops.filter(s => s.is_open)
   const closedShops    = displayShops.filter(s => !s.is_open)
   const dealProducts   = products.filter(p => p.original_price && p.original_price > p.price)
   const featuredProds  = dealProducts.length > 0 ? dealProducts : products
   const greeting       = (() => { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening' })()
+
+  // Past-order shops sorted by frequency (most ordered = shown first)
+  const pastOrderShopData = (() => {
+    const freq: Record<string, { lastOrder: any; count: number }> = {}
+    orders.filter(o => o.status === 'delivered' && (o as any).shop_id).forEach(o => {
+      const sid = (o as any).shop_id
+      if (!freq[sid]) freq[sid] = { lastOrder: o, count: 0 }
+      freq[sid].count++
+    })
+    return Object.values(freq)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5)
+      .map(({ lastOrder }) => {
+        const s = allShops.find(sh => sh.id === (lastOrder as any).shop_id)
+        if (!s) return null
+        const km = (userLat && userLng && s.latitude && s.longitude)
+          ? dist(userLat, userLng, Number(s.latitude), Number(s.longitude)) : null
+        return { ...s, km }
+      })
+      .filter(Boolean) as (Shop & { km: number | null })[]
+  })()
+
+  // Fast-delivery shops (≤25 min) for horizontal preview row
+  const fastDeliveryShops = openShops
+    .filter(s => s.avg_delivery_time <= 25)
+    .sort((a, b) => a.avg_delivery_time - b.avg_delivery_time)
+    .slice(0, 6)
+
+  // Remaining shops after fast-delivery (no duplication in vertical list)
+  const remainingShops = openShops.filter(s => !fastDeliveryShops.find(f => f.id === s.id))
 
   return (
     <>
@@ -232,50 +391,40 @@ export default function CustomerHome() {
     {showPhoneGate && user?.id && <PhoneGate userId={user.id} onDone={() => setShowPhoneGate(false)} />}
     <div style={{ minHeight:'100vh', background:'var(--page-bg)', fontFamily:"'Plus Jakarta Sans',sans-serif", paddingBottom:80 }}>
       <style>{`
-        @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:.4 } }
-        @keyframes fadeUp { from { opacity:0; transform:translateY(10px) } to { opacity:1; transform:none } }
-        @keyframes shimmer { 0% { background-position:-400px 0 } 100% { background-position:400px 0 } }
-        .sk { background: linear-gradient(90deg,var(--bg-3) 25%,var(--bg-2) 50%,var(--bg-3) 75%); background-size:400px 100%; animation: shimmer 1.4s infinite; border-radius:12px; }
-        .cat-btn { display:flex; flex-direction:column; align-items:center; gap:6px; padding:14px 8px 12px; border-radius:20px; border:none; cursor:pointer; transition:transform .15s,box-shadow .15s; flex:1; min-width:0; }
-        .cat-btn:active { transform:scale(.94); }
-        .shop-card { display:flex; align-items:center; gap:0; background:var(--card-white); border-radius:20px; overflow:hidden; text-decoration:none; transition:transform .15s,box-shadow .15s; box-shadow:0 2px 8px rgba(0,0,0,.06); }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+        @keyframes fadeUp { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} }
+        @keyframes shimmer { 0%{background-position:-400px 0} 100%{background-position:400px 0} }
+        .sk { background:linear-gradient(90deg,var(--bg-3) 25%,var(--bg-2) 50%,var(--bg-3) 75%); background-size:400px 100%; animation:shimmer 1.4s infinite; border-radius:12px; }
+        .shop-card { display:flex; align-items:center; background:var(--card-white); border-radius:20px; overflow:hidden; text-decoration:none; transition:transform .15s,box-shadow .15s; box-shadow:0 2px 8px rgba(0,0,0,.06); }
         .shop-card:active { transform:scale(.98); }
         .prod-card { background:var(--card-white); border-radius:18px; overflow:hidden; text-decoration:none; display:block; box-shadow:0 2px 8px rgba(0,0,0,.05); }
         .prod-card:active { transform:scale(.97); }
         .nav-item { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; flex:1; padding:8px 4px; text-decoration:none; color:var(--text-muted); transition:color .15s; }
         .nav-item.on { color:#FF3008; }
         .nav-item svg { width:22px; height:22px; }
-        .section-card { background:var(--card-white); border-radius:24px; margin:0 12px 12px; padding:18px 16px; }
+        ::-webkit-scrollbar { display:none; }
       `}</style>
 
-      {/* ── STICKY HEADER ─────────────────────────────────── */}
-      <div style={{ position:'sticky', top:0, zIndex:100, background:'var(--card-white)', boxShadow:'0 1px 0 #eee' }}>
-
-        {/* Location bar */}
+      {/* ── 1. STICKY HEADER ──────────────────────────────────────── */}
+      <div style={{ position:'sticky', top:0, zIndex:100, background:'var(--card-white)', boxShadow:'0 1px 0 rgba(0,0,0,.08)' }}>
         <div style={{ padding:'12px 16px 0', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
           <button onClick={detectLocation} style={{ display:'flex', alignItems:'center', gap:6, background:'none', border:'none', cursor:'pointer', padding:0, fontFamily:'inherit' }}>
-            <svg viewBox="0 0 24 24" fill="none" style={{ width:18, height:18, color:'#FF3008', flexShrink:0 }}>
+            <svg viewBox="0 0 24 24" fill="none" style={{ width:18, height:18, flexShrink:0 }}>
               <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="#FF3008"/>
             </svg>
             <div style={{ textAlign:'left' }}>
               <div style={{ fontSize:10, fontWeight:700, color:'var(--text-muted)', letterSpacing:'0.05em', lineHeight:1 }}>DELIVER TO</div>
-              <div style={{ display:'flex', alignItems:'center', gap:4, marginTop:1 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:3, marginTop:1 }}>
                 <span style={{ fontSize:15, fontWeight:900, color:'var(--text-primary)', letterSpacing:'-0.02em' }}>
                   {locStatus === 'detecting' ? 'Detecting…' : areaName ? areaName.split(',')[0].trim() : 'Set location'}
                 </span>
-                <svg viewBox="0 0 24 24" fill="none" style={{ width:14, height:14, color:'var(--text-primary)', flexShrink:0 }}>
+                <svg viewBox="0 0 24 24" fill="none" style={{ width:13, height:13 }}>
                   <path d="M7 10l5 5 5-5" stroke="var(--text-primary)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
               </div>
             </div>
           </button>
-
           <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-            <Link href="/orders/history" style={{ width:38, height:38, borderRadius:12, background:'var(--page-bg)', display:'flex', alignItems:'center', justifyContent:'center', textDecoration:'none' }}>
-              <svg viewBox="0 0 24 24" fill="none" style={{ width:20, height:20 }}>
-                <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" stroke="var(--text-secondary)" strokeWidth="2" strokeLinecap="round"/>
-              </svg>
-            </Link>
             <Link href="/cart" style={{ position:'relative', width:38, height:38, borderRadius:12, background: cartCount > 0 ? '#FF3008' : 'var(--page-bg)', display:'flex', alignItems:'center', justifyContent:'center', textDecoration:'none' }}>
               <svg viewBox="0 0 24 24" fill="none" style={{ width:20, height:20 }}>
                 <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z" stroke={cartCount > 0 ? '#fff' : 'var(--text-secondary)'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -291,190 +440,257 @@ export default function CustomerHome() {
             <ThemeToggle />
           </div>
         </div>
-
-        {/* Greeting */}
-        <div style={{ padding:'4px 16px 0', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+        <div style={{ padding:'3px 16px 0' }}>
           <p style={{ fontSize:13, fontWeight:600, color:'var(--text-muted)' }}>
-            {greeting}, <span style={{ color:'var(--text-primary)', fontWeight:800 }}>{user?.name?.split(' ')[0] || 'there'}</span> 👋
+            {greeting}, <span style={{ color:'var(--text-primary)', fontWeight:800 }}>{user?.name?.split(' ')[0] || 'there'}</span>
           </p>
         </div>
-
-        {/* Search bar */}
-        <div style={{ padding:'10px 16px 12px' }}>
+        <div style={{ padding:'9px 16px 12px' }}>
           <Link href="/search" style={{ textDecoration:'none', display:'flex', alignItems:'center', gap:10, background:'var(--page-bg)', borderRadius:14, padding:'11px 14px' }}>
-            <svg viewBox="0 0 24 24" fill="none" style={{ width:18, height:18, flexShrink:0 }}>
+            <svg viewBox="0 0 24 24" fill="none" style={{ width:17, height:17, flexShrink:0 }}>
               <circle cx="11" cy="11" r="8" stroke="var(--text-muted)" strokeWidth="2"/>
               <path d="m21 21-4.35-4.35" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round"/>
             </svg>
-            <span style={{ fontSize:14, color:'var(--text-muted)', fontWeight:600 }}>Search for products & shops…</span>
+            <span style={{ fontSize:14, color:'var(--text-muted)', fontWeight:600 }}>Search products, shops, services…</span>
           </Link>
         </div>
       </div>
 
-      {/* ── SUBSCRIPTIONS PILL ─────────────────────────────── */}
-      <Link href="/subscriptions" style={{ display:'flex', alignItems:'center', gap:10, margin:'12px 12px 0', background:'var(--card-white)', borderRadius:16, padding:'12px 16px', textDecoration:'none', border:'1.5px solid var(--divider)' }}>
-        <div style={{ width:34, height:34, borderRadius:10, background:'rgba(255,48,8,.08)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, fontSize:16 }}>🔁</div>
-        <div style={{ flex:1 }}>
-          <p style={{ fontSize:13, fontWeight:800, color:'var(--text-primary)' }}>My Subscriptions</p>
-          <p style={{ fontSize:11, color:'var(--text-muted)' }}>Daily milk, tiffin, eggs & more</p>
-        </div>
-        <svg viewBox="0 0 24 24" fill="none" style={{ width:16, height:16, flexShrink:0 }}><path d="M9 18l6-6-6-6" stroke="var(--text-muted)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-      </Link>
-
-      {/* ── ACTIVE ORDER PILL ─────────────────────────────── */}
+      {/* ── 2. ACTIVE ORDER — always-visible pill ─────────────────── */}
       {activeOrders.length > 0 && (
-        <Link href={`/orders/${activeOrders[0].id}`} style={{ display:'flex', alignItems:'center', gap:10, margin:'12px 12px 0', background:'#FF3008', borderRadius:16, padding:'12px 16px', textDecoration:'none', boxShadow:'0 4px 16px rgba(255,48,8,.3)' }}>
-          <span style={{ width:8, height:8, borderRadius:'50%', background:'var(--card-white)', flexShrink:0, animation:'pulse 1.5s infinite', display:'block' }} />
+        <Link href={`/orders/${activeOrders[0].id}`} style={{ display:'flex', alignItems:'center', gap:10, margin:'10px 12px 0', background:'#FF3008', borderRadius:16, padding:'12px 16px', textDecoration:'none', boxShadow:'0 4px 16px rgba(255,48,8,.3)' }}>
+          <span style={{ width:7, height:7, borderRadius:'50%', background:'#fff', flexShrink:0, animation:'pulse 1.5s infinite', display:'block' }} />
           <div style={{ flex:1 }}>
             <p style={{ fontSize:13, fontWeight:800, color:'#fff' }}>{(activeOrders[0] as any).shop?.name} · {ORDER_STATUS_LABELS[activeOrders[0].status as keyof typeof ORDER_STATUS_LABELS]}</p>
             <p style={{ fontSize:11, color:'rgba(255,255,255,.75)' }}>Tap to track your order</p>
           </div>
-          <svg viewBox="0 0 24 24" fill="none" style={{ width:18, height:18, flexShrink:0 }}>
+          <svg viewBox="0 0 24 24" fill="none" style={{ width:17, height:17, flexShrink:0 }}>
             <path d="M9 18l6-6-6-6" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
         </Link>
       )}
 
-      {/* ── CATEGORY STRIP — horizontal scroll like Blinkit ── */}
-      <div style={{ overflowX:'auto', scrollbarWidth:'none', WebkitOverflowScrolling:'touch', padding:'12px 12px 0' }}>
-        <div style={{ display:'flex', gap:8, width:'max-content' }}>
-          {(activeCats.length ? activeCats : CATS.map(c => ({ name: c.label, q: c.q }))).map(cat => {
-            const cfg = CATS.find(c => c.q === cat.q) || { color:'#FF3008', bg:'var(--red-light)' }
-            const isActive = activeCategory === cat.q
-            return (
-              <button key={cat.q}
-                onClick={() => setActiveCat(isActive ? null : cat.q)}
-                style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:5, padding:'8px 12px', borderRadius:14, border:`1.5px solid ${isActive ? cfg.color : 'transparent'}`, background: isActive ? cfg.color : cfg.bg, cursor:'pointer', fontFamily:'inherit', flexShrink:0, minWidth:64, transition:'all .15s' }}>
-                <span style={{ color: isActive ? '#fff' : cfg.color, display:'flex', alignItems:'center', justifyContent:'center' }}>
-                  {CAT_SVG[cat.q] || CAT_SVG['food']}
-                </span>
-                <span style={{ fontSize:11, fontWeight:800, color: isActive ? '#fff' : 'var(--text-primary)', whiteSpace:'nowrap' }}>{cat.name}</span>
-              </button>
-            )
-          })}
-        </div>
-      </div>
+      {/* ── 3. QUICK ACTIONS — reorder card + category tiles ─────── */}
+      {(() => {
+        // Use DB categories when available, fallback to hardcoded so categories always show
+        const displayCats = activeCats.length > 0
+          ? activeCats
+          : CATS.map(c => ({ name: c.label, q: c.q }))
+        const showReorder = !!lastDelivered && !activeOrders.length
+        if (!showReorder && !displayCats.length) return null
+        return (
+          <div style={{ margin:'16px 0 0' }}>
+            <p style={{ padding:'0 16px', fontSize:15, fontWeight:900, color:'var(--text-primary)', marginBottom:12 }}>Quick Actions</p>
+            <div style={{ display:'flex', gap:10, overflowX:'auto', paddingLeft:16, paddingRight:16, paddingBottom:6 }}>
 
-      {/* ── DELIVERY PROMISE PILL — compact ─────────────── */}
-      {!activeCategory && (
-        <div style={{ padding:'10px 12px 0' }}>
-          <div style={{ display:'inline-flex', alignItems:'center', gap:6, background:'var(--red-light)', border:'1px solid rgba(255,48,8,.15)', borderRadius:999, padding:'6px 14px' }}>
-            <svg viewBox="0 0 24 24" fill="none" width={14} height={14}>
-              <circle cx="12" cy="12" r="10" stroke="#FF3008" strokeWidth="2"/>
-              <polyline points="12 6 12 12 16 14" stroke="#FF3008" strokeWidth="2" strokeLinecap="round"/>
-            </svg>
-            <span style={{ fontSize:12, fontWeight:800, color:'#FF3008' }}>Delivered in 30 min</span>
-            <span style={{ fontSize:11, color:'var(--text-muted)', fontWeight:600 }}>· Local shops · 5km</span>
-          </div>
-        </div>
-      )}
+              {/* ── Reorder card ── */}
+              {showReorder && (
+                <button onClick={() => reorder(lastDelivered!)}
+                  style={{ flexShrink:0, background:'none', border:'none', padding:0, cursor:'pointer', textAlign:'left', fontFamily:'inherit' }}>
+                  <div style={{ width:164, height:88, borderRadius:20, overflow:'hidden', position:'relative', background:'#111', boxShadow:'0 4px 18px rgba(0,0,0,.25)' }}>
+                    {(lastDelivered as any).shop?.image_url && (
+                      <Image src={(lastDelivered as any).shop.image_url} alt="" fill sizes="164px" className="object-cover" style={{ opacity:.45 }} />
+                    )}
+                    <div style={{ position:'absolute', inset:0, background:'linear-gradient(120deg, rgba(0,0,0,.75) 0%, rgba(0,0,0,.45) 100%)' }} />
+                    {/* Icon LEFT + Text RIGHT */}
+                    <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', gap:11, padding:'0 15px' }}>
+                      <div style={{ width:36, height:36, borderRadius:11, background:'rgba(255,255,255,.14)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                        <svg viewBox="0 0 24 24" fill="none" width={19} height={19}>
+                          <path d="M1 4v6h6M23 20v-6h-6" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                          <path d="M20.49 9A9 9 0 005.64 5.64L1 10M23 14l-4.64 4.36A9 9 0 013.51 15" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      </div>
+                      <div style={{ minWidth:0 }}>
+                        <p style={{ fontSize:15, fontWeight:900, color:'#fff', marginBottom:3, letterSpacing:'-0.02em' }}>Reorder</p>
+                        <p style={{ fontSize:11, color:'rgba(255,255,255,.68)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:96 }}>
+                          {(lastDelivered as any).shop?.name || 'Last order'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </button>
+              )}
 
-      {/* ── DEALS ROW ─────────────────────────────────────── */}
-      {!activeCategory && featuredProds.length > 0 && (
-        <div style={{ margin:'16px 0 0' }}>
-          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 16px', marginBottom:12 }}>
-            <div>
-              <p style={{ fontSize:16, fontWeight:900, color:'var(--text-primary)', letterSpacing:'-0.02em' }}>{dealProducts.length > 0 ? 'Deals near you' : 'Top picks'}</p>
-              <p style={{ fontSize:12, color:'var(--text-muted)', marginTop:1 }}>Best from local shops</p>
+              {/* ── Category tiles ── */}
+              {displayCats.map(cat => {
+                const cfg = CATS.find(c => c.q === cat.q) || { color:'#FF3008', bg:'var(--red-light)' }
+                const isActive = activeCategory === cat.q
+                return (
+                  <button key={cat.q} onClick={() => setActiveCat(isActive ? null : cat.q)}
+                    style={{ flexShrink:0, background:'none', border:'none', padding:0, cursor:'pointer', textAlign:'center', fontFamily:'inherit' }}>
+                    {/* Tile — same height as reorder card */}
+                    <div style={{
+                      width:90, height:88, borderRadius:20,
+                      background: isActive ? cfg.color : 'var(--card-white)',
+                      display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:6,
+                      boxShadow: isActive ? `0 4px 18px ${cfg.color}55` : '0 3px 14px rgba(0,0,0,.08)',
+                      border: isActive ? 'none' : '1px solid var(--divider)',
+                      transition:'all .15s',
+                    }}>
+                      <span style={{ color: isActive ? '#fff' : cfg.color, display:'flex', transform:'scale(0.9)', lineHeight:0 }}>
+                        {CAT_SVG[cat.q] || CAT_SVG['default']}
+                      </span>
+                      <p style={{ fontSize:11, fontWeight:800, color: isActive ? '#fff' : 'var(--text-primary)', lineHeight:1, margin:0 }}>{cat.name}</p>
+                    </div>
+                  </button>
+                )
+              })}
+
             </div>
-            <Link href="/stores" style={{ fontSize:13, fontWeight:800, color:'#FF3008', textDecoration:'none' }}>See all →</Link>
           </div>
-          <div style={{ display:'flex', gap:10, overflowX:'auto', paddingLeft:16, paddingRight:16, paddingBottom:4, scrollbarWidth:'none' }}>
-            {products.length === 0
-              ? Array.from({length:5}).map((_,i) => <div key={i} className="sk" style={{ width:140, height:190, flexShrink:0 }} />)
-              : featuredProds.slice(0,12).map(p => <ProductCard key={p.id} product={p} />)
-            }
-          </div>
-        </div>
-      )}
+        )
+      })()}
 
-      {/* ── RADIUS CHIPS ──────────────────────────────────── */}
-      {locStatus === 'granted' && (
-        <div style={{ display:'flex', alignItems:'center', gap:8, padding:'14px 16px 0', overflowX:'auto', scrollbarWidth:'none' }}>
-          <span style={{ fontSize:12, fontWeight:700, color:'var(--text-muted)', flexShrink:0, display:'flex', alignItems:'center', gap:4 }}>
-              <svg viewBox="0 0 24 24" fill="none" width={13} height={13}><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 010-5 2.5 2.5 0 010 5z" fill="var(--text-muted)"/></svg>
-              Within:
-            </span>
-          {[1, 2, 5, 7].map(r => (
-            <button key={r} onClick={() => setRadius(r)}
-              style={{ flexShrink:0, padding:'6px 14px', borderRadius:999, border:'none', background: radius === r ? '#FF3008' : 'var(--chip-bg)', color: radius === r ? '#fff' : 'var(--text-secondary)', fontWeight:800, fontSize:12, cursor:'pointer', fontFamily:'inherit' }}>
-              {r}km
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* ── SHOPS ─────────────────────────────────────────── */}
-      <div style={{ margin:'14px 0 0' }}>
+      {/* ── 5. HYPERLOCAL SHOPS FEED — dominant section ───────────── */}
+      <div style={{ margin:'22px 0 0' }}>
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 16px', marginBottom:12 }}>
           <div>
-            <p style={{ fontSize:16, fontWeight:900, color:'var(--text-primary)', letterSpacing:'-0.02em' }}>
-              {activeCategory ? `${CATS.find(c => c.q === activeCategory)?.label} near you` : locStatus === 'granted' ? `Shops near ${areaName || 'you'}` : 'Shops near you'}
+            <p style={{ fontSize:17, fontWeight:900, color:'var(--text-primary)', letterSpacing:'-0.02em' }}>
+              {activeCategory
+                ? `${activeCats.find(c => c.q === activeCategory)?.name || activeCategory} near you`
+                : 'Popular near you'}
             </p>
-            <p style={{ fontSize:12, color:'var(--text-muted)', marginTop:1 }}>
-              {shopsLoaded ? `${openShops.length} open` : 'Loading…'}
+            <p style={{ fontSize:12, color:'var(--text-muted)', marginTop:2 }}>
+              {shopsLoaded ? `${openShops.length} shops open` : 'Finding local shops…'}
+              {locStatus === 'granted' && (
+                <> · <button onClick={() => setRadius(prev => prev === 5 ? 2 : prev === 2 ? 1 : prev === 1 ? 7 : 5)}
+                  style={{ background:'none', border:'none', color:'#FF3008', fontWeight:800, fontSize:12, cursor:'pointer', fontFamily:'inherit', padding:0 }}>
+                  {radius}km ↕
+                </button></>
+              )}
             </p>
           </div>
-          <Link href="/stores" style={{ fontSize:13, fontWeight:800, color:'#FF3008', textDecoration:'none' }}>Map view →</Link>
+          <Link href="/stores" style={{ fontSize:13, fontWeight:800, color:'#FF3008', textDecoration:'none' }}>See all</Link>
         </div>
 
-        {/* Location denied */}
         {locStatus === 'denied' && (
           <div style={{ margin:'0 12px', background:'var(--card-white)', borderRadius:20, padding:'28px 20px', textAlign:'center' }}>
-            <div style={{ width:56, height:56, background:'var(--red-light)', borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 12px' }}>
-              <svg viewBox="0 0 24 24" fill="none" width={28} height={28}><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 010-5 2.5 2.5 0 010 5z" fill="#FF3008"/></svg>
+            <div style={{ width:52, height:52, background:'var(--red-light)', borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 12px' }}>
+              <svg viewBox="0 0 24 24" fill="none" width={26} height={26}><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 010-5 2.5 2.5 0 010 5z" fill="#FF3008"/></svg>
             </div>
             <p style={{ fontWeight:800, fontSize:15, color:'var(--text-primary)', marginBottom:6 }}>Allow location access</p>
-            <p style={{ fontSize:13, color:'var(--text-muted)', marginBottom:16 }}>We only show shops in your neighbourhood</p>
+            <p style={{ fontSize:13, color:'var(--text-muted)', marginBottom:16 }}>We show only shops in your neighbourhood</p>
             <button onClick={detectLocation} style={{ background:'#FF3008', border:'none', borderRadius:14, padding:'12px 28px', fontSize:14, fontWeight:800, color:'#fff', cursor:'pointer', fontFamily:'inherit' }}>
               Enable location
             </button>
           </div>
         )}
 
-        {/* Skeletons */}
         {!shopsLoaded && (
           <div style={{ display:'flex', flexDirection:'column', gap:10, padding:'0 12px' }}>
-            {Array.from({length:4}).map((_,i) => (
-              <div key={i} className="sk" style={{ height:90, borderRadius:20 }} />
-            ))}
+            {Array.from({length:5}).map((_,i) => <div key={i} className="sk" style={{ height:90, borderRadius:20 }} />)}
           </div>
         )}
 
-        {/* Open shops */}
+        {/* Fast delivery horizontal strip */}
+        {shopsLoaded && !activeCategory && fastDeliveryShops.length >= 2 && (
+          <div style={{ marginBottom:22 }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 16px', marginBottom:12 }}>
+              <p style={{ fontSize:17, fontWeight:900, color:'var(--text-primary)', letterSpacing:'-0.02em' }}>Fast Delivery</p>
+              <Link href="/stores" style={{ fontSize:13, fontWeight:800, color:'#FF3008', textDecoration:'none' }}>See all</Link>
+            </div>
+            <div style={{ display:'flex', gap:12, overflowX:'auto', paddingLeft:16, paddingRight:16, paddingBottom:4 }}>
+              {fastDeliveryShops.map(shop => <ShopCardH key={shop.id} shop={shop} />)}
+            </div>
+          </div>
+        )}
+
+        {/* Popular near you — horizontal scroll */}
         {shopsLoaded && openShops.length > 0 && (
-          <div style={{ display:'flex', flexDirection:'column', gap:10, padding:'0 12px' }}>
-            {openShops.map((shop, i) => <ShopCard key={shop.id} shop={shop} index={i} />)}
+          <div style={{ marginBottom:8 }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 16px', marginBottom:12 }}>
+              <p style={{ fontSize:17, fontWeight:900, color:'var(--text-primary)', letterSpacing:'-0.02em' }}>
+                {activeCategory ? `${activeCats.find(c => c.q === activeCategory)?.name || 'Nearby'} Shops` : 'Popular near you'}
+              </p>
+              <Link href="/stores" style={{ fontSize:13, fontWeight:800, color:'#FF3008', textDecoration:'none' }}>
+                See all
+              </Link>
+            </div>
+            <div style={{ display:'flex', gap:12, overflowX:'auto', paddingLeft:16, paddingRight:16, paddingBottom:4 }}>
+              {(fastDeliveryShops.length >= 2 && !activeCategory ? remainingShops : openShops)
+                .slice(0, 10)
+                .map(shop => <ShopCardH key={shop.id} shop={shop} />)
+              }
+            </div>
           </div>
         )}
 
-        {/* Empty state */}
         {shopsLoaded && displayShops.length === 0 && locStatus !== 'denied' && (
           <div style={{ margin:'0 12px', background:'var(--card-white)', borderRadius:20, padding:'36px 20px', textAlign:'center' }}>
-            <div style={{ width:56, height:56, background:'var(--chip-bg)', borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 12px' }}>
-              <svg viewBox="0 0 24 24" fill="none" width={28} height={28}><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" stroke="var(--text-faint)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><polyline points="9 22 9 12 15 12 15 22" stroke="var(--text-faint)" strokeWidth="2" strokeLinecap="round"/></svg>
+            <div style={{ width:52, height:52, background:'var(--chip-bg)', borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 12px' }}>
+              <svg viewBox="0 0 24 24" fill="none" width={26} height={26}><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" stroke="var(--text-faint)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><polyline points="9 22 9 12 15 12 15 22" stroke="var(--text-faint)" strokeWidth="2" strokeLinecap="round"/></svg>
             </div>
             <p style={{ fontWeight:800, fontSize:15, color:'var(--text-primary)', marginBottom:6 }}>No shops nearby</p>
-            <p style={{ fontSize:13, color:'var(--text-muted)' }}>{locStatus === 'granted' ? `Try expanding your radius above` : 'Set your location to find shops'}</p>
+            <p style={{ fontSize:13, color:'var(--text-muted)' }}>{locStatus === 'granted' ? 'Try expanding your radius' : 'Set your location to find shops'}</p>
           </div>
-        )}
-
-        {/* Closed shops */}
-        {shopsLoaded && closedShops.length > 0 && (
-          <>
-            <div style={{ display:'flex', alignItems:'center', gap:10, margin:'20px 16px 12px' }}>
-              <div style={{ flex:1, height:1, background:'var(--chip-bg)' }} />
-              <span style={{ fontSize:11, fontWeight:700, color:'var(--text-faint)', letterSpacing:'0.05em' }}>CLOSED NOW · {closedShops.length}</span>
-              <div style={{ flex:1, height:1, background:'var(--chip-bg)' }} />
-            </div>
-            <div style={{ display:'flex', flexDirection:'column', gap:10, padding:'0 12px', opacity:0.55 }}>
-              {closedShops.slice(0,3).map((shop, i) => <ShopCard key={shop.id} shop={shop} index={i} />)}
-            </div>
-          </>
         )}
       </div>
 
-      {/* ── BOTTOM NAV ────────────────────────────────────── */}
+      {/* ── 6. DEALS — 2-column grid (breaks monotony vs horizontal scroll) ── */}
+      {!activeCategory && featuredProds.length > 0 && (
+        <div style={{ margin:'22px 0 0' }}>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 16px', marginBottom:12 }}>
+            <div>
+              <p style={{ fontSize:16, fontWeight:900, color:'var(--text-primary)', letterSpacing:'-0.02em' }}>{dealProducts.length > 0 ? 'Deals near you' : 'Top picks'}</p>
+              <p style={{ fontSize:12, color:'var(--text-muted)', marginTop:1 }}>Best from local shops</p>
+            </div>
+            <Link href="/stores" style={{ fontSize:12, fontWeight:800, color:'#FF3008', textDecoration:'none' }}>See all</Link>
+          </div>
+          {products.length === 0 ? (
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, padding:'0 12px' }}>
+              {Array.from({length:4}).map((_,i) => <div key={i} className="sk" style={{ height:195, borderRadius:16 }} />)}
+            </div>
+          ) : (
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, padding:'0 12px' }}>
+              {featuredProds.slice(0, 6).map(p => <ProductGridCard key={p.id} product={p} />)}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── 7. CLOSED SHOPS — compact horizontal, max 6 ──────────── */}
+      {shopsLoaded && closedShops.length > 0 && (
+        <div style={{ margin:'22px 0 0', opacity:0.55 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:8, padding:'0 16px', marginBottom:10 }}>
+            <div style={{ flex:1, height:1, background:'var(--chip-bg)' }} />
+            <span style={{ fontSize:11, fontWeight:700, color:'var(--text-faint)', letterSpacing:'0.05em', whiteSpace:'nowrap' }}>OPENS LATER · {closedShops.length}</span>
+            <div style={{ flex:1, height:1, background:'var(--chip-bg)' }} />
+          </div>
+          <div style={{ display:'flex', gap:10, overflowX:'auto', paddingLeft:16, paddingRight:16, paddingBottom:4 }}>
+            {closedShops.slice(0, 6).map(shop => <ShopCardH key={shop.id} shop={shop} />)}
+          </div>
+        </div>
+      )}
+
+      {/* ── 8. PERSONALIZATION — from past orders ─────────────────── */}
+      {pastOrderShopData.length >= 1 && (
+        <div style={{ margin:'22px 0 0' }}>
+          <div style={{ padding:'0 16px', marginBottom:12 }}>
+            <p style={{ fontSize:16, fontWeight:900, color:'var(--text-primary)', letterSpacing:'-0.02em' }}>Because you ordered before</p>
+            <p style={{ fontSize:12, color:'var(--text-muted)', marginTop:1 }}>Your trusted shops · one tap reorder</p>
+          </div>
+          <div style={{ display:'flex', gap:12, overflowX:'auto', paddingLeft:16, paddingRight:16, paddingBottom:4 }}>
+            {pastOrderShopData.map(shop => <ShopCardH key={shop.id} shop={shop} />)}
+          </div>
+        </div>
+      )}
+
+      {/* ── 9. SUBSCRIPTIONS entry point ──────────────────────────── */}
+      <Link href="/subscriptions" style={{ display:'flex', alignItems:'center', gap:10, margin:'20px 12px 0', background:'var(--card-white)', borderRadius:16, padding:'12px 16px', textDecoration:'none', border:'1.5px solid var(--divider)' }}>
+        <div style={{ width:34, height:34, borderRadius:10, background:'rgba(255,48,8,.07)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+          <svg viewBox="0 0 24 24" fill="none" width={17} height={17}>
+            <path d="M1 4v6h6M23 20v-6h-6" stroke="#FF3008" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M20.49 9A9 9 0 005.64 5.64L1 10M23 14l-4.64 4.36A9 9 0 013.51 15" stroke="#FF3008" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </div>
+        <div style={{ flex:1 }}>
+          <p style={{ fontSize:13, fontWeight:800, color:'var(--text-primary)' }}>My Subscriptions</p>
+          <p style={{ fontSize:11, color:'var(--text-muted)' }}>Daily milk, tiffin, eggs & more</p>
+        </div>
+        <svg viewBox="0 0 24 24" fill="none" style={{ width:15, height:15, flexShrink:0 }}><path d="M9 18l6-6-6-6" stroke="var(--text-muted)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+      </Link>
+
+      {/* ── BOTTOM NAV ────────────────────────────────────────────── */}
       <div style={{ position:'fixed', bottom:0, left:0, right:0, background:'var(--card-white)', borderTop:'1px solid var(--divider)', paddingBottom:'env(safe-area-inset-bottom,0)', zIndex:50 }}>
         <div style={{ display:'flex', maxWidth:480, margin:'0 auto' }}>
           {[
@@ -588,6 +804,113 @@ function ProductCard({ product }: { product: Product }) {
             {product.original_price && <span style={{ fontSize:11, color:'var(--text-faint)', textDecoration:'line-through', marginLeft:4 }}>₹{product.original_price}</span>}
           </div>
           <div style={{ width:28, height:28, borderRadius:8, border:'1.5px solid #FF3008', display:'flex', alignItems:'center', justifyContent:'center', color:'#FF3008', fontSize:18, fontWeight:900, lineHeight:1 }}>+</div>
+        </div>
+      </div>
+    </Link>
+  )
+}
+
+// ── SHOP CARD H (horizontal scroll variant) ───────────────────────
+function ShopCardH({ shop }: { shop: Shop & { km: number | null } }) {
+  const catKey  = Object.keys(CAT_COLOR).find(k => k !== 'default' && shop.category_name?.toLowerCase().includes(k)) || 'default'
+  const color   = CAT_COLOR[catKey]
+  const discMatch = shop.offer_text?.match(/(\d+)\s*%/)
+  const discPct   = discMatch ? discMatch[1] : null
+  const kmTxt = shop.km === null ? null : shop.km < 1 ? `${Math.round(shop.km * 1000)}m` : `${shop.km.toFixed(1)}km`
+  const isBoosted = (shop.boost_weight ?? 0) > 0
+
+  function handleClick() {
+    if (!isBoosted) return
+    const sb = createClient()
+    sb.rpc('increment_boost_click', { p_shop_id: shop.id, p_date: new Date().toISOString().slice(0, 10) })
+  }
+
+  return (
+    <Link href={`/stores/${shop.id}`}
+      onClick={handleClick}
+      style={{ flexShrink:0, width:172, background:'var(--card-white)', borderRadius:20, overflow:'hidden', textDecoration:'none', boxShadow:'0 3px 14px rgba(0,0,0,.11)', border:'1px solid var(--divider)', display:'block' }}>
+
+      {/* ── Image ── */}
+      <div style={{ height:116, background:`${color}18`, position:'relative', overflow:'hidden', display:'flex', alignItems:'center', justifyContent:'center' }}>
+        {shop.image_url
+          ? <Image src={shop.image_url} alt={shop.name} fill sizes="172px" className="object-cover"
+              style={shop.is_open ? undefined : { filter:'grayscale(55%) brightness(.85)' }} />
+          : <span style={{ color, opacity:.28, transform:'scale(1.2)', display:'flex' }}>{CAT_ICON_SVG[catKey] || CAT_ICON_SVG['default']}</span>
+        }
+        {/* Boost badge — top-right, replaces open status when boosted */}
+        {isBoosted && shop.boost_badge ? (
+          <div style={{ position:'absolute', top:8, right:8, background: shop.boost_badge_color ?? '#6b7280', color:'#fff', fontSize:9, fontWeight:900, padding:'3px 8px', borderRadius:6, letterSpacing:'0.06em', textTransform:'uppercase' }}>
+            {shop.boost_badge}
+          </div>
+        ) : !shop.is_open ? (
+          <div style={{ position:'absolute', top:9, right:9, background:'rgba(0,0,0,.72)', color:'rgba(255,255,255,.85)', fontSize:9, fontWeight:800, padding:'3px 8px', borderRadius:6, letterSpacing:'0.06em' }}>
+            CLOSED
+          </div>
+        ) : null}
+        {/* Discount badge */}
+        {discPct && (
+          <div style={{ position:'absolute', top:9, left:9, background:'#FF3008', color:'#fff', fontSize:12, fontWeight:900, padding:'3px 9px', borderRadius:8, letterSpacing:'-0.01em' }}>
+            {discPct}%
+          </div>
+        )}
+      </div>
+
+      {/* ── Info ── */}
+      <div style={{ padding:'10px 11px 11px' }}>
+        <p style={{ fontSize:13, fontWeight:900, color:'var(--text-primary)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', marginBottom:3, letterSpacing:'-0.01em' }}>{shop.name}</p>
+        <p style={{ fontSize:11, color:'var(--text-muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', marginBottom:9 }}>
+          {shop.category_name?.split(' ')[0]} / {shop.avg_delivery_time}min
+        </p>
+        {/* Bottom row: rating · time · km — arrow */}
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:4, fontSize:11, color:'var(--text-muted)', fontWeight:600 }}>
+            <svg viewBox="0 0 24 24" fill="#f59e0b" width={10} height={10}><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+            <span style={{ color:'var(--text-primary)', fontWeight:800 }}>{(shop.rating ?? 0).toFixed(1)}</span>
+            <span>·</span>
+            <span>{shop.avg_delivery_time}m</span>
+            {kmTxt && <><span>·</span><span>{kmTxt}</span></>}
+          </div>
+          {/* Outlined arrow button */}
+          <div style={{ width:28, height:28, borderRadius:'50%', border:'1.5px solid #FF3008', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+            <svg viewBox="0 0 24 24" fill="none" width={13} height={13}>
+              <path d="M9 18l6-6-6-6" stroke="#FF3008" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </div>
+        </div>
+      </div>
+    </Link>
+  )
+}
+
+// ── PRODUCT GRID CARD (2-column grid variant) ─────────────────────
+function ProductGridCard({ product }: { product: Product }) {
+  const disc = product.original_price && product.original_price > product.price
+    ? Math.round(((product.original_price - product.price) / product.original_price) * 100) : null
+  return (
+    <Link href={`/stores/${product.shop_id}`}
+      style={{ background:'var(--card-white)', borderRadius:16, overflow:'hidden', textDecoration:'none', boxShadow:'0 2px 8px rgba(0,0,0,.05)' }}>
+      <div style={{ height:118, background:'var(--chip-bg)', position:'relative', overflow:'hidden' }}>
+        {product.image_url
+          ? <Image src={product.image_url} alt={product.name} fill sizes="(max-width:480px) 50vw, 240px" className="object-cover" />
+          : <div style={{ width:'100%', height:'100%', display:'flex', alignItems:'center', justifyContent:'center' }}>
+              <svg viewBox="0 0 24 24" fill="none" width={34} height={34}><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4zM3 6h18M16 10a4 4 0 01-8 0" stroke="var(--text-faint)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            </div>
+        }
+        {disc && (
+          <div style={{ position:'absolute', top:7, left:7, background:'#FF3008', color:'#fff', fontSize:10, fontWeight:900, padding:'2px 6px', borderRadius:7 }}>
+            -{disc}%
+          </div>
+        )}
+      </div>
+      <div style={{ padding:'9px 10px 11px' }}>
+        <p style={{ fontSize:12, fontWeight:700, color:'var(--text-primary)', marginBottom:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', lineHeight:1.3 }}>{product.name}</p>
+        {product.shop_name && <p style={{ fontSize:10, color:'var(--text-muted)', marginBottom:5, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{product.shop_name}</p>}
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+          <div>
+            <span style={{ fontSize:13, fontWeight:900, color:'var(--text-primary)' }}>₹{product.price}</span>
+            {product.original_price && <span style={{ fontSize:10, color:'var(--text-faint)', textDecoration:'line-through', marginLeft:3 }}>₹{product.original_price}</span>}
+          </div>
+          <div style={{ width:26, height:26, borderRadius:7, border:'1.5px solid #FF3008', display:'flex', alignItems:'center', justifyContent:'center', color:'#FF3008', fontSize:16, fontWeight:900, lineHeight:1 }}>+</div>
         </div>
       </div>
     </Link>

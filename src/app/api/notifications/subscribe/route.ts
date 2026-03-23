@@ -1,18 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createAdminClient } from '@/lib/supabase/server'
+import { createAdminClient, createServerSupabaseClient } from '@/lib/supabase/server'
 
 export async function POST(req: NextRequest) {
   try {
-    const { userId, subscription } = await req.json()
-    if (!userId || !subscription) {
-      return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
+    // A01 — verify caller is authenticated
+    const supabase = createServerSupabaseClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    const { subscription } = await req.json()
+    if (!subscription || typeof subscription !== 'object') {
+      return NextResponse.json({ error: 'Missing subscription' }, { status: 400 })
     }
 
-    const supabase = createAdminClient()
-
-    // Save subscription to users table
-    await supabase.from('push_subscriptions').upsert({
-      user_id: userId,
+    // A01 — always use session user ID, never trust client-supplied userId
+    // This prevents push notification hijacking
+    const admin = createAdminClient()
+    await admin.from('push_subscriptions').upsert({
+      user_id: user.id,
       subscription: JSON.stringify(subscription),
       updated_at: new Date().toISOString(),
     }, { onConflict: 'user_id' })

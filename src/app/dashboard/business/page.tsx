@@ -44,7 +44,12 @@ export default function BusinessDashboard() {
     const { data: profile } = await supabase.from('users').select('*').eq('id', authUser.id).single()
     if (!profile?.phone) setShowPhoneGate(true)
     setUser(profile)
-    const { data: shopData } = await supabase.from('shops').select('*').eq('owner_id', authUser.id).single()
+    const { data: shopData } = await supabase
+      .from('shops')
+      .select('*, active_boost:vendor_boosts(status, end_date, plan:boost_plans(name, badge_color, boost_weight))')
+      .eq('owner_id', authUser.id)
+      .eq('vendor_boosts.status', 'active')
+      .single()
     if (!shopData) { setLoading(false); return }
     setShop(shopData)
     setVerStatus((shopData as any).verification_status ?? 'pending')
@@ -664,6 +669,7 @@ function ShopSettings({ shop, onSaved }: { shop: any; onSaved: () => void }) {
   const [saving, setSaving]   = useState(false)
   const [saved, setSaved]     = useState('')
   const [err, setErr]         = useState('')
+  const [copied, setCopied]   = useState(false)
   const [name, setName]             = useState(shop.name || '')
   const [description, setDesc]      = useState(shop.description || '')
   const [category, setCategory]     = useState(shop.category_name || '')
@@ -722,6 +728,15 @@ function ShopSettings({ shop, onSaved }: { shop: any; onSaved: () => void }) {
     } catch(e: any) { setImgError(e.message || 'Upload failed') }
   }
 
+  const shopUrl  = typeof window !== 'undefined' ? `${window.location.origin}/stores/${shop.id}` : `https://welokl.com/stores/${shop.id}`
+  const waText   = encodeURIComponent(`Order from ${shop.name} on Welokl: ${shopUrl}`)
+  const waLink   = `https://wa.me/?text=${waText}`
+  const smsLink  = `sms:?body=${encodeURIComponent(`Order from ${shop.name}: ${shopUrl}`)}`
+  async function copyLink() {
+    try { await navigator.clipboard.writeText(shopUrl) } catch {}
+    setCopied(true); setTimeout(() => setCopied(false), 2200)
+  }
+
   const sections = [
     { id: 'info',     icon: '🏪', label: 'Shop info'   },
     { id: 'hours',    icon: '🕐', label: 'Hours'        },
@@ -739,6 +754,76 @@ function ShopSettings({ shop, onSaved }: { shop: any; onSaved: () => void }) {
 
   return (
     <div style={{ maxWidth: 520 }}>
+
+      {/* ── Boost status ── */}
+      {(() => {
+        const boost = (shop as any).active_boost
+        const planName   = boost?.plan?.name       ?? null
+        const badgeColor = boost?.plan?.badge_color ?? '#6b7280'
+        const endDate    = boost?.end_date          ?? null
+        const daysLeft   = endDate ? Math.max(0, Math.ceil((new Date(endDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24))) : 0
+        const isActive   = boost?.status === 'active' && daysLeft > 0
+        return (
+          <div style={{ background: isActive ? `${badgeColor}12` : 'var(--card-2)', border: `1.5px solid ${isActive ? badgeColor + '44' : 'var(--border)'}`, borderRadius: 16, padding: 16, marginBottom: 20 }}>
+            <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+              <svg viewBox="0 0 16 16" fill="none" width={18} height={18}>
+                <path d="M8 1l1.5 3.5L13 5.5l-2.5 2.5.5 3.5L8 10l-3 1.5.5-3.5L3 5.5l3.5-1L8 1z" stroke={isActive ? badgeColor : 'var(--text-3)'} strokeWidth="1.4" strokeLinejoin="round"/>
+              </svg>
+              <div style={{ flex:1 }}>
+                {isActive ? (
+                  <>
+                    <p style={{ fontSize:13, fontWeight:800, color: badgeColor }}>
+                      {planName} Boost Active
+                    </p>
+                    <p style={{ fontSize:11, color:'var(--text-2)', marginTop:1 }}>
+                      Your shop gets higher visibility · {daysLeft} day{daysLeft !== 1 ? 's' : ''} remaining
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p style={{ fontSize:13, fontWeight:800, color:'var(--text)' }}>No active boost</p>
+                    <p style={{ fontSize:11, color:'var(--text-2)', marginTop:1 }}>
+                      Contact the Welokl team to boost your shop and appear at the top of the feed
+                    </p>
+                  </>
+                )}
+              </div>
+              {isActive && (
+                <div style={{ padding:'4px 10px', borderRadius:8, background: badgeColor, color:'#fff', fontSize:11, fontWeight:800, flexShrink:0 }}>
+                  {planName}
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* ── Share your shop link ── */}
+      <div style={{ background: 'rgba(37,211,102,.06)', border: '1.5px solid rgba(37,211,102,.25)', borderRadius: 16, padding: '16px', marginBottom: 20 }}>
+        <p style={{ fontSize: 13, fontWeight: 800, color: '#15803d', marginBottom: 3 }}>Share your shop link</p>
+        <p style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 12, lineHeight: 1.55 }}>
+          Send this to your existing customers via WhatsApp — they can order directly without calling you
+        </p>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+          <div style={{ flex: 1, background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 10, padding: '9px 12px', fontSize: 11, color: 'var(--text-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'monospace' }}>
+            welokl.com/stores/{shop.id}
+          </div>
+          <button onClick={copyLink} style={{ padding: '9px 14px', borderRadius: 10, border: 'none', background: copied ? '#16a34a' : '#111', color: '#fff', fontWeight: 800, fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'inherit', transition: 'background .2s' }}>
+            {copied ? 'Copied!' : 'Copy'}
+          </button>
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <a href={waLink} target="_blank" rel="noreferrer"
+            style={{ flex: 1, textAlign: 'center', padding: '10px', borderRadius: 10, background: '#25D366', color: '#fff', fontWeight: 800, fontSize: 12, textDecoration: 'none', display: 'block' }}>
+            WhatsApp
+          </a>
+          <a href={smsLink}
+            style={{ flex: 1, textAlign: 'center', padding: '10px', borderRadius: 10, background: 'rgba(59,130,246,.12)', color: '#3b82f6', fontWeight: 800, fontSize: 12, textDecoration: 'none', display: 'block' }}>
+            SMS
+          </a>
+        </div>
+      </div>
+
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 24 }}>
         {sections.map(s => (
           <button key={s.id} onClick={() => setSection(s.id as any)}

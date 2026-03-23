@@ -2,7 +2,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
  
-type Tab = 'overview' | 'orders' | 'shops' | 'users' | 'verify' | 'pricing' | 'delivery' | 'categories' | 'wallets'
+type Tab = 'overview' | 'orders' | 'shops' | 'users' | 'verify' | 'pricing' | 'delivery' | 'categories' | 'wallets' | 'boosts'
  
 interface Config  { key: string; value: string; label: string }
 interface Order   { id: string; order_number: string; status: string; total_amount: number; subtotal: number; payment_method: string; created_at: string; type: string; delivery_partner_id: string | null; shop: { name: string; commission_percent: number } | null; customer: { name: string; phone: string } | null; partner: { name: string; phone: string } | null }
@@ -36,6 +36,7 @@ const IcoPrice    = () => <svg viewBox="0 0 16 16" fill="none" width={15} height
 const IcoBike     = () => <svg viewBox="0 0 16 16" fill="none" width={15} height={15}><circle cx="3.5" cy="11.5" r="2.5" stroke="currentColor" strokeWidth="1.4"/><circle cx="12.5" cy="11.5" r="2.5" stroke="currentColor" strokeWidth="1.4"/><path d="M3.5 11.5L6 7L9 9L10 6H13" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/><path d="M9 4H11" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>
 const IcoTag      = () => <svg viewBox="0 0 16 16" fill="none" width={15} height={15}><path d="M9 1H14V6L8 12L4 8L9 1Z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/><circle cx="12" cy="4" r="1" fill="currentColor"/></svg>
 const IcoWallet   = () => <svg viewBox="0 0 16 16" fill="none" width={15} height={15}><rect x="1" y="4" width="14" height="10" rx="2" stroke="currentColor" strokeWidth="1.4"/><path d="M1 7h14" stroke="currentColor" strokeWidth="1.4"/><circle cx="12" cy="10" r="1" fill="currentColor"/></svg>
+const IcoBoost    = () => <svg viewBox="0 0 16 16" fill="none" width={15} height={15}><path d="M8 1l1.5 3.5L13 5.5l-2.5 2.5.5 3.5L8 10l-3 1.5.5-3.5L3 5.5l3.5-1L8 1z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/></svg>
  
 export default function AdminDashboard() {
   const [tab, setTab]             = useState<Tab>('overview')
@@ -46,6 +47,11 @@ export default function AdminDashboard() {
   const [pendingDel, setPendingDel] = useState<PendingDelivery[]>([])
   const [categories, setCategories] = useState<any[]>([])
   const [wallets,    setWallets]    = useState<WalletRow[]>([])
+  const [boostPlans,   setBoostPlans]   = useState<any[]>([])
+  const [vendorBoosts, setVendorBoosts] = useState<any[]>([])
+  const [boostMetrics, setBoostMetrics] = useState<any[]>([])
+  const [boostForm, setBoostForm] = useState({ shopId:'', planId:'', weeks: 4 })
+  const [boostSaving, setBoostSaving] = useState(false)
   const [loading, setLoading]     = useState(true)
   const [saving, setSaving]       = useState(false)
   const [edits, setEdits]         = useState<Record<string, string>>({})
@@ -71,7 +77,8 @@ export default function AdminDashboard() {
       return
     }
  
-    const [{ data: od }, { data: sd }, { data: ud }, { data: cd }, { data: dd }, { data: cats }, { data: wds }] = await Promise.all([
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+    const [{ data: od }, { data: sd }, { data: ud }, { data: cd }, { data: dd }, { data: cats }, { data: wds }, { data: bplans }, { data: vboosts }, { data: bmetrics }] = await Promise.all([
       sb.from('orders').select('*, shop:shops(name,commission_percent), customer:users!customer_id(name,phone), partner:users!delivery_partner_id(name,phone)').order('created_at', { ascending: false }).limit(200),
       sb.from('shops').select('*, owner:users!owner_id(name,email,phone)').order('created_at', { ascending: false }),
       sb.from('users').select('*').order('created_at', { ascending: false }).limit(300),
@@ -79,14 +86,20 @@ export default function AdminDashboard() {
       sb.from('delivery_partners').select('*, user:users!user_id(name,email,phone,created_at)').order('created_at', { ascending: false }),
       sb.from('categories').select('*').order('name'),
       sb.from('wallets').select('*, user:users(name,email,phone)').order('balance', { ascending: false }).limit(200),
+      sb.from('boost_plans').select('*').order('boost_weight'),
+      sb.from('vendor_boosts').select('*, shop:shops(name,area), plan:boost_plans(name,badge_label,boost_weight)').order('created_at', { ascending: false }),
+      sb.from('vendor_boost_metrics').select('*').gte('date', sevenDaysAgo).order('date', { ascending: false }),
     ])
- 
+
     setOrders((od as Order[]) || [])
     setShops((sd as Shop[]) || [])
     setUsers((ud as User[]) || [])
     setConfig((cd as Config[]) || [])
     setCategories(cats || [])
     setWallets((wds as WalletRow[]) || [])
+    setBoostPlans(bplans || [])
+    setVendorBoosts(vboosts || [])
+    setBoostMetrics(bmetrics || [])
  
     const flat: PendingDelivery[] = ((dd as any[]) || []).map((dp: any) => ({
       user_id: dp.user_id,
@@ -206,6 +219,44 @@ export default function AdminDashboard() {
     !userSearch || u.name?.toLowerCase().includes(userSearch.toLowerCase()) || u.email?.toLowerCase().includes(userSearch.toLowerCase()) || u.phone?.includes(userSearch)
   )
  
+  // ── Boost admin actions ───────────────────────────────────────
+  async function assignBoost() {
+    const { shopId, planId, weeks } = boostForm
+    if (!shopId || !planId) return
+    setBoostSaving(true)
+    const sb = createClient()
+    const start = new Date().toISOString().slice(0, 10)
+    const end   = new Date(Date.now() + weeks * 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+    // Cancel existing active boost for this shop first
+    await sb.from('vendor_boosts').update({ status: 'cancelled' }).eq('shop_id', shopId).eq('status', 'active')
+    await sb.from('vendor_boosts').insert({ shop_id: shopId, plan_id: planId, start_date: start, end_date: end, status: 'active' })
+    setBoostForm({ shopId:'', planId:'', weeks:4 })
+    setBoostSaving(false)
+    load()
+  }
+
+  async function updateBoostStatus(boostId: string, status: 'active' | 'paused' | 'cancelled') {
+    await createClient().from('vendor_boosts').update({ status }).eq('id', boostId)
+    load()
+  }
+
+  async function updateBoostWeight(planId: string, weight: number) {
+    await createClient().from('boost_plans').update({ boost_weight: weight }).eq('id', planId)
+    load()
+  }
+
+  // 7-day aggregate metrics per shop
+  const boostAnalytics = (() => {
+    const map: Record<string, { impressions: number; clicks: number; orders: number }> = {}
+    boostMetrics.forEach((m: any) => {
+      if (!map[m.shop_id]) map[m.shop_id] = { impressions: 0, clicks: 0, orders: 0 }
+      map[m.shop_id].impressions += m.impressions ?? 0
+      map[m.shop_id].clicks     += m.clicks      ?? 0
+      map[m.shop_id].orders     += m.orders       ?? 0
+    })
+    return map
+  })()
+
   const TABS: { id: Tab; icon: React.ReactNode; label: string; badge?: number }[] = [
     { id: 'overview',    icon: <IcoChart />,  label: 'Overview' },
     { id: 'orders',      icon: <IcoBox />,    label: `Orders (${orders.length})` },
@@ -216,6 +267,7 @@ export default function AdminDashboard() {
     { id: 'delivery',    icon: <IcoBike />,   label: 'Delivery' },
     { id: 'categories',  icon: <IcoTag />,    label: 'Categories' },
     { id: 'wallets',     icon: <IcoWallet />, label: 'Wallets' },
+    { id: 'boosts',      icon: <IcoBoost />,  label: 'Boosts', badge: vendorBoosts.filter((b: any) => b.status === 'active').length || undefined },
   ]
  
   return (
@@ -840,6 +892,168 @@ export default function AdminDashboard() {
                   </div>
                 )}
               </div>
+            </div>
+          )}
+
+          {/* ── BOOSTS ─────────────────────────────────────────────── */}
+          {tab === 'boosts' && (
+            <div style={{ display:'flex', flexDirection:'column', gap:24 }}>
+
+              {/* Plans */}
+              <div style={card}>
+                <h2 style={{ fontWeight:900, fontSize:16, color:'var(--text)', marginBottom:4 }}>Boost Plans</h2>
+                <p style={{ fontSize:12, color:'var(--text-3)', marginBottom:16 }}>Adjust boost_weight to change how much each plan affects ranking. Higher = more visibility.</p>
+                <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                  {boostPlans.map((p: any) => (
+                    <div key={p.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 16px', background:'var(--bg)', borderRadius:12, border:'1px solid var(--border)' }}>
+                      <div style={{ width:10, height:10, borderRadius:'50%', background: p.badge_color, flexShrink:0 }} />
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <p style={{ fontWeight:800, fontSize:13, color:'var(--text)' }}>{p.name} <span style={{ fontWeight:500, color:'var(--text-3)', fontSize:11 }}>"{p.badge_label}"</span></p>
+                        <p style={{ fontSize:11, color:'var(--text-3)', marginTop:2 }}>₹{p.price_weekly}/wk · ₹{p.price_monthly}/mo</p>
+                      </div>
+                      <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                        <label style={{ fontSize:11, color:'var(--text-3)' }}>Weight</label>
+                        <input type="number" defaultValue={p.boost_weight} min={1} max={200}
+                          onBlur={e => { const v = parseInt(e.target.value); if (v > 0) updateBoostWeight(p.id, v) }}
+                          style={{ width:60, padding:'4px 8px', borderRadius:8, border:'1px solid var(--border)', background:'var(--card-bg)', color:'var(--text)', fontSize:12, fontFamily:'inherit', textAlign:'center' }} />
+                      </div>
+                      <div style={{ padding:'3px 10px', borderRadius:6, background: p.badge_color + '22', color: p.badge_color, fontSize:11, fontWeight:800 }}>
+                        +{p.boost_weight} pts
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Assign boost */}
+              <div style={card}>
+                <h2 style={{ fontWeight:900, fontSize:16, color:'var(--text)', marginBottom:4 }}>Assign Boost to Vendor</h2>
+                <p style={{ fontSize:12, color:'var(--text-3)', marginBottom:16 }}>Select a shop, choose plan and duration. Existing active boost is replaced.</p>
+                <div style={{ display:'flex', flexWrap:'wrap', gap:10, alignItems:'flex-end' }}>
+                  <div style={{ flex:'1 1 180px' }}>
+                    <label style={{ ...lbl, marginBottom:6, display:'block' }}>Shop</label>
+                    <select value={boostForm.shopId} onChange={e => setBoostForm(f => ({ ...f, shopId: e.target.value }))}
+                      style={{ width:'100%', padding:'8px 12px', borderRadius:10, border:'1px solid var(--border)', background:'var(--card-bg)', color:'var(--text)', fontSize:13, fontFamily:'inherit' }}>
+                      <option value="">Select shop…</option>
+                      {shops.filter(s => s.is_active).map(s => (
+                        <option key={s.id} value={s.id}>{s.name} — {s.area}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div style={{ flex:'1 1 140px' }}>
+                    <label style={{ ...lbl, marginBottom:6, display:'block' }}>Plan</label>
+                    <select value={boostForm.planId} onChange={e => setBoostForm(f => ({ ...f, planId: e.target.value }))}
+                      style={{ width:'100%', padding:'8px 12px', borderRadius:10, border:'1px solid var(--border)', background:'var(--card-bg)', color:'var(--text)', fontSize:13, fontFamily:'inherit' }}>
+                      <option value="">Select plan…</option>
+                      {boostPlans.map((p: any) => <option key={p.id} value={p.id}>{p.name} (+{p.boost_weight} pts)</option>)}
+                    </select>
+                  </div>
+                  <div style={{ flex:'0 0 120px' }}>
+                    <label style={{ ...lbl, marginBottom:6, display:'block' }}>Duration</label>
+                    <select value={boostForm.weeks} onChange={e => setBoostForm(f => ({ ...f, weeks: parseInt(e.target.value) }))}
+                      style={{ width:'100%', padding:'8px 12px', borderRadius:10, border:'1px solid var(--border)', background:'var(--card-bg)', color:'var(--text)', fontSize:13, fontFamily:'inherit' }}>
+                      <option value={1}>1 week</option>
+                      <option value={2}>2 weeks</option>
+                      <option value={4}>4 weeks (1 mo)</option>
+                      <option value={8}>8 weeks (2 mo)</option>
+                      <option value={12}>12 weeks (3 mo)</option>
+                    </select>
+                  </div>
+                  <button onClick={assignBoost} disabled={boostSaving || !boostForm.shopId || !boostForm.planId}
+                    style={{ padding:'9px 20px', borderRadius:10, background:'#ff3008', color:'#fff', border:'none', fontWeight:800, fontSize:13, cursor:'pointer', fontFamily:'inherit', opacity: boostSaving ? .6 : 1 }}>
+                    {boostSaving ? 'Saving…' : 'Assign Boost'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Active boosts */}
+              <div style={card2}>
+                <div style={{ padding:'16px 20px 12px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                  <h2 style={{ fontWeight:900, fontSize:16, color:'var(--text)' }}>Active Boosts ({vendorBoosts.filter((b:any) => b.status === 'active').length})</h2>
+                </div>
+                {vendorBoosts.length === 0 ? (
+                  <div style={{ padding:'32px 20px', textAlign:'center', color:'var(--text-3)' }}>
+                    <p style={{ fontWeight:700 }}>No boosts yet</p>
+                    <p style={{ fontSize:12, marginTop:4 }}>Assign a boost above to get started.</p>
+                  </div>
+                ) : (
+                  <div style={{ overflowX:'auto' }}>
+                    <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
+                      <thead>
+                        <tr style={{ background:'var(--bg)' }}>
+                          {['Shop','Plan','Period','Status','7-day Impr.','7-day Clicks','7-day Orders','Actions'].map(h => (
+                            <th key={h} style={{ padding:'10px 14px', textAlign:'left', fontWeight:700, fontSize:11, color:'var(--text-3)', letterSpacing:'0.06em', textTransform:'uppercase', whiteSpace:'nowrap' }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {vendorBoosts.map((b: any) => {
+                          const m = boostAnalytics[b.shop_id] || { impressions:0, clicks:0, orders:0 }
+                          const isActive  = b.status === 'active'
+                          const isExpired = new Date(b.end_date) < new Date()
+                          const ctr = m.impressions > 0 ? ((m.clicks / m.impressions) * 100).toFixed(1) : '0.0'
+                          return (
+                            <tr key={b.id} style={{ borderTop:'1px solid var(--border)', opacity: isActive ? 1 : .55 }}>
+                              <td style={{ padding:'12px 14px' }}>
+                                <p style={{ fontWeight:700, color:'var(--text)' }}>{b.shop?.name || '—'}</p>
+                                <p style={{ fontSize:11, color:'var(--text-3)' }}>{b.shop?.area}</p>
+                              </td>
+                              <td style={{ padding:'12px 14px' }}>
+                                <span style={{ padding:'3px 8px', borderRadius:6, background:'rgba(139,92,246,.15)', color:'#8b5cf6', fontWeight:700, fontSize:11 }}>
+                                  {b.plan?.name} +{b.plan?.boost_weight}pts
+                                </span>
+                              </td>
+                              <td style={{ padding:'12px 14px', ...mono }}>
+                                {b.start_date} → {b.end_date}
+                                {isExpired && isActive && <span style={{ marginLeft:6, color:'#ef4444', fontSize:10, fontWeight:700 }}>EXPIRED</span>}
+                              </td>
+                              <td style={{ padding:'12px 14px' }}>
+                                <span style={{ padding:'3px 8px', borderRadius:6, fontWeight:700, fontSize:11,
+                                  background: isActive ? 'rgba(22,163,74,.15)' : 'rgba(100,100,100,.15)',
+                                  color:       isActive ? '#16a34a'            : 'var(--text-3)' }}>
+                                  {b.status}
+                                </span>
+                              </td>
+                              <td style={{ padding:'12px 14px', fontWeight:700, color:'var(--text)' }}>
+                                {m.impressions.toLocaleString()}
+                              </td>
+                              <td style={{ padding:'12px 14px', color:'var(--text)' }}>
+                                {m.clicks} <span style={{ fontSize:10, color:'var(--text-3)' }}>({ctr}% CTR)</span>
+                              </td>
+                              <td style={{ padding:'12px 14px', fontWeight:700, color:'#16a34a' }}>
+                                {m.orders}
+                              </td>
+                              <td style={{ padding:'12px 14px' }}>
+                                <div style={{ display:'flex', gap:6 }}>
+                                  {isActive && (
+                                    <button onClick={() => updateBoostStatus(b.id, 'paused')}
+                                      style={{ padding:'4px 10px', borderRadius:7, border:'1px solid var(--border)', background:'var(--bg)', color:'var(--text-3)', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>
+                                      Pause
+                                    </button>
+                                  )}
+                                  {b.status === 'paused' && (
+                                    <button onClick={() => updateBoostStatus(b.id, 'active')}
+                                      style={{ padding:'4px 10px', borderRadius:7, border:'none', background:'#16a34a', color:'#fff', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>
+                                      Resume
+                                    </button>
+                                  )}
+                                  {b.status !== 'cancelled' && (
+                                    <button onClick={() => { if (confirm('Cancel this boost?')) updateBoostStatus(b.id, 'cancelled') }}
+                                      style={{ padding:'4px 10px', borderRadius:7, border:'none', background:'rgba(220,38,38,.12)', color:'#dc2626', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>
+                                      Cancel
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
             </div>
           )}
 

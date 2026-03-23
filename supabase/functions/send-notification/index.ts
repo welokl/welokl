@@ -1,12 +1,22 @@
 // supabase/functions/send-notification/index.ts
-// Deploy: npx supabase functions deploy send-notification --no-verify-jwt
+// Deploy: npx supabase functions deploy send-notification
+// NOTE: remove --no-verify-jwt so Supabase validates the caller's JWT
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+// A05 — restrict CORS to your own domain only
+// @ts-ignore — Deno global available at Edge Function runtime
+const _appOrigin: string = typeof Deno !== 'undefined' ? (Deno.env.get('APP_ORIGIN') ?? '') : ''
+const ALLOWED_ORIGINS = ['https://welokl.com', 'https://www.welokl.com', _appOrigin].filter(Boolean)
+
+function makeCorsHeaders(origin: string | null): Record<string, string> {
+  const allowed = (origin && ALLOWED_ORIGINS.includes(origin)) ? origin : (ALLOWED_ORIGINS[0] ?? '*')
+  return {
+    'Access-Control-Allow-Origin': allowed,
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Vary': 'Origin',
+  }
 }
 
 // ── Get FCM OAuth2 access token ───────────────────────────────
@@ -72,7 +82,9 @@ async function sendPush(
   body: string,
   extra: Record<string, string> = {}
 ): Promise<boolean> {
+  // @ts-ignore
   const projectId      = Deno.env.get('FCM_PROJECT_ID')!
+  // @ts-ignore
   const saRaw          = Deno.env.get('FCM_SERVICE_ACCOUNT')!
   const serviceAccount = JSON.parse(saRaw)
   const accessToken    = await getFCMAccessToken(serviceAccount)
@@ -121,17 +133,54 @@ async function sendPush(
 
 // ── Main ──────────────────────────────────────────────────────
 serve(async (req: Request) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
+  const origin = req.headers.get('origin')
+  const ch = makeCorsHeaders(origin)
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: ch })
 
   try {
     const body = await req.json()
     const { type, order_id, shop_id, customer_id } = body
     console.log('[notify] received type:', type, 'order:', order_id)
 
+    // A03/A04 — validate inputs before any DB operation
+    if (!type || typeof type !== 'string') {
+      return new Response(JSON.stringify({ ok: false, error: 'Invalid type' }), { status: 400, headers: { ...ch, 'Content-Type': 'application/json' } })
+    }
+    if (order_id && (typeof order_id !== 'string' || order_id.length > 100)) {
+      return new Response(JSON.stringify({ ok: false, error: 'Invalid order_id' }), { status: 400, headers: { ...ch, 'Content-Type': 'application/json' } })
+    }
+
+    // @ts-ignore — Deno global available at Edge Function runtime
     const sb = createClient(
+      // @ts-ignore
       Deno.env.get('SUPABASE_URL')!,
+      // @ts-ignore
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     )
+
+    // A01 — verify the order exists and the claimed customer_id/shop_id actually
+    // matches the DB record before sending any notification.
+    // Prevents an attacker from spamming fake notifications to arbitrary users.
+    if (order_id) {
+      const { data: orderCheck } = await sb
+        .from('orders')
+        .select('customer_id, shop_id')
+        .eq('id', order_id)
+        .single()
+      if (!orderCheck) {
+        console.warn('[notify] order not found:', order_id)
+        return new Response(JSON.stringify({ ok: false, error: 'Order not found' }), { status: 404, headers: { ...ch, 'Content-Type': 'application/json' } })
+      }
+      // Reject if the claimed IDs don't match the DB
+      if (customer_id && orderCheck.customer_id !== customer_id) {
+        console.warn('[notify] customer_id mismatch')
+        return new Response(JSON.stringify({ ok: false, error: 'Forbidden' }), { status: 403, headers: { ...ch, 'Content-Type': 'application/json' } })
+      }
+      if (shop_id && orderCheck.shop_id !== shop_id) {
+        console.warn('[notify] shop_id mismatch')
+        return new Response(JSON.stringify({ ok: false, error: 'Forbidden' }), { status: 403, headers: { ...ch, 'Content-Type': 'application/json' } })
+      }
+    }
 
     const getToken = async (userId: string): Promise<string | null> => {
       const { data, error } = await sb.from('users').select('fcm_token').eq('id', userId).single()
@@ -202,14 +251,14 @@ serve(async (req: Request) => {
     }
 
     return new Response(JSON.stringify({ ok: true }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: { ...ch, 'Content-Type': 'application/json' },
     })
 
   } catch (err) {
     console.error('[notify] CRASH:', String(err))
     return new Response(JSON.stringify({ ok: false, error: String(err) }), {
       status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: { ...ch, 'Content-Type': 'application/json' },
     })
   }
 })

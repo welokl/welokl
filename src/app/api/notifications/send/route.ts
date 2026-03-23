@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createAdminClient } from '@/lib/supabase/server'
+import { createAdminClient, createServerSupabaseClient } from '@/lib/supabase/server'
 
 // Notification messages for each order status
 const MESSAGES: Record<string, { title: string; body: string }> = {
@@ -14,8 +14,21 @@ const MESSAGES: Record<string, { title: string; body: string }> = {
 
 export async function POST(req: NextRequest) {
   try {
+    // A01 — verify caller is authenticated and has a privileged role
+    // Only shop owners, delivery partners, or admin can trigger push notifications
+    const sessionSupabase = createServerSupabaseClient()
+    const { data: { user } } = await sessionSupabase.auth.getUser()
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    const adminSupabase = createAdminClient()
+    const { data: profile } = await adminSupabase.from('users').select('role').eq('id', user.id).single()
+    if (!profile || !['shopkeeper', 'business', 'delivery_partner', 'admin'].includes(profile.role)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
     const { orderId, status, customerId } = await req.json()
-    if (!orderId || !status || !customerId) {
+    if (!orderId || !status || !customerId ||
+        typeof orderId !== 'string' || typeof customerId !== 'string' || orderId.length > 100) {
       return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
     }
 

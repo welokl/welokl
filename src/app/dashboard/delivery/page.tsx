@@ -355,7 +355,7 @@ export default function DeliveryDashboard() {
       await fetch('/api/orders/complete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId: assignedOrder.id, partnerId: userId }),
+        body: JSON.stringify({ orderId: assignedOrder.id }),
       })
       notify(`Delivery complete! Earnings added to wallet.`)
     }

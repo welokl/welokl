@@ -38,6 +38,7 @@ export default function StorePage() {
   const [diffWarn,   setDiffWarn]  = useState(false)
   const [activeCat,  setActiveCat] = useState('all')
   const [search,     setSearch]    = useState('')
+  const [lastOrder,  setLastOrder] = useState<any | null>(null)
 
   useEffect(() => { cart._hydrate?.() }, [])
   useEffect(() => { load() }, [id])
@@ -48,11 +49,12 @@ export default function StorePage() {
     const { data: { user } } = await sb.auth.getUser()
     setUserId(user?.id ?? null)
 
-    const [{ data: s }, { data: p, error: pe }, { data: planRows }, { data: subRows }] = await Promise.all([
+    const [{ data: s }, { data: p, error: pe }, { data: planRows }, { data: subRows }, { data: prevOrder }] = await Promise.all([
       sb.from('shops').select('*').eq('id', id).single(),
       sb.from('products').select('id,name,description,price,original_price,image_url,is_veg,is_available,shop_id,category,category_name').eq('shop_id', id).order('name'),
       sb.from('subscription_plans').select('*').eq('shop_id', id).order('price'),
       user ? sb.from('customer_subscriptions').select('plan_id').eq('customer_id', user.id).eq('shop_id', id).neq('status', 'cancelled') : Promise.resolve({ data: [] }),
+      user ? sb.from('orders').select('id, shop_id, total_amount, items:order_items(product_id, product_name, product_image, price, quantity)').eq('customer_id', user.id).eq('shop_id', id).eq('status', 'delivered').order('created_at', { ascending: false }).limit(1).maybeSingle() : Promise.resolve({ data: null }),
     ])
     if (pe) {
       const { data: p2 } = await sb.from('products').select('*').eq('shop_id', id)
@@ -63,7 +65,21 @@ export default function StorePage() {
     setShop(s)
     setPlans((planRows ?? []).filter((p: any) => p.is_active !== false))
     setMySubIds(new Set((subRows ?? []).map((r: any) => r.plan_id)))
+    setLastOrder(prevOrder ?? null)
     setLoading(false)
+  }
+
+  function reorderFromStore(order: any) {
+    cart.clear()
+    order.items?.forEach((item: any) => {
+      if (!item.product_id) return
+      cart.addItem(
+        { id: item.product_id, name: item.product_name, price: item.price, image_url: item.product_image || null, shop_id: id },
+        id,
+        shop?.name || ''
+      )
+    })
+    router.push('/cart')
   }
 
   async function subscribeToPlan(plan: any) {
@@ -238,6 +254,26 @@ export default function StorePage() {
           )}
         </div>
       </div>
+
+      {/* Welcome back — returning customer reorder */}
+      {lastOrder && (
+        <div style={{ margin:'0 12px 10px', background:'rgba(255,48,8,.04)', border:'1.5px solid rgba(255,48,8,.18)', borderRadius:16, padding:'14px 16px', display:'flex', alignItems:'center', gap:12 }}>
+          <div style={{ flex:1, minWidth:0 }}>
+            <p style={{ fontSize:11, fontWeight:700, color:'#FF3008', textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:2 }}>Welcome back!</p>
+            <p style={{ fontSize:13, fontWeight:800, color:'#111', marginBottom:2 }}>Order your usual?</p>
+            {lastOrder.items?.length > 0 && (
+              <p style={{ fontSize:12, color:'#888', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+                {lastOrder.items.slice(0,2).map((i: any) => i.product_name).filter(Boolean).join(', ')}
+                {lastOrder.items.length > 2 ? ` +${lastOrder.items.length - 2} more` : ''}
+              </p>
+            )}
+          </div>
+          <button onClick={() => reorderFromStore(lastOrder)}
+            style={{ padding:'10px 16px', borderRadius:12, background:'#FF3008', color:'#fff', border:'none', fontWeight:800, fontSize:13, cursor:'pointer', flexShrink:0, fontFamily:'inherit' }}>
+            Reorder
+          </button>
+        </div>
+      )}
 
       {/* Subscription plans — shown if shop has active plans */}
       {plans.length > 0 && (
