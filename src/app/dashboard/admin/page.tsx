@@ -173,14 +173,23 @@ export default function AdminDashboard() {
   }
  
   async function toggleCategory(id: string, current: boolean) {
-    await createClient().from('categories').update({ is_active: !current }).eq('id', id)
+    const { error } = await createClient().from('categories').update({ is_active: !current }).eq('id', id)
+    if (error) { alert('Update failed: ' + error.message); return }
     setCategories(c => c.map(x => x.id === id ? { ...x, is_active: !current } : x))
   }
   async function addCategory(name: string) {
     if (!name.trim()) return
     const sb = createClient()
-    const { data } = await sb.from('categories').insert({ name: name.trim(), is_active: true }).select().single()
+    const slug = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '')
+    const { data, error } = await sb.from('categories').insert({ name: name.trim(), slug, is_active: true }).select().single()
+    if (error) { alert('Failed to add category: ' + error.message); return }
     if (data) { setCategories(c => [...c, data]); setNewCatName('') }
+  }
+  async function deleteCategory(id: string) {
+    if (!confirm('Delete this category? Shops using it will keep their category_name text.')) return
+    const { error } = await createClient().from('categories').delete().eq('id', id)
+    if (error) { alert('Delete failed: ' + error.message); return }
+    setCategories(c => c.filter(x => x.id !== id))
   }
 
   async function creditWallet(userId: string, amount: number, description: string, type: 'credit' | 'debit') {
@@ -206,6 +215,13 @@ export default function AdminDashboard() {
  
   const today = new Date().toDateString()
   const todayOrders = orders.filter(o => new Date(o.created_at).toDateString() === today)
+  const todayDelivered = todayOrders.filter(o => o.status === 'delivered')
+  const todayGmv = todayDelivered.reduce((s, o) => s + (o.subtotal || 0), 0)
+  const cancelledCount = orders.filter(o => ['cancelled', 'rejected'].includes(o.status)).length
+  const cancelRate = orders.length ? Math.round(cancelledCount / orders.length * 100) : 0
+  const avgOrderVal = delivered.length ? Math.round(gmv / delivered.length) : 0
+  const upiCount = orders.filter(o => o.payment_method === 'upi' || o.payment_method === 'online').length
+  const codCount = orders.filter(o => o.payment_method === 'cod' || o.payment_method === 'cash').length
   const filteredOrders = orders.filter(o => {
     const ms = statusFilter === 'all' || o.status === statusFilter
     const mq = !search || o.order_number?.includes(search) || o.shop?.name?.toLowerCase().includes(search.toLowerCase()) || o.customer?.name?.toLowerCase().includes(search.toLowerCase())
@@ -346,6 +362,26 @@ export default function AdminDashboard() {
                 ))}
               </div>
  
+              {/* Today's Activity */}
+              <div style={{ ...card }}>
+                <p style={{ ...lbl, marginBottom: 14 }}>Today's Activity</p>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(130px,1fr))', gap: 12 }}>
+                  {[
+                    { l: 'Orders today',    v: todayOrders.length,                               c: '#3b82f6' },
+                    { l: 'Delivered today', v: todayDelivered.length,                            c: '#16a34a' },
+                    { l: 'Today GMV',       v: `Rs.${todayGmv.toLocaleString('en-IN')}`,        c: '#7c3aed' },
+                    { l: 'Avg order value', v: `Rs.${avgOrderVal.toLocaleString('en-IN')}`,     c: '#0891b2' },
+                    { l: 'Cancel rate',     v: `${cancelRate}%`,                                 c: cancelRate > 20 ? '#ef4444' : '#d97706' },
+                    { l: 'UPI / COD split', v: `${upiCount} / ${codCount}`,                     c: 'var(--text)' },
+                  ].map(s => (
+                    <div key={s.l} style={{ padding: '12px 14px', background: 'var(--bg-2)', borderRadius: 12 }}>
+                      <div style={{ fontWeight: 900, fontSize: 20, color: s.c, lineHeight: 1 }}>{s.v}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 600, marginTop: 5 }}>{s.l}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               {totalPending > 0 && (
                 <div style={{ background: 'rgba(245,158,11,0.08)', border: '2px solid rgba(245,158,11,0.3)', borderRadius: 16, padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
                   <div>
@@ -398,6 +434,31 @@ export default function AdminDashboard() {
                 ))}
               </div>
  
+              {/* Top shops by GMV */}
+              {delivered.length > 0 && (() => {
+                const shopGmv: Record<string, { name: string; gmv: number; orders: number }> = {}
+                delivered.forEach(o => {
+                  const sn = o.shop?.name || 'Unknown'
+                  if (!shopGmv[sn]) shopGmv[sn] = { name: sn, gmv: 0, orders: 0 }
+                  shopGmv[sn].gmv    += o.subtotal || 0
+                  shopGmv[sn].orders += 1
+                })
+                const top = Object.values(shopGmv).sort((a, b) => b.gmv - a.gmv).slice(0, 5)
+                return (
+                  <div style={{ ...card }}>
+                    <p style={{ ...lbl, marginBottom: 14 }}>Top Shops by GMV</p>
+                    {top.map((s, i) => (
+                      <div key={s.name} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 0', borderTop: i > 0 ? '1px solid var(--border)' : 'none' }}>
+                        <span style={{ width: 22, height: 22, borderRadius: 6, background: i === 0 ? '#0891b2' : 'var(--bg-3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 900, color: i === 0 ? '#fff' : 'var(--text-3)', flexShrink: 0 }}>{i + 1}</span>
+                        <span style={{ flex: 1, fontWeight: 700, fontSize: 13, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
+                        <span style={{ fontSize: 12, color: 'var(--text-3)', flexShrink: 0 }}>{s.orders} orders</span>
+                        <span style={{ fontWeight: 900, fontSize: 13, color: 'var(--text)', flexShrink: 0 }}>Rs.{s.gmv.toLocaleString('en-IN')}</span>
+                      </div>
+                    ))}
+                  </div>
+                )
+              })()}
+
               <div style={{ ...card }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
                   <p style={{ fontWeight: 900, fontSize: 14, color: 'var(--text)' }}>Live Order Feed</p>
@@ -808,6 +869,10 @@ export default function AdminDashboard() {
                       <button onClick={() => toggleCategory(cat.id, cat.is_active)}
                         style={{ padding: '7px 16px', borderRadius: 10, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 13, fontFamily: 'inherit', background: cat.is_active ? 'rgba(239,68,68,0.1)' : 'rgba(34,197,94,0.1)', color: cat.is_active ? '#ef4444' : '#16a34a' }}>
                         {cat.is_active ? 'Disable' : 'Enable'}
+                      </button>
+                      <button onClick={() => deleteCategory(cat.id)}
+                        style={{ padding: '7px 12px', borderRadius: 10, border: '1px solid var(--border)', cursor: 'pointer', fontWeight: 700, fontSize: 13, fontFamily: 'inherit', background: 'none', color: 'var(--text-3)' }}>
+                        Delete
                       </button>
                     </div>
                   ))}
