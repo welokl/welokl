@@ -69,13 +69,16 @@ export default function BusinessDashboard() {
 
   // ── Auto open/close based on shop hours ─────────────────────
   // Rules:
-  //   • At opening time  → auto-open  (overrides any manual close)
-  //   • At closing time  → auto-close (overrides any manual open)
-  //   • Between boundaries → manual toggle wins; schedule does NOT fight it
+  //   • At opening or closing boundary → schedule fires ONCE, then manual wins
+  //   • Page refresh does NOT re-fire the schedule if already applied today
+  //   • Manual toggle always wins between boundary transitions
   useEffect(() => {
     const s = shop as any
     if (!s?.id || !s?.opening_time || !s?.closing_time) return
-    scheduleSegmentRef.current = null // reset when shop / hours change
+
+    // Restore persisted segment from localStorage so page refresh doesn't re-apply schedule
+    const storageKey = `sched_${s.id}`
+    scheduleSegmentRef.current = localStorage.getItem(storageKey)
 
     function getSegment(): { shouldBeOpen: boolean; key: string } {
       const now = new Date()
@@ -89,8 +92,9 @@ export default function BusinessDashboard() {
 
     async function tick() {
       const { shouldBeOpen, key } = getSegment()
-      if (scheduleSegmentRef.current === key) return // still in same boundary — manual wins
+      if (scheduleSegmentRef.current === key) return // already applied this boundary — manual wins
       scheduleSegmentRef.current = key
+      localStorage.setItem(storageKey, key)
       await createClient().from('shops').update({ is_open: shouldBeOpen }).eq('id', s.id)
       setShop(prev => prev ? { ...prev, is_open: shouldBeOpen } : prev)
     }
@@ -453,7 +457,7 @@ export default function BusinessDashboard() {
           </div>
         )}
 
-        {tab === 'analytics' && shop && <BusinessAnalytics shopId={shop.id} />}
+        {tab === 'analytics' && shop && <BusinessAnalytics shopId={shop.id} commissionPercent={(shop as any).commission_percent ?? 15} />}
         {tab === 'subscriptions' && shop && <SubscriptionPlans shopId={shop.id} />}
         {tab === 'settings' && shop && <ShopSettings shop={shop} onSaved={loadData} />}
       </div>

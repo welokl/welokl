@@ -148,14 +148,17 @@ export default function StorePage() {
       <style>{`
         @keyframes sh{0%{background-position:-400px 0}100%{background-position:400px 0}}
         .sk{background:linear-gradient(90deg,#f0f0f0 25%,#e8e8e8 50%,#f0f0f0 75%);background-size:400px 100%;animation:sh 1.4s infinite;}
-        .pcard{background:#fff;border-radius:20px;overflow:hidden;display:flex;gap:0;transition:box-shadow .18s,transform .15s;border:1px solid #f0f0f0;}
+        .pcard{background:#fff;border-radius:20px;display:flex;gap:0;transition:box-shadow .18s,transform .15s;border:1px solid #f0f0f0;}
         .pcard:hover{box-shadow:0 4px 18px rgba(0,0,0,.07);}
         .pcard:active{transform:scale(.985);}
         .cat-tab{padding:11px 18px;font-weight:700;font-size:13px;background:none;border:none;cursor:pointer;font-family:inherit;white-space:nowrap;transition:color .15s,border-color .15s;border-bottom:2.5px solid transparent;}
         .tab-scroll::-webkit-scrollbar{display:none;}
-        .add-btn{padding:8px 22px;border-radius:12px;border:2px solid #FF3008;color:#FF3008;background:#fff5f5;font-weight:800;font-size:13px;cursor:pointer;font-family:inherit;transition:background .15s,transform .1s;}
+        .add-btn{padding:6px 18px;border-radius:10px;border:2px solid #FF3008;color:#FF3008;background:#fff;font-weight:800;font-size:13px;cursor:pointer;font-family:inherit;transition:background .15s,transform .1s;box-shadow:0 2px 8px rgba(0,0,0,.1);}
         .add-btn:hover{background:#FF3008;color:#fff;}
         .add-btn:active{transform:scale(.94);}
+        .img-stepper{display:flex;align-items:center;background:#FF3008;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.15);}
+        .img-stepper button{color:#fff;padding:6px 11px;border:none;background:none;cursor:pointer;font-weight:900;font-size:16px;line-height:1;}
+        .img-stepper span{color:#fff;font-weight:900;font-size:13px;min-width:20px;text-align:center;}
       `}</style>
 
       {/* Sticky header */}
@@ -164,11 +167,11 @@ export default function StorePage() {
           <button onClick={() => router.back()} style={{ width:36, height:36, borderRadius:12, background:'#F5F5F5', border:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
             <svg viewBox="0 0 24 24" fill="none" width={20} height={20}><path d="M19 12H5M5 12l7 7M5 12l7-7" stroke="#111" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
           </button>
-          <span style={{ fontWeight:800, fontSize:15, flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', color:'#111' }}>{shop.name}</span>
+          <span style={{ fontWeight:800, fontSize:15, flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', color:'#111', minWidth:0 }}>{shop.name}</span>
           <FavouriteButton shopId={id} />
           {showCartBar && (
-            <Link href="/cart" style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 16px', borderRadius:12, background:'#FF3008', color:'#fff', fontWeight:800, fontSize:13, textDecoration:'none', flexShrink:0 }}>
-              <svg viewBox="0 0 24 24" fill="none" width={16} height={16}><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z" stroke="#fff" strokeWidth="2"/><line x1="3" y1="6" x2="21" y2="6" stroke="#fff" strokeWidth="2"/></svg>
+            <Link href="/cart" style={{ display:'flex', alignItems:'center', gap:5, padding:'8px 12px', borderRadius:12, background:'#FF3008', color:'#fff', fontWeight:800, fontSize:13, textDecoration:'none', flexShrink:0, whiteSpace:'nowrap' }}>
+              <svg viewBox="0 0 24 24" fill="none" width={15} height={15}><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z" stroke="#fff" strokeWidth="2"/><line x1="3" y1="6" x2="21" y2="6" stroke="#fff" strokeWidth="2"/></svg>
               {cartCount} · ₹{cartTotal}
             </Link>
           )}
@@ -443,48 +446,54 @@ function ProductCard({ product, qty, onAdd, onRemove, onUpdate }: {
 
   return (
     <div className="pcard" style={{ opacity: unavailable ? 0.55 : 1 }}>
-      {/* Info */}
-      <div style={{ flex:1, padding:'16px 14px 16px 16px', display:'flex', flexDirection:'column', justifyContent:'space-between', minWidth:0 }}>
+      {/* Info — left */}
+      <div style={{ flex:1, padding:'14px 8px 14px 14px', display:'flex', flexDirection:'column', justifyContent:'space-between', minWidth:0 }}>
         <div>
           {product.is_veg != null && (
             <div style={{ width:14, height:14, border:`2px solid ${product.is_veg ? '#16a34a' : '#ef4444'}`, borderRadius:3, display:'inline-flex', alignItems:'center', justifyContent:'center', marginBottom:6, flexShrink:0 }}>
               <div style={{ width:6, height:6, borderRadius:'50%', background: product.is_veg ? '#16a34a' : '#ef4444' }} />
             </div>
           )}
-          <p style={{ fontWeight:800, fontSize:14.5, color:'#111', marginBottom:4, lineHeight:1.3 }}>{product.name}</p>
+          <p style={{ fontWeight:800, fontSize:14, color:'#111', marginBottom:4, lineHeight:1.3 }}>{product.name}</p>
           {product.description && (
-            <p style={{ fontSize:12.5, color:'#999', lineHeight:1.55, overflow:'hidden', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical' as any }}>{product.description}</p>
+            <p style={{ fontSize:12, color:'#999', lineHeight:1.5, overflow:'hidden', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical' as any }}>{product.description}</p>
           )}
         </div>
-
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginTop:14, gap:8 }}>
-          <div style={{ display:'flex', alignItems:'baseline', gap:6 }}>
-            <span style={{ fontWeight:900, fontSize:16, color:'#111' }}>₹{product.price}</span>
-            {disc > 0 && <span style={{ fontSize:12, color:'#bbb', textDecoration:'line-through' }}>₹{product.original_price}</span>}
-            {disc > 0 && <span style={{ fontSize:11, fontWeight:800, color:'#FF3008', background:'#fff0ee', padding:'2px 6px', borderRadius:6 }}>{disc}% off</span>}
-          </div>
-
-          {unavailable ? (
-            <span style={{ fontSize:12, color:'#bbb', fontWeight:700, flexShrink:0 }}>Unavailable</span>
-          ) : qty === 0 ? (
-            <button onClick={onAdd} className="add-btn" style={{ flexShrink:0 }}>ADD</button>
-          ) : (
-            <div style={{ display:'flex', alignItems:'center', background:'#FF3008', borderRadius:12, overflow:'hidden', flexShrink:0 }}>
-              <button onClick={() => onUpdate(qty - 1)} style={{ color:'#fff', padding:'8px 13px', border:'none', background:'none', cursor:'pointer', fontWeight:900, fontSize:17, lineHeight:1 }}>−</button>
-              <span style={{ color:'#fff', fontWeight:900, fontSize:14, minWidth:24, textAlign:'center' }}>{qty}</span>
-              <button onClick={() => onUpdate(qty + 1)} style={{ color:'#fff', padding:'8px 13px', border:'none', background:'none', cursor:'pointer', fontWeight:900, fontSize:17, lineHeight:1 }}>+</button>
-            </div>
-          )}
+        <div style={{ display:'flex', alignItems:'baseline', gap:5, marginTop:10 }}>
+          <span style={{ fontWeight:900, fontSize:15, color:'#111' }}>₹{product.price}</span>
+          {disc > 0 && <span style={{ fontSize:11, color:'#bbb', textDecoration:'line-through' }}>₹{product.original_price}</span>}
         </div>
+        {unavailable && (
+          <span style={{ fontSize:11, color:'#bbb', fontWeight:700, marginTop:4 }}>Unavailable</span>
+        )}
       </div>
 
-      {/* Image — right side */}
-      <div style={{ width:120, height:120, flexShrink:0, background:'#F8F8F8', position:'relative', overflow:'hidden', margin:10, borderRadius:14 }}>
-        {product.image_url
-          ? <Image src={product.image_url} alt={product.name} fill sizes="120px" className="object-cover" />
-          : <div style={{ width:'100%', height:'100%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:38, opacity:.15 }}>🛍️</div>
-        }
-        {disc > 0 && <div style={{ position:'absolute', top:6, left:6, background:'#FF3008', color:'#fff', fontSize:10, fontWeight:900, padding:'2px 7px', borderRadius:7 }}>-{disc}%</div>}
+      {/* Image — right side with ADD button overlaid */}
+      <div style={{ width:110, flexShrink:0, position:'relative', margin:'10px 10px 10px 0', paddingBottom:16 }}>
+        <div style={{ width:110, height:110, background:'#F8F8F8', borderRadius:14, overflow:'hidden', position:'relative' }}>
+          {product.image_url
+            ? <Image src={product.image_url} alt={product.name} fill sizes="110px" className="object-cover" />
+            : <div style={{ width:'100%', height:'100%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:34, opacity:.15 }}>🛍️</div>
+          }
+          {disc > 0 && (
+            <div style={{ position:'absolute', top:5, left:5, background:'#FF3008', color:'#fff', fontSize:9, fontWeight:900, padding:'2px 6px', borderRadius:6 }}>-{disc}%</div>
+          )}
+        </div>
+
+        {/* ADD / stepper overlaid at bottom-center of image */}
+        {!unavailable && (
+          <div style={{ position:'absolute', bottom:0, left:'50%', transform:'translateX(-50%)', zIndex:2 }}>
+            {qty === 0 ? (
+              <button onClick={onAdd} className="add-btn">+ ADD</button>
+            ) : (
+              <div className="img-stepper">
+                <button onClick={() => onUpdate(qty - 1)}>−</button>
+                <span>{qty}</span>
+                <button onClick={() => onUpdate(qty + 1)}>+</button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )

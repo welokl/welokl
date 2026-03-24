@@ -101,8 +101,12 @@ export default function CustomerHome() {
     const { data: { user: u } } = await sb.auth.getUser()
     if (!u) { window.location.href = '/auth/login'; return }
 
-    // Fetch profile from DB first — more reliable than JWT metadata for role checks
-    const { data: profile } = await sb.from('users').select('*').eq('id', u.id).single()
+    // Fetch profile + orders in parallel — not sequentially
+    const [{ data: profile }, { data: orderData }] = await Promise.all([
+      sb.from('users').select('id,name,phone,role,avatar_url').eq('id', u.id).single(),
+      sb.from('orders').select('*, shop:shops(name,category_name), items:order_items(*)')
+        .eq('customer_id', u.id).order('created_at', { ascending: false }).limit(20),
+    ])
 
     // New Google user who skipped signup
     if (!profile) {
@@ -120,21 +124,35 @@ export default function CustomerHome() {
     if (role === 'management')                                  { window.location.replace('/dashboard/management'); return }
 
     if (!profile.phone) setShowPhoneGate(true)
-    setUser(profile)
-
-    const { data: orderData } = await sb
-      .from('orders').select('*, shop:shops(name,category_name), items:order_items(*)')
-      .eq('customer_id', u.id).order('created_at', { ascending: false }).limit(20)
-
+    setUser(profile as any)
     setOrders(orderData || [])
     setLoading(false)
   }, [])
 
+  const SHOPS_CACHE_KEY = 'welokl_shops_v2'
+  const SHOPS_TTL_MS   = 5 * 60 * 1000 // 5 minutes
+
   const loadShops = useCallback(async () => {
+    // Serve cached shops immediately so the page feels instant
+    try {
+      const raw = localStorage.getItem(SHOPS_CACHE_KEY)
+      if (raw) {
+        const { ts, shops: cached, cats: cachedCats } = JSON.parse(raw)
+        if (Date.now() - ts < SHOPS_TTL_MS) {
+          setAllShops(cached)
+          if (cachedCats?.length) setActiveCats(cachedCats)
+          setShopsLoaded(true)
+          // Still refresh in background — just don't block rendering
+        }
+      }
+    } catch {}
+
     const sb = createClient()
     const today = new Date().toISOString().slice(0, 10)
     const [{ data: shops }, { data: cats }, { data: boosts }, { data: metrics }] = await Promise.all([
-      sb.from('shops').select('*').eq('is_active', true).order('rating', { ascending: false }),
+      sb.from('shops')
+        .select('id,name,category_name,area,is_open,is_active,rating,avg_delivery_time,image_url,offer_text,delivery_enabled,pickup_enabled,latitude,longitude,verification_status')
+        .eq('is_active', true).eq('verification_status', 'approved').order('rating', { ascending: false }),
       sb.from('categories').select('*').eq('is_active', true),
       // Active boosts only — join plan for badge label + weight
       sb.from('vendor_boosts')
@@ -166,13 +184,24 @@ export default function CustomerHome() {
     }))
     setAllShops(enriched)
     setShopsLoaded(true)
+
+    const mappedCats = (cats || []).map((c: any) => ({
+      name: c.name || c.label || '',
+      q: (c.slug || c.name || c.label || '').toLowerCase().replace(/[^a-z]/g, ''),
+    })).filter((c: any) => c.name && c.q)
+
+    if (mappedCats.length) setActiveCats(mappedCats)
+
+    // Persist to localStorage for instant load next visit
+    try {
+      localStorage.setItem(SHOPS_CACHE_KEY, JSON.stringify({
+        ts: Date.now(),
+        shops: enriched,
+        cats: mappedCats,
+      }))
+    } catch {}
+
     if (cats?.length) {
-      // Map DB categories to our SVG keys
-      const mapped = cats.map((c: any) => ({
-        name: c.name || c.label || '',
-        q: (c.slug || c.name || c.label || '').toLowerCase().replace(/[^a-z]/g, ''),
-      })).filter((c: any) => c.name && c.q)
-      setActiveCats(mapped)
     } else {
       // Fallback: derive from shop categories
       // (used when categories table is empty)

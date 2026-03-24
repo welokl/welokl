@@ -36,6 +36,8 @@ export default function CheckoutPage() {
   const [shopInfo,      setShopInfo]      = useState<{delivery_enabled:boolean;pickup_enabled:boolean;min_order_amount:number;commission_percent:number}|null>(null)
   const [mounted,       setMounted]       = useState(false)
   const [locStatus,     setLocStatus]     = useState<'idle'|'detecting'|'done'|'denied'>('idle')
+  const [deliveryLat,   setDeliveryLat]   = useState<number|null>(null)
+  const [deliveryLng,   setDeliveryLng]   = useState<number|null>(null)
   const [upiStep,       setUpiStep]       = useState<'select'|'pay'|'confirm'>('select')
   const [placedOrderId, setPlacedOrderId] = useState<string|null>(null)
 
@@ -75,6 +77,8 @@ export default function CheckoutPage() {
     try {
       const loc = JSON.parse(localStorage.getItem('welokl_location') || 'null')
       if (loc?.lat && loc?.lng) {
+        setDeliveryLat(loc.lat)
+        setDeliveryLng(loc.lng)
         setLocStatus('detecting')
         fetch(`https://nominatim.openstreetmap.org/reverse?lat=${loc.lat}&lon=${loc.lng}&format=json&zoom=18&addressdetails=1`, { headers: { 'Accept-Language': 'en' } })
           .then(r => r.json())
@@ -158,6 +162,8 @@ export default function CheckoutPage() {
       status:                'placed',
       type:                  type,
       delivery_address:      type === 'pickup' ? 'Pickup' : (address?.trim() || ''),
+      delivery_lat:          type === 'delivery' ? deliveryLat : null,
+      delivery_lng:          type === 'delivery' ? deliveryLng : null,
       delivery_instructions: note?.trim() || null,
       subtotal:              subtotal,
       delivery_fee:          delivery_fee,

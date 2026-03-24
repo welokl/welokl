@@ -5,11 +5,12 @@ import { createClient } from '@/lib/supabase/client'
 type Period = 'today' | 'week' | 'month'
 
 interface SaleRow {
-  created_at: string; total_amount: number; status: string; type: string
+  created_at: string; total_amount: number; subtotal: number; platform_fee: number; status: string; type: string
   items: { product_name: string; quantity: number; price: number }[]
 }
 interface Stats {
-  revenue: number; orders: number; avgOrder: number; delivered: number; cancelled: number
+  grossRevenue: number; commission: number; netEarnings: number
+  orders: number; avgEarning: number; delivered: number; cancelled: number
 }
 
 function getRange(period: Period): { from: Date; to: Date } {
@@ -29,21 +30,23 @@ function getRange(period: Period): { from: Date; to: Date } {
   return { from, to }
 }
 
-function calcStats(orders: SaleRow[]): Stats {
+function calcStats(orders: SaleRow[], commissionPercent: number): Stats {
   const delivered = orders.filter(o => o.status === 'delivered')
   const cancelled = orders.filter(o => ['cancelled','rejected'].includes(o.status)).length
-  const revenue = delivered.reduce((s, o) => s + o.total_amount, 0)
+  const grossRevenue = delivered.reduce((s, o) => s + (o.subtotal ?? o.total_amount), 0)
+  const commission   = Math.round(grossRevenue * (commissionPercent / 100))
+  const netEarnings  = grossRevenue - commission
   return {
-    revenue,
+    grossRevenue, commission, netEarnings,
     orders: orders.length,
-    avgOrder: delivered.length ? Math.round(revenue / delivered.length) : 0,
+    avgEarning: delivered.length ? Math.round(netEarnings / delivered.length) : 0,
     delivered: delivered.length,
     cancelled,
   }
 }
 
-// Group delivered orders by day for chart
-function groupByDay(orders: SaleRow[], period: Period) {
+// Group delivered orders by day for chart — uses net earnings (subtotal minus commission)
+function groupByDay(orders: SaleRow[], period: Period, commissionPercent: number) {
   const map: Record<string, number> = {}
   const days = period === 'today' ? 1 : period === 'week' ? 7 : 30
   const now = new Date()
@@ -55,7 +58,10 @@ function groupByDay(orders: SaleRow[], period: Period) {
   }
   orders.filter(o => o.status === 'delivered').forEach(o => {
     const key = new Date(o.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
-    if (key in map) map[key] += o.total_amount
+    if (key in map) {
+      const gross = o.subtotal ?? o.total_amount
+      map[key] += Math.round(gross * (1 - commissionPercent / 100))
+    }
   })
   return Object.entries(map)
 }
@@ -73,7 +79,7 @@ function topProducts(orders: SaleRow[]) {
   return Object.entries(map).sort((a, b) => b[1].rev - a[1].rev).slice(0, 5)
 }
 
-export default function BusinessAnalytics({ shopId }: { shopId: string }) {
+export default function BusinessAnalytics({ shopId, commissionPercent = 15 }: { shopId: string; commissionPercent?: number }) {
   const [period, setPeriod] = useState<Period>('week')
   const [orders, setOrders] = useState<SaleRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -85,7 +91,7 @@ export default function BusinessAnalytics({ shopId }: { shopId: string }) {
     const { from, to } = getRange(period)
     const sb = createClient()
     const { data } = await sb.from('orders')
-      .select('created_at, total_amount, status, type, items:order_items(product_name, quantity, price)')
+      .select('created_at, total_amount, subtotal, platform_fee, status, type, items:order_items(product_name, quantity, price)')
       .eq('shop_id', shopId)
       .gte('created_at', from.toISOString())
       .lte('created_at', to.toISOString())
@@ -94,17 +100,17 @@ export default function BusinessAnalytics({ shopId }: { shopId: string }) {
     setLoading(false)
   }
 
-  const stats = calcStats(orders)
-  const chartData = groupByDay(orders, period)
+  const stats = calcStats(orders, commissionPercent)
+  const chartData = groupByDay(orders, period, commissionPercent)
   const maxRev = Math.max(...chartData.map(d => d[1]), 1)
   const tops = topProducts(orders)
 
   const statCards = [
-    { label: 'Revenue', value: `₹${stats.revenue.toLocaleString('en-IN')}`, icon: '💰', color: '#16a34a' },
-    { label: 'Total orders', value: stats.orders, icon: '📦', color: '#2563eb' },
-    { label: 'Delivered', value: stats.delivered, icon: '✅', color: '#16a34a' },
-    { label: 'Avg order', value: `₹${stats.avgOrder}`, icon: '📊', color: '#d97706' },
-    { label: 'Cancelled', value: stats.cancelled, icon: '❌', color: '#ef4444' },
+    { label: 'Your earnings', value: `₹${stats.netEarnings.toLocaleString('en-IN')}`, icon: '💰', color: '#16a34a' },
+    { label: 'Total orders',  value: stats.orders,                                     icon: '📦', color: '#2563eb' },
+    { label: 'Delivered',     value: stats.delivered,                                  icon: '✅', color: '#16a34a' },
+    { label: 'Avg earning',   value: `₹${stats.avgEarning}`,                           icon: '📊', color: '#d97706' },
+    { label: 'Cancelled',     value: stats.cancelled,                                  icon: '❌', color: '#ef4444' },
   ]
 
   return (
@@ -140,10 +146,34 @@ export default function BusinessAnalytics({ shopId }: { shopId: string }) {
             ))}
           </div>
 
-          {/* Revenue chart */}
+          {/* Earnings breakdown */}
+          {stats.delivered > 0 && (
+            <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, padding: '18px 16px', marginBottom: 20 }}>
+              <h3 style={{ fontWeight: 800, fontSize: 14, color: 'var(--text)', marginBottom: 14 }}>Earnings breakdown</h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                  <span style={{ color: 'var(--text-2)' }}>Orders value (items)</span>
+                  <span style={{ fontWeight: 700, color: 'var(--text)' }}>₹{stats.grossRevenue.toLocaleString('en-IN')}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                  <span style={{ color: 'var(--text-2)' }}>Welokl commission ({commissionPercent}%)</span>
+                  <span style={{ fontWeight: 700, color: '#ef4444' }}>− ₹{stats.commission.toLocaleString('en-IN')}</span>
+                </div>
+                <div style={{ borderTop: '1.5px dashed var(--border)', paddingTop: 10, display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ fontWeight: 800, fontSize: 14, color: 'var(--text)' }}>Your earnings</span>
+                  <span style={{ fontWeight: 900, fontSize: 15, color: '#16a34a' }}>₹{stats.netEarnings.toLocaleString('en-IN')}</span>
+                </div>
+              </div>
+              <p style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 10 }}>
+                Delivery fee goes directly to the rider and is not included above.
+              </p>
+            </div>
+          )}
+
+          {/* Earnings chart */}
           {chartData.length > 1 && (
             <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, padding: '18px 16px', marginBottom: 20 }}>
-              <h3 style={{ fontWeight: 800, fontSize: 14, color: 'var(--text)', marginBottom: 16 }}>Revenue</h3>
+              <h3 style={{ fontWeight: 800, fontSize: 14, color: 'var(--text)', marginBottom: 16 }}>Your earnings</h3>
               <div style={{ display: 'flex', alignItems: 'flex-end', gap: period === 'month' ? 3 : 6, height: 120 }}>
                 {chartData.map(([label, val]) => (
                   <div key={label} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>

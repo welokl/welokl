@@ -7,7 +7,9 @@ import { Navigation, MapPin, Package, DollarSign, Phone, Clock, TrendingUp } fro
 import type { Order, DeliveryPartner, Wallet } from '@/types'
 import Navbar from '@/components/Navbar'
 import Link from 'next/link'
-import { useVisibilityReconnect } from '@/hooks/useOrderAlerts'
+import { useVisibilityReconnect, useDeliveryPartnerAlerts, requestNotificationPermission } from '@/hooks/useOrderAlerts'
+import { useFCM } from '@/hooks/useFCM'
+import InAppToast from '@/components/InAppToast'
 
 export default function DeliveryDashboard() {
   const [partner, setPartner] = useState<DeliveryPartner | null>(null)
@@ -115,6 +117,17 @@ export default function DeliveryDashboard() {
 
   // Re-fetch when app comes back from background (phone lock / tab switch)
   useVisibilityReconnect(loadData)
+
+  // FCM token registration (push notifications when app is backgrounded)
+  useFCM(userId || null)
+
+  // In-app + push alerts for new available orders and assigned order updates
+  useDeliveryPartnerAlerts(userId || null, partner?.is_online ?? false)
+
+  // Ask for notification permission as soon as partner data loads
+  useEffect(() => {
+    if (userId) requestNotificationPermission()
+  }, [userId])
 
   useEffect(() => {
     loadData()
@@ -427,6 +440,7 @@ export default function DeliveryDashboard() {
 
   return (
     <>
+    <InAppToast />
     {showPhoneGate && userId && <PhoneGate userId={userId} onDone={() => setShowPhoneGate(false)} />}
 
     {/* Toast notification */}
@@ -574,13 +588,17 @@ export default function DeliveryDashboard() {
               const shopLng  = (assignedOrder as any).shop?.longitude as number | null
               const destLat  = assignedOrder.delivery_lat             as number | null
               const destLng  = (assignedOrder as any).delivery_lng    as number | null
+              const destAddr = assignedOrder.delivery_address         as string | null
               const isPickup = assignedOrder.status !== 'picked_up'
               const navLat   = isPickup ? shopLat  : destLat
               const navLng   = isPickup ? shopLng  : destLng
-              const navLabel = isPickup ? 'Navigate to Pickup' : 'Navigate to Drop'
+              const navLabel = isPickup ? 'Navigate to Pickup' : 'Navigate to Customer'
+              // Use coords if available, fall back to text address search
               const mapsUrl  = navLat && navLng
                 ? `https://www.google.com/maps/dir/?api=1&destination=${navLat},${navLng}&travelmode=driving`
-                : null
+                : !isPickup && destAddr
+                  ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destAddr)}&travelmode=driving`
+                  : null
               return (
                 <>
                   {/* Navigate button */}
@@ -632,18 +650,21 @@ export default function DeliveryDashboard() {
 
             {/* Post-pickup: prominent navigate-to-customer banner */}
             {assignedOrder.status === 'picked_up' && (() => {
-              const destLat = assignedOrder.delivery_lat as number | null
-              const destLng = (assignedOrder as any).delivery_lng as number | null
-              const mapsUrl = destLat && destLng
+              const destLat  = assignedOrder.delivery_lat as number | null
+              const destLng  = (assignedOrder as any).delivery_lng as number | null
+              const destAddr = assignedOrder.delivery_address as string | null
+              const mapsUrl  = destLat && destLng
                 ? `https://www.google.com/maps/dir/?api=1&destination=${destLat},${destLng}&travelmode=driving`
-                : null
+                : destAddr
+                  ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destAddr)}&travelmode=driving`
+                  : null
               return (
                 <div style={{ background: 'linear-gradient(135deg, #16a34a, #15803d)', borderRadius: 18, padding: '18px 20px', marginBottom: 16 }}>
                   <p style={{ fontSize: 12, fontWeight: 800, color: 'rgba(255,255,255,.75)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Order picked up</p>
                   <p style={{ fontSize: 16, fontWeight: 900, color: '#fff', marginBottom: 12 }}>
                     Now deliver to {(assignedOrder as any).customer?.name || 'Customer'}
                   </p>
-                  <p style={{ fontSize: 12, color: 'rgba(255,255,255,.8)', marginBottom: 14 }}>{assignedOrder.delivery_address}</p>
+                  <p style={{ fontSize: 12, color: 'rgba(255,255,255,.8)', marginBottom: 14 }}>{destAddr}</p>
                   {mapsUrl ? (
                     <a href={mapsUrl} target="_blank" rel="noopener noreferrer"
                       style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: '#fff', color: '#15803d', fontWeight: 900, fontSize: 15, padding: '13px 20px', borderRadius: 13, textDecoration: 'none' }}>
@@ -651,7 +672,7 @@ export default function DeliveryDashboard() {
                       Navigate to Customer
                     </a>
                   ) : (
-                    <p style={{ fontSize: 12, color: 'rgba(255,255,255,.6)' }}>No GPS coordinates for this address</p>
+                    <p style={{ fontSize: 12, color: 'rgba(255,255,255,.6)' }}>No address available for navigation</p>
                   )}
                 </div>
               )

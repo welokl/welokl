@@ -95,30 +95,30 @@ export default function CartPage() {
         {/* Cart items */}
         <div style={{ background:'var(--card-white)', borderRadius:20, overflow:'hidden', marginBottom:10, border:'1px solid var(--divider)' }}>
           {cart.items.map((item, i) => (
-            <div key={item.product.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'14px 16px', borderTop: i > 0 ? '1px solid var(--divider)' : 'none' }}>
+            <div key={item.product.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'12px 14px', borderTop: i > 0 ? '1px solid var(--divider)' : 'none' }}>
               {/* Image */}
-              <div style={{ width:52, height:52, borderRadius:12, overflow:'hidden', flexShrink:0, background:'var(--page-bg)' }}>
+              <div style={{ width:48, height:48, borderRadius:10, overflow:'hidden', flexShrink:0, background:'var(--page-bg)' }}>
                 {(item.product as any).image_url
                   ? <img src={(item.product as any).image_url} alt={item.product.name} style={{ width:'100%', height:'100%', objectFit:'cover' }} onError={e => { (e.currentTarget as HTMLImageElement).style.display='none' }} />
-                  : <div style={{ width:'100%', height:'100%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:22 }}>🛍️</div>
+                  : <div style={{ width:'100%', height:'100%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:20 }}>🛍️</div>
                 }
               </div>
 
-              {/* Name + price */}
+              {/* Name + unit × qty = total */}
               <div style={{ flex:1, minWidth:0 }}>
-                <p style={{ fontWeight:700, fontSize:14, color:'var(--text-primary)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', marginBottom:2 }}>{item.product.name}</p>
-                <p style={{ fontSize:12, color:'var(--text-muted)' }}>₹{item.product.price} × {item.quantity}</p>
+                <p style={{ fontWeight:700, fontSize:13, color:'var(--text-primary)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', marginBottom:2 }}>{item.product.name}</p>
+                <p style={{ fontSize:12, color:'var(--text-muted)' }}>
+                  ₹{item.product.price} × {item.quantity}
+                  <span style={{ fontWeight:800, color:'var(--text-primary)', marginLeft:6 }}>= ₹{item.product.price * item.quantity}</span>
+                </p>
               </div>
 
               {/* Stepper */}
-              <div style={{ display:'flex', alignItems:'center', background:'#FF3008', borderRadius:12, overflow:'hidden', flexShrink:0 }}>
-                <button onClick={() => cart.updateQty(item.product.id, item.quantity - 1)} style={{ color:'#fff', padding:'7px 12px', border:'none', background:'none', cursor:'pointer', fontWeight:900, fontSize:16, lineHeight:1 }}>−</button>
-                <span style={{ color:'#fff', fontWeight:900, fontSize:14, minWidth:22, textAlign:'center' }}>{item.quantity}</span>
-                <button onClick={() => cart.updateQty(item.product.id, item.quantity + 1)} style={{ color:'#fff', padding:'7px 12px', border:'none', background:'none', cursor:'pointer', fontWeight:900, fontSize:16, lineHeight:1 }}>+</button>
+              <div style={{ display:'flex', alignItems:'center', background:'#FF3008', borderRadius:10, overflow:'hidden', flexShrink:0 }}>
+                <button onClick={() => cart.updateQty(item.product.id, item.quantity - 1)} style={{ color:'#fff', padding:'7px 11px', border:'none', background:'none', cursor:'pointer', fontWeight:900, fontSize:15, lineHeight:1 }}>−</button>
+                <span style={{ color:'#fff', fontWeight:900, fontSize:13, minWidth:18, textAlign:'center' }}>{item.quantity}</span>
+                <button onClick={() => cart.updateQty(item.product.id, item.quantity + 1)} style={{ color:'#fff', padding:'7px 11px', border:'none', background:'none', cursor:'pointer', fontWeight:900, fontSize:15, lineHeight:1 }}>+</button>
               </div>
-
-              {/* Total */}
-              <span style={{ fontWeight:800, fontSize:14, color:'var(--text-primary)', minWidth:52, textAlign:'right' }}>₹{item.product.price * item.quantity}</span>
             </div>
           ))}
         </div>

@@ -144,30 +144,60 @@ function Navbar() {
 }
 
 // ── Launch countdown ────────────────────────────────────────────────────
-function useCountdown() {
-  const LAUNCH = new Date('2026-03-28T00:00:00+05:30')
-  const [t, setT] = useState({ d: 0, h: 0, m: 0, s: 0 })
+const LAUNCH_DATE = new Date('2026-03-28T00:00:00+05:30')
+
+function CountdownBadge() {
+  const [t, setT] = useState({ d: 0, h: 0, m: 0, s: 0, launched: false })
   useEffect(() => {
     const calc = () => {
-      const diff = LAUNCH.getTime() - Date.now()
-      if (diff <= 0) { setT({ d: 0, h: 0, m: 0, s: 0 }); return }
+      const diff = LAUNCH_DATE.getTime() - Date.now()
+      if (diff <= 0) { setT({ d: 0, h: 0, m: 0, s: 0, launched: true }); return }
       setT({
         d: Math.floor(diff / 86400000),
         h: Math.floor((diff % 86400000) / 3600000),
         m: Math.floor((diff % 3600000) / 60000),
         s: Math.floor((diff % 60000) / 1000),
+        launched: false,
       })
     }
     calc()
     const id = setInterval(calc, 1000)
     return () => clearInterval(id)
   }, [])
-  return t
+
+  if (t.launched) {
+    return (
+      <div className="flex flex-col items-center lg:items-start gap-2 mb-8">
+        <div className="inline-flex items-center gap-2 bg-green-500/20 backdrop-blur border border-green-500/40 rounded-full px-4 py-1.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+          <span className="text-xs font-bold text-green-300 tracking-widest uppercase">We&apos;re live!</span>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col items-center lg:items-start gap-3 mb-8">
+      <div className="inline-flex items-center gap-2 bg-brand-500/20 backdrop-blur border border-brand-500/40 rounded-full px-4 py-1.5">
+        <span className="w-1.5 h-1.5 rounded-full bg-brand-400 animate-pulse" />
+        <span className="text-xs font-bold text-brand-300 tracking-widest uppercase">Launching March 28</span>
+      </div>
+      <div className="flex items-center gap-4">
+        {([['Days', t.d], ['Hrs', t.h], ['Min', t.m], ['Sec', t.s]] as [string, number][]).map(([label, val]) => (
+          <div key={label} className="flex flex-col items-center">
+            <span className="font-display font-extrabold text-3xl text-white tabular-nums leading-none">
+              {String(val).padStart(2, '0')}
+            </span>
+            <span className="text-[10px] text-white/40 uppercase tracking-widest mt-0.5">{label}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 // ── Hero ───────────────────────────────────────────────────────────────
 function Hero() {
-  const countdown = useCountdown()
   const mockShops = [
     { name: 'Fresh Basket', cat: 'Grocery',  time: '18 min', open: true,  icon: <IcoCart  size={16} color="#16a34a" />, bg: 'bg-green-50',  border: 'border-green-100' },
     { name: 'MediPlus',     cat: 'Pharmacy', time: '12 min', open: true,  icon: <IcoPill  size={16} color="#4f46e5" />, bg: 'bg-blue-50',   border: 'border-blue-100'  },
@@ -187,23 +217,7 @@ function Hero() {
 
           {/* Left: copy */}
           <div className="flex-1 text-center lg:text-left">
-            {/* Launch banner */}
-            <div className="flex flex-col items-center lg:items-start gap-3 mb-8">
-              <div className="inline-flex items-center gap-2 bg-brand-500/20 backdrop-blur border border-brand-500/40 rounded-full px-4 py-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-brand-400 animate-pulse" />
-                <span className="text-xs font-bold text-brand-300 tracking-widest uppercase">Launching March 28</span>
-              </div>
-              <div className="flex items-center gap-4">
-                {([['Days', countdown.d], ['Hrs', countdown.h], ['Min', countdown.m], ['Sec', countdown.s]] as [string, number][]).map(([label, val]) => (
-                  <div key={label} className="flex flex-col items-center">
-                    <span className="font-display font-extrabold text-3xl text-white tabular-nums leading-none">
-                      {String(val).padStart(2, '0')}
-                    </span>
-                    <span className="text-[10px] text-white/40 uppercase tracking-widest mt-0.5">{label}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <CountdownBadge />
 
             <h1 className="font-display font-extrabold text-[clamp(2.8rem,8vw,5.5rem)] text-white leading-[1.0] tracking-tight mb-6">
               Order from<br />
@@ -675,7 +689,7 @@ function Footer() {
           </div>
         </div>
         <div className="border-t border-white/5 pt-8 flex flex-col sm:flex-row justify-between items-center gap-3">
-          <p className="text-gray-600 text-xs">© 2025 Welokl. All rights reserved.</p>
+          <p className="text-gray-600 text-xs">© 2026 Welokl. All rights reserved.</p>
           <p className="text-gray-600 text-xs">Built for local India</p>
         </div>
       </div>
@@ -684,24 +698,39 @@ function Footer() {
 }
 
 // ── Main ──────────────────────────────────────────────────────────────
+const LANDING_CACHE_KEY = 'welokl_landing_v1'
+const LANDING_TTL_MS    = 10 * 60 * 1000 // 10 minutes
+
 export default function LandingPage() {
   const [shops, setShops] = useState<Shop[]>([])
   const [stats, setStats] = useState<Stats>({ shops: 0, orders: 0 })
 
   useEffect(() => {
+    // Serve from cache immediately — no loading flash for return visitors
+    try {
+      const raw = localStorage.getItem(LANDING_CACHE_KEY)
+      if (raw) {
+        const { ts, shops: cs, stats: ct } = JSON.parse(raw)
+        if (Date.now() - ts < LANDING_TTL_MS) {
+          setShops(cs || []); setStats(ct || { shops: 0, orders: 0 })
+        }
+      }
+    } catch {}
+
     const sb = createClient()
     Promise.all([
-      sb.from('shops').select('*', { count: 'exact', head: true }).eq('is_active', true),
-      sb.from('orders').select('*', { count: 'exact', head: true }),
-    ]).then(([{ count: sc }, { count: oc }]) => setStats({ shops: sc ?? 0, orders: oc ?? 0 }))
-
-    sb.from('shops')
-      .select('id,name,category_name,area,rating,avg_delivery_time,is_open,image_url,offer_text,delivery_enabled')
-      .eq('is_active', true)
-      .eq('verification_status', 'approved')
-      .order('rating', { ascending: false, nullsFirst: false })
-      .limit(6)
-      .then(({ data }) => setShops((data as Shop[]) || []))
+      sb.from('shops').select('*', { count: 'exact', head: true }).eq('is_active', true).eq('verification_status', 'approved'),
+      sb.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'delivered'),
+      sb.from('shops')
+        .select('id,name,category_name,area,rating,avg_delivery_time,is_open,image_url,offer_text,delivery_enabled')
+        .eq('is_active', true).eq('verification_status', 'approved')
+        .order('rating', { ascending: false, nullsFirst: false }).limit(6),
+    ]).then(([{ count: sc }, { count: oc }, { data }]) => {
+      const newStats = { shops: sc ?? 0, orders: oc ?? 0 }
+      const newShops = (data as Shop[]) || []
+      setStats(newStats); setShops(newShops)
+      try { localStorage.setItem(LANDING_CACHE_KEY, JSON.stringify({ ts: Date.now(), shops: newShops, stats: newStats })) } catch {}
+    })
   }, [])
 
   return (
