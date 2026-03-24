@@ -127,11 +127,10 @@ function Navbar() {
       <div className="max-w-6xl mx-auto px-5 h-16 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2.5">
           <span className="font-display font-extrabold text-2xl" style={{ color: scrolled ? '#111' : '#fff' }}>Welokl</span>
-          <span className="text-[10px] font-extrabold text-brand-500 bg-red-50 border border-red-100 px-2 py-0.5 rounded-full tracking-wide">BETA</span>
         </Link>
         <div className="flex items-center gap-2">
           <Link href="/auth/login"
-            className={`text-sm font-bold px-4 py-2 rounded-xl transition-colors hidden sm:block ${scrolled ? 'text-gray-700 hover:text-gray-900 hover:bg-gray-100' : 'text-white/80 hover:text-white hover:bg-white/10'}`}>
+            className={`text-sm font-bold px-4 py-2 rounded-xl transition-colors ${scrolled ? 'text-gray-700 hover:text-gray-900 hover:bg-gray-100' : 'text-white/80 hover:text-white hover:bg-white/10'}`}>
             Login
           </Link>
           <Link href="/auth/signup"
@@ -144,8 +143,31 @@ function Navbar() {
   )
 }
 
+// ── Launch countdown ────────────────────────────────────────────────────
+function useCountdown() {
+  const LAUNCH = new Date('2026-03-28T00:00:00+05:30')
+  const [t, setT] = useState({ d: 0, h: 0, m: 0, s: 0 })
+  useEffect(() => {
+    const calc = () => {
+      const diff = LAUNCH.getTime() - Date.now()
+      if (diff <= 0) { setT({ d: 0, h: 0, m: 0, s: 0 }); return }
+      setT({
+        d: Math.floor(diff / 86400000),
+        h: Math.floor((diff % 86400000) / 3600000),
+        m: Math.floor((diff % 3600000) / 60000),
+        s: Math.floor((diff % 60000) / 1000),
+      })
+    }
+    calc()
+    const id = setInterval(calc, 1000)
+    return () => clearInterval(id)
+  }, [])
+  return t
+}
+
 // ── Hero ───────────────────────────────────────────────────────────────
 function Hero() {
+  const countdown = useCountdown()
   const mockShops = [
     { name: 'Fresh Basket', cat: 'Grocery',  time: '18 min', open: true,  icon: <IcoCart  size={16} color="#16a34a" />, bg: 'bg-green-50',  border: 'border-green-100' },
     { name: 'MediPlus',     cat: 'Pharmacy', time: '12 min', open: true,  icon: <IcoPill  size={16} color="#4f46e5" />, bg: 'bg-blue-50',   border: 'border-blue-100'  },
@@ -165,9 +187,22 @@ function Hero() {
 
           {/* Left: copy */}
           <div className="flex-1 text-center lg:text-left">
-            <div className="inline-flex items-center gap-2 bg-white/8 backdrop-blur border border-white/10 rounded-full px-4 py-1.5 mb-8">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-              <span className="text-xs font-bold text-white/70 tracking-widest uppercase">Live in your city</span>
+            {/* Launch banner */}
+            <div className="flex flex-col items-center lg:items-start gap-3 mb-8">
+              <div className="inline-flex items-center gap-2 bg-brand-500/20 backdrop-blur border border-brand-500/40 rounded-full px-4 py-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-brand-400 animate-pulse" />
+                <span className="text-xs font-bold text-brand-300 tracking-widest uppercase">Launching March 28</span>
+              </div>
+              <div className="flex items-center gap-4">
+                {([['Days', countdown.d], ['Hrs', countdown.h], ['Min', countdown.m], ['Sec', countdown.s]] as [string, number][]).map(([label, val]) => (
+                  <div key={label} className="flex flex-col items-center">
+                    <span className="font-display font-extrabold text-3xl text-white tabular-nums leading-none">
+                      {String(val).padStart(2, '0')}
+                    </span>
+                    <span className="text-[10px] text-white/40 uppercase tracking-widest mt-0.5">{label}</span>
+                  </div>
+                ))}
+              </div>
             </div>
 
             <h1 className="font-display font-extrabold text-[clamp(2.8rem,8vw,5.5rem)] text-white leading-[1.0] tracking-tight mb-6">
