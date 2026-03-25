@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { compressImage } from '@/lib/imageService'
 
 const CATEGORIES = [
   'Food & Restaurants','Grocery','Pharmacy & Health','Electronics',
@@ -108,11 +109,11 @@ export default function ShopSetupPage() {
 
     // Upload shop photo if selected
     if (imageFile && shop.id) {
-      const ext = imageFile.name.split('.').pop() || 'jpg'
-      const path = `shops/${shop.id}/cover.${ext}`
-      const { error: uploadErr } = await supabase.storage.from('product-images').upload(path, imageFile, { upsert: true })
+      const compressed = await compressImage(imageFile)
+      const path = `${userId}/logo.webp`
+      const { error: uploadErr } = await supabase.storage.from('shop-images').upload(path, compressed, { upsert: true, contentType: 'image/webp' })
       if (!uploadErr) {
-        const { data: urlData } = supabase.storage.from('product-images').getPublicUrl(path)
+        const { data: urlData } = supabase.storage.from('shop-images').getPublicUrl(path)
         await supabase.from('shops').update({ image_url: urlData.publicUrl }).eq('id', shop.id)
       }
     }

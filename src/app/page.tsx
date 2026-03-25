@@ -143,54 +143,13 @@ function Navbar() {
   )
 }
 
-// ── Launch countdown ────────────────────────────────────────────────────
-const LAUNCH_DATE = new Date('2026-03-28T00:00:00+05:30')
-
-function CountdownBadge() {
-  const [t, setT] = useState({ d: 0, h: 0, m: 0, s: 0, launched: false })
-  useEffect(() => {
-    const calc = () => {
-      const diff = LAUNCH_DATE.getTime() - Date.now()
-      if (diff <= 0) { setT({ d: 0, h: 0, m: 0, s: 0, launched: true }); return }
-      setT({
-        d: Math.floor(diff / 86400000),
-        h: Math.floor((diff % 86400000) / 3600000),
-        m: Math.floor((diff % 3600000) / 60000),
-        s: Math.floor((diff % 60000) / 1000),
-        launched: false,
-      })
-    }
-    calc()
-    const id = setInterval(calc, 1000)
-    return () => clearInterval(id)
-  }, [])
-
-  if (t.launched) {
-    return (
-      <div className="flex flex-col items-center lg:items-start gap-2 mb-8">
-        <div className="inline-flex items-center gap-2 bg-green-500/20 backdrop-blur border border-green-500/40 rounded-full px-4 py-1.5">
-          <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-          <span className="text-xs font-bold text-green-300 tracking-widest uppercase">We&apos;re live!</span>
-        </div>
-      </div>
-    )
-  }
-
+// ── Live badge ───────────────────────────────────────────────────────────
+function LiveBadge() {
   return (
-    <div className="flex flex-col items-center lg:items-start gap-3 mb-8">
-      <div className="inline-flex items-center gap-2 bg-brand-500/20 backdrop-blur border border-brand-500/40 rounded-full px-4 py-1.5">
-        <span className="w-1.5 h-1.5 rounded-full bg-brand-400 animate-pulse" />
-        <span className="text-xs font-bold text-brand-300 tracking-widest uppercase">Launching March 28</span>
-      </div>
-      <div className="flex items-center gap-4">
-        {([['Days', t.d], ['Hrs', t.h], ['Min', t.m], ['Sec', t.s]] as [string, number][]).map(([label, val]) => (
-          <div key={label} className="flex flex-col items-center">
-            <span className="font-display font-extrabold text-3xl text-white tabular-nums leading-none">
-              {String(val).padStart(2, '0')}
-            </span>
-            <span className="text-[10px] text-white/40 uppercase tracking-widest mt-0.5">{label}</span>
-          </div>
-        ))}
+    <div className="flex flex-col items-center lg:items-start gap-2 mb-8">
+      <div className="inline-flex items-center gap-2 bg-green-500/20 backdrop-blur border border-green-500/40 rounded-full px-4 py-1.5">
+        <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+        <span className="text-xs font-bold text-green-300 tracking-widest uppercase">We&apos;re live!</span>
       </div>
     </div>
   )
@@ -217,7 +176,7 @@ function Hero() {
 
           {/* Left: copy */}
           <div className="flex-1 text-center lg:text-left">
-            <CountdownBadge />
+            <LiveBadge />
 
             <h1 className="font-display font-extrabold text-[clamp(2.8rem,8vw,5.5rem)] text-white leading-[1.0] tracking-tight mb-6">
               Order from<br />

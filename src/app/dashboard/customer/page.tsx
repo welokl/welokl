@@ -137,12 +137,11 @@ export default function CustomerHome() {
     try {
       const raw = localStorage.getItem(SHOPS_CACHE_KEY)
       if (raw) {
-        const { ts, shops: cached, cats: cachedCats } = JSON.parse(raw)
+        const { ts, shops: cached } = JSON.parse(raw)
         if (Date.now() - ts < SHOPS_TTL_MS) {
           setAllShops(cached)
-          if (cachedCats?.length) setActiveCats(cachedCats)
           setShopsLoaded(true)
-          // Still refresh in background — just don't block rendering
+          // Categories are NOT loaded from cache — always fetch fresh so admin toggles take effect immediately
         }
       }
     } catch {}
@@ -197,7 +196,6 @@ export default function CustomerHome() {
       localStorage.setItem(SHOPS_CACHE_KEY, JSON.stringify({
         ts: Date.now(),
         shops: enriched,
-        cats: mappedCats,
       }))
     } catch {}
 
