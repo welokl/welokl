@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { useFCM } from '@/hooks/useFCM'
+import { useFCM, registerFCMToken } from '@/hooks/useFCM'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import type { Order, Shop, Product, User } from '@/types'
@@ -17,6 +17,7 @@ type Tab = 'orders' | 'products' | 'analytics' | 'subscriptions' | 'settings'
 export default function BusinessDashboard() {
   const [user, setUser] = useState<User | null>(null)
   useFCM(user?.id ?? null)
+  const [notifPerm, setNotifPerm] = useState<NotificationPermission | 'unsupported'>('granted')
   const [shop, setShop] = useState<Shop | null>(null)
   const [orders, setOrders] = useState<Order[]>([])
   const [products, setProducts] = useState<Product[]>([])
@@ -66,6 +67,13 @@ export default function BusinessDashboard() {
   const [alertsOn, setAlertsOn] = useState(() => { try { return localStorage.getItem('welokl_alerts_on') === '1' } catch { return false } })
   useShopkeeperOrderAlerts(shop?.id)
   useVisibilityReconnect(loadData)
+
+  // Check notification permission on mount — show banner if not granted
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (!('Notification' in window)) { setNotifPerm('unsupported'); return }
+    setNotifPerm(Notification.permission)
+  }, [])
 
   // ── Auto open/close based on shop hours ─────────────────────
   // Rules:
@@ -255,9 +263,37 @@ export default function BusinessDashboard() {
     </div>
   )
 
+  async function enableNotifications() {
+    if (!('Notification' in window)) return
+    const perm = await Notification.requestPermission()
+    setNotifPerm(perm)
+    if (perm === 'granted' && user?.id) await registerFCMToken(user.id)
+  }
+
   return (
     <>
     {showPhoneGate && user && <PhoneGate userId={user.id} onDone={() => { setShowPhoneGate(false); loadData() }} />}
+
+    {/* Notification permission banner — critical for PWA installs */}
+    {notifPerm === 'default' && (
+      <div style={{ background: '#FF3008', padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+        <p style={{ fontSize: 13, color: '#fff', fontWeight: 700, margin: 0 }}>
+          🔔 Enable notifications to get instant order alerts
+        </p>
+        <button onClick={enableNotifications}
+          style={{ background: '#fff', color: '#FF3008', border: 'none', borderRadius: 10, padding: '7px 18px', fontWeight: 800, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'inherit' }}>
+          Enable now
+        </button>
+      </div>
+    )}
+    {notifPerm === 'denied' && (
+      <div style={{ background: '#7f1d1d', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
+        <p style={{ fontSize: 12, color: '#fca5a5', margin: 0 }}>
+          ⚠️ Notifications blocked — go to browser Settings → Site settings → Notifications → Allow for this site
+        </p>
+      </div>
+    )}
+
     <div style={{minHeight:"100vh", background:"var(--bg)"}}>
       <div style={{background:"var(--card-bg)", borderBottom:"1px solid var(--border)", padding:"16px"}}>
         <div className="max-w-4xl mx-auto">

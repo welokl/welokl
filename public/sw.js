@@ -30,20 +30,30 @@ messaging.onBackgroundMessage(payload => {
   const body  = payload.notification?.body  || 'You have a new update'
   const url   = payload.data?.url || '/'
   const tag   = payload.data?.tag || 'welokl'
+  const type  = payload.data?.type || ''
+
+  const isNewOrder = type === 'order_placed'
 
   self.registration.showNotification(title, {
     body,
-    icon:     '/icons/icon-192.png',
-    badge:    '/icons/badge-72.png',
+    icon:               '/icons/icon-192.png',
+    badge:              '/icons/badge-72.png',
     tag,
-    renotify: true,
-    vibrate:  [300, 100, 300, 100, 500, 100, 700],
-    data:     { url },
+    renotify:           true,
+    // New order: stays on screen until tapped (like Rapido) — must not auto-dismiss
+    requireInteraction: isNewOrder,
+    vibrate:            isNewOrder
+      ? [600, 100, 600, 100, 600, 100, 1000, 100, 1000]
+      : [300, 100, 300, 100, 500, 100, 700],
+    actions:            isNewOrder
+      ? [{ action: 'view', title: '👀 View Order' }]
+      : [],
+    data: { url },
   })
 })
 
 // ── Cache shell ───────────────────────────────────────────────
-const CACHE = 'welokl-v3'
+const CACHE = 'welokl-v4'
 const SHELL = ['/', '/stores', '/manifest.json', '/icons/icon-192.png', '/icons/icon-512.png']
 
 self.addEventListener('install', e => {
@@ -81,17 +91,24 @@ self.addEventListener('fetch', e => {
 
 // ── Push event (standard Web Push) ───────────────────────────
 self.addEventListener('push', e => {
-  let data = { title: 'Welokl', body: 'You have a new update', url: '/', tag: 'welokl' }
+  let data = { title: 'Welokl', body: 'You have a new update', url: '/', tag: 'welokl', type: '' }
   try { if (e.data) data = { ...data, ...e.data.json() } } catch {}
+  const isNewOrder = data.type === 'order_placed'
   e.waitUntil(
     self.registration.showNotification(data.title, {
-      body:     data.body,
-      icon:     '/icons/icon-192.png',
-      badge:    '/icons/badge-72.png',
-      tag:      data.tag,
-      renotify: true,
-      vibrate:  [300, 100, 300, 100, 500, 100, 700],
-      data:     { url: data.url },
+      body:               data.body,
+      icon:               '/icons/icon-192.png',
+      badge:              '/icons/badge-72.png',
+      tag:                data.tag,
+      renotify:           true,
+      requireInteraction: isNewOrder,
+      vibrate:            isNewOrder
+        ? [600, 100, 600, 100, 600, 100, 1000, 100, 1000]
+        : [300, 100, 300, 100, 500, 100, 700],
+      actions:            isNewOrder
+        ? [{ action: 'view', title: '👀 View Order' }]
+        : [],
+      data: { url: data.url },
     })
   )
 })
@@ -109,17 +126,60 @@ self.addEventListener('notificationclick', e => {
   )
 })
 
+// ── Order alarm state (loops until shop accepts) ──────────────
+const orderAlarms = new Map() // orderId → intervalId
+
+function showOrderNotification(title, body, tag, url) {
+  return self.registration.showNotification(title, {
+    body,
+    icon:               '/icons/icon-192.png',
+    badge:              '/icons/badge-72.png',
+    tag,
+    renotify:           true,
+    requireInteraction: true,
+    vibrate:            [600, 100, 600, 100, 600, 100, 1000, 100, 1000],
+    actions:            [{ action: 'view', title: '👀 View Order' }],
+    data:               { url },
+  })
+}
+
 // ── Message from client (useOrderAlerts postMessage) ─────────
 self.addEventListener('message', e => {
-  if (!e.data || e.data.type !== 'NOTIFY') return
-  const { title, body, tag, url } = e.data
-  self.registration.showNotification(title || 'Welokl', {
-    body:     body || '',
-    icon:     '/icons/icon-192.png',
-    badge:    '/icons/badge-72.png',
-    tag:      tag || 'welokl',
-    renotify: true,
-    vibrate:  [300, 100, 300, 100, 500, 100, 700],
-    data:     { url: url || '/' },
-  })
+  if (!e.data) return
+
+  // Start looping alarm for a new order
+  if (e.data.type === 'START_ORDER_ALARM') {
+    const { orderId, title, body, tag, url } = e.data
+    if (orderAlarms.has(orderId)) return // already running
+    showOrderNotification(title, body, tag, url)
+    const id = setInterval(() => showOrderNotification(title, body, tag, url), 8000)
+    orderAlarms.set(orderId, id)
+    return
+  }
+
+  // Stop alarm when shop accepts / rejects
+  if (e.data.type === 'STOP_ORDER_ALARM') {
+    const id = orderAlarms.get(e.data.orderId)
+    if (id != null) { clearInterval(id); orderAlarms.delete(e.data.orderId) }
+    return
+  }
+
+  // Generic one-shot notification
+  if (e.data.type === 'NOTIFY') {
+    const { title, body, tag, url, notifType } = e.data
+    const isNewOrder = notifType === 'order_placed'
+    self.registration.showNotification(title || 'Welokl', {
+      body:               body || '',
+      icon:               '/icons/icon-192.png',
+      badge:              '/icons/badge-72.png',
+      tag:                tag || 'welokl',
+      renotify:           true,
+      requireInteraction: isNewOrder,
+      vibrate:            isNewOrder
+        ? [600, 100, 600, 100, 600, 100, 1000, 100, 1000]
+        : [300, 100, 300, 100, 500, 100, 700],
+      actions:            isNewOrder ? [{ action: 'view', title: '👀 View Order' }] : [],
+      data:               { url: url || '/' },
+    })
+  }
 })

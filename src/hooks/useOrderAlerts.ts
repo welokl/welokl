@@ -43,7 +43,7 @@ function inAppToast(title: string, body: string, color = '#FF3008', icon = '🔔
 
 // ── Notification via Service Worker (survives backgrounding on Android/iOS PWA)
 // Falls back to new Notification() if SW not available
-async function pushNotify(title: string, body: string, tag = 'welokl', url = '/') {
+async function pushNotify(title: string, body: string, tag = 'welokl', url = '/', notifType = '') {
   if (typeof window === 'undefined') return
 
   // Request permission if needed
@@ -52,20 +52,24 @@ async function pushNotify(title: string, body: string, tag = 'welokl', url = '/'
   }
   if (!('Notification' in window) || Notification.permission !== 'granted') return
 
+  const isNewOrder = notifType === 'order_placed'
+
   // Preferred: post to service worker — persists even when tab is backgrounded on mobile
   if ('serviceWorker' in navigator) {
     try {
       const reg = await navigator.serviceWorker.ready
       if (reg && reg.active) {
-        reg.active.postMessage({ type: 'NOTIFY', title, body, tag, url })
+        reg.active.postMessage({ type: 'NOTIFY', title, body, tag, url, notifType })
         return
       }
       // SW registered but not yet active — use showNotification directly
       await reg.showNotification(title, {
         body, icon: '/icons/icon-192.png', badge: '/icons/badge-72.png',
-        tag, vibrate: [200, 100, 200],
+        tag, renotify: true,
+        requireInteraction: isNewOrder,
+        vibrate: isNewOrder ? [600, 100, 600, 100, 1000, 100, 1000] : [200, 100, 200],
         data: { url },
-      } as NotificationOptions & { vibrate?: number[]; renotify?: boolean })
+      } as NotificationOptions & { vibrate?: number[]; renotify?: boolean; requireInteraction?: boolean })
       return
     } catch { }
   }
@@ -107,31 +111,88 @@ function useVisibilityReconnect(onVisible: () => void) {
 
 export { useVisibilityReconnect }
 
+// ── Send START/STOP alarm commands to the service worker ─────
+async function swAlarm(type: 'START_ORDER_ALARM' | 'STOP_ORDER_ALARM', payload: Record<string, string>) {
+  if (!('serviceWorker' in navigator)) return
+  try {
+    const reg = await navigator.serviceWorker.ready
+    if (reg?.active) reg.active.postMessage({ type, ...payload })
+  } catch {}
+}
+
 // ─────────────────────────────────────────────────────────────
 // HOOK 1: Shopkeeper — new order arrives for their shop
+//   • Loops sound + SW notification every 8s until accepted/rejected
 // ─────────────────────────────────────────────────────────────
 export function useShopkeeperOrderAlerts(shopId: string | null | undefined) {
   const supabase = createClient()
   const ready = useRef(false)
+  // Map of orderId → setInterval id for in-page sound loop
+  const soundLoops = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map())
+
+  function startAlarm(orderId: string, orderNumber: string) {
+    if (soundLoops.current.has(orderId)) return // already alarming
+    // Immediate fire
+    playSound('new_order')
+    vibrate([600, 80, 600, 80, 600, 80, 1000])
+    // Loop every 8 seconds while app is open
+    const id = setInterval(() => {
+      playSound('new_order')
+      vibrate([600, 80, 600, 80, 600, 80, 1000])
+    }, 8000)
+    soundLoops.current.set(orderId, id)
+    // Tell SW to also loop the hard notification (works when app is backgrounded/closed)
+    swAlarm('START_ORDER_ALARM', {
+      orderId,
+      title: '🛒 New Order!',
+      body:  `Order #${orderNumber} just arrived — tap to accept`,
+      tag:   `order-${orderId}`,
+      url:   '/dashboard/business',
+    })
+  }
+
+  function stopAlarm(orderId: string) {
+    const id = soundLoops.current.get(orderId)
+    if (id != null) { clearInterval(id); soundLoops.current.delete(orderId) }
+    swAlarm('STOP_ORDER_ALARM', { orderId })
+  }
 
   useEffect(() => {
     if (!shopId) return
     const t = setTimeout(() => { ready.current = true }, 1500)
+
     const ch = supabase
       .channel(`sk-alerts-${shopId}`)
+      // New order — start alarm
       .on('postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'orders', filter: `shop_id=eq.${shopId}` },
         payload => {
           if (!ready.current) return
           const o = payload.new as any
-          playSound('new_order')
-          vibrate([200, 80, 200, 80, 400, 80, 400])
-          pushNotify('🛒 New Order!', `Order #${o.order_number || o.id?.slice(0,8)} just arrived`, `order-${o.id}`, '/dashboard/business')
-          inAppToast('🛒 New Order!', `Order #${o.order_number || o.id?.slice(0,8)} just arrived`, '#FF3008', '🛒')
+          const orderNum = o.order_number || o.id?.slice(0, 8)
+          startAlarm(o.id, orderNum)
+          inAppToast('🛒 New Order!', `Order #${orderNum} just arrived`, '#FF3008', '🛒')
+        }
+      )
+      // Order accepted / rejected / cancelled — stop alarm
+      .on('postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'orders', filter: `shop_id=eq.${shopId}` },
+        payload => {
+          const n = payload.new as any
+          if (['accepted', 'rejected', 'cancelled', 'preparing'].includes(n.status)) {
+            stopAlarm(n.id)
+          }
         }
       )
       .subscribe()
-    return () => { clearTimeout(t); supabase.removeChannel(ch) }
+
+    return () => {
+      clearTimeout(t)
+      // Stop all active alarms on unmount
+      soundLoops.current.forEach((id) => clearInterval(id))
+      soundLoops.current.clear()
+      supabase.removeChannel(ch)
+    }
   }, [shopId]) // eslint-disable-line
 }
 
