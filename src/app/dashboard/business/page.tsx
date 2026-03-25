@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import type { Order, Shop, Product, User } from '@/types'
 import { ORDER_STATUS_LABELS, ORDER_STATUS_ICONS } from '@/types'
-import { useShopkeeperOrderAlerts, useVisibilityReconnect } from '@/hooks/useOrderAlerts'
+import { useShopkeeperOrderAlerts, useVisibilityReconnect, unlockAudio } from '@/hooks/useOrderAlerts'
 import ThemeToggle from '@/components/ThemeToggle'
 import ImageUploader from '@/components/ImageUploader'
 import { uploadShopImage, deleteProductImages, imgUrl } from '@/lib/imageService'
@@ -69,10 +69,12 @@ export default function BusinessDashboard() {
   useVisibilityReconnect(loadData)
 
   // Check notification permission on mount — show banner if not granted
+  // Also unlock AudioContext on first click so automated sounds work
   useEffect(() => {
     if (typeof window === 'undefined') return
     if (!('Notification' in window)) { setNotifPerm('unsupported'); return }
     setNotifPerm(Notification.permission)
+    unlockAudio()
   }, [])
 
   // ── Auto open/close based on shop hours ─────────────────────

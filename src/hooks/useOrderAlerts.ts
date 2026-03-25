@@ -3,11 +3,23 @@ import { useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 // ── Audio engine ─────────────────────────────────────────────
-function playSound(type: 'new_order' | 'status_update' | 'delivery_assigned' | 'new_available') {
+// Single shared AudioContext — creating a new one each time gets suspended by Chrome
+let _audioCtx: AudioContext | null = null
+function getAudioCtx(): AudioContext | null {
   try {
     const AudioCtx = window.AudioContext || (window as any).webkitAudioContext
-    if (!AudioCtx) return
-    const ctx = new AudioCtx()
+    if (!AudioCtx) return null
+    if (!_audioCtx) _audioCtx = new AudioCtx()
+    // Resume if suspended (Chrome suspends until user gesture; we resume on first alarm)
+    if (_audioCtx.state === 'suspended') _audioCtx.resume().catch(() => {})
+    return _audioCtx
+  } catch { return null }
+}
+
+function playSound(type: 'new_order' | 'status_update' | 'delivery_assigned' | 'new_available') {
+  try {
+    const ctx = getAudioCtx()
+    if (!ctx) return
     const patterns: Record<string, { freqs: number[]; offsets: number[]; wave: OscillatorType; vol: number }> = {
       new_order:         { freqs: [660,880,1100,1320,880,1320], offsets: [0,.18,.36,.54,.72,.90], wave: 'square', vol: 1.0 },
       status_update:     { freqs: [880,1100],                   offsets: [0,.22],                 wave: 'sine',   vol: 0.6 },
@@ -45,24 +57,20 @@ function inAppToast(title: string, body: string, color = '#FF3008', icon = '🔔
 // Falls back to new Notification() if SW not available
 async function pushNotify(title: string, body: string, tag = 'welokl', url = '/', notifType = '') {
   if (typeof window === 'undefined') return
-
-  // Request permission if needed
-  if ('Notification' in window && Notification.permission === 'default') {
-    await Notification.requestPermission().catch(() => {})
-  }
-  if (!('Notification' in window) || Notification.permission !== 'granted') return
+  if (!('Notification' in window)) return
+  // Don't prompt mid-flow — permission must already be granted (done at login/mount)
+  if (Notification.permission !== 'granted') return
 
   const isNewOrder = notifType === 'order_placed'
 
-  // Preferred: post to service worker — persists even when tab is backgrounded on mobile
   if ('serviceWorker' in navigator) {
     try {
       const reg = await navigator.serviceWorker.ready
-      if (reg && reg.active) {
+      if (reg?.active) {
         reg.active.postMessage({ type: 'NOTIFY', title, body, tag, url, notifType })
         return
       }
-      // SW registered but not yet active — use showNotification directly
+      // SW not yet active — show directly from registration
       await reg.showNotification(title, {
         body, icon: '/icons/icon-192.png', badge: '/icons/badge-72.png',
         tag, renotify: true,
@@ -74,10 +82,15 @@ async function pushNotify(title: string, body: string, tag = 'welokl', url = '/'
     } catch { }
   }
 
-  // Fallback: standard Notification API (works when tab is active/visible)
-  try {
-    new Notification(title, { body, icon: '/icons/icon-192.png', tag, ...({ renotify: true } as any) })
-  } catch { }
+  // Fallback: standard Notification API
+  try { new Notification(title, { body, icon: '/icons/icon-192.png', tag }) } catch { }
+}
+
+// Unlock AudioContext on first user gesture — call this once on dashboard mount
+export function unlockAudio() {
+  if (typeof window === 'undefined') return
+  const unlock = () => { getAudioCtx(); window.removeEventListener('click', unlock) }
+  window.addEventListener('click', unlock, { once: true })
 }
 
 export function requestNotificationPermission() {
@@ -111,76 +124,51 @@ function useVisibilityReconnect(onVisible: () => void) {
 
 export { useVisibilityReconnect }
 
-// ── Send START/STOP alarm commands to the service worker ─────
-async function swAlarm(type: 'START_ORDER_ALARM' | 'STOP_ORDER_ALARM', payload: Record<string, string>) {
-  if (!('serviceWorker' in navigator)) return
-  try {
-    const reg = await navigator.serviceWorker.ready
-    if (reg?.active) reg.active.postMessage({ type, ...payload })
-  } catch {}
-}
-
 // ─────────────────────────────────────────────────────────────
 // HOOK 1: Shopkeeper — new order arrives for their shop
-//   • Loops sound + SW notification every 8s until accepted/rejected
+//   • Plays sound + posts SW notification immediately
+//   • Page-side setInterval repeats every 8s until accepted/rejected
+//   • SW only shows the notification — page drives the repeat
 // ─────────────────────────────────────────────────────────────
 export function useShopkeeperOrderAlerts(shopId: string | null | undefined) {
   const supabase = createClient()
   const ready = useRef(false)
-  // Map of orderId → setInterval id for in-page sound loop
-  const soundLoops = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map())
-
-  function startAlarm(orderId: string, orderNumber: string) {
-    if (soundLoops.current.has(orderId)) return // already alarming
-    // Immediate fire
-    playSound('new_order')
-    vibrate([600, 80, 600, 80, 600, 80, 1000])
-    // Loop every 8 seconds while app is open
-    const id = setInterval(() => {
-      playSound('new_order')
-      vibrate([600, 80, 600, 80, 600, 80, 1000])
-    }, 8000)
-    soundLoops.current.set(orderId, id)
-    // Tell SW to also loop the hard notification (works when app is backgrounded/closed)
-    swAlarm('START_ORDER_ALARM', {
-      orderId,
-      title: '🛒 New Order!',
-      body:  `Order #${orderNumber} just arrived — tap to accept`,
-      tag:   `order-${orderId}`,
-      url:   '/dashboard/business',
-    })
-  }
-
-  function stopAlarm(orderId: string) {
-    const id = soundLoops.current.get(orderId)
-    if (id != null) { clearInterval(id); soundLoops.current.delete(orderId) }
-    swAlarm('STOP_ORDER_ALARM', { orderId })
-  }
+  const alarms = useRef<Record<string, number>>({}) // orderId → intervalId
 
   useEffect(() => {
     if (!shopId) return
     const t = setTimeout(() => { ready.current = true }, 1500)
 
+    async function fireAlarm(orderId: string, orderNum: string) {
+      playSound('new_order')
+      vibrate([600, 80, 600, 80, 600, 80, 1000])
+      await pushNotify('🛒 New Order!', `Order #${orderNum} — tap to accept`, `order-${orderId}`, '/dashboard/business', 'order_placed')
+    }
+
     const ch = supabase
       .channel(`sk-alerts-${shopId}`)
-      // New order — start alarm
       .on('postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'orders', filter: `shop_id=eq.${shopId}` },
-        payload => {
+        async payload => {
           if (!ready.current) return
           const o = payload.new as any
           const orderNum = o.order_number || o.id?.slice(0, 8)
-          startAlarm(o.id, orderNum)
+
+          // Fire immediately
+          await fireAlarm(o.id, orderNum)
           inAppToast('🛒 New Order!', `Order #${orderNum} just arrived`, '#FF3008', '🛒')
+
+          // Stop any existing alarm for this order then start fresh
+          if (alarms.current[o.id]) clearInterval(alarms.current[o.id])
+          alarms.current[o.id] = window.setInterval(() => fireAlarm(o.id, orderNum), 8000) as unknown as number
         }
       )
-      // Order accepted / rejected / cancelled — stop alarm
       .on('postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'orders', filter: `shop_id=eq.${shopId}` },
         payload => {
           const n = payload.new as any
           if (['accepted', 'rejected', 'cancelled', 'preparing'].includes(n.status)) {
-            stopAlarm(n.id)
+            if (alarms.current[n.id]) { clearInterval(alarms.current[n.id]); delete alarms.current[n.id] }
           }
         }
       )
@@ -188,9 +176,8 @@ export function useShopkeeperOrderAlerts(shopId: string | null | undefined) {
 
     return () => {
       clearTimeout(t)
-      // Stop all active alarms on unmount
-      soundLoops.current.forEach((id) => clearInterval(id))
-      soundLoops.current.clear()
+      Object.values(alarms.current).forEach(id => clearInterval(id))
+      alarms.current = {}
       supabase.removeChannel(ch)
     }
   }, [shopId]) // eslint-disable-line
