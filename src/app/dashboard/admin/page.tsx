@@ -1171,6 +1171,7 @@ function AdminShopManageModal({ shop, onClose, onRefresh }: { shop: any; onClose
   const [bannerProg, setBannerProg] = useState(0)
   const [imgError, setImgError]     = useState('')
   const [shopData, setShopData]     = useState(shop)
+  const [uploadingImgId, setUploadingImgId] = useState<string | null>(null)
 
   const sb = createClient()
 
@@ -1226,6 +1227,18 @@ function AdminShopManageModal({ shop, onClose, onRefresh }: { shop: any; onClose
       setShopData((p: any) => ({ ...p, ...(type === 'logo' ? { image_url: url } : { banner_url: url }) }))
       onRefresh()
     } catch (e: any) { setImgError(`Upload failed: ${e.message}`) }
+  }
+
+  async function uploadProductImg(file: File, productId: string) {
+    setUploadingImgId(productId)
+    try {
+      const { uploadProductImage } = await import('@/lib/imageService')
+      const { url } = await uploadProductImage(file, shop.owner_id, productId, 1, () => {})
+      const { error } = await sb.from('products').update({ image_url: url }).eq('id', productId)
+      if (error) { setAddError(`Image saved but link failed: ${error.message}`) }
+      else { setProducts(prev => prev.map(p => p.id === productId ? { ...p, image_url: url } : p)) }
+    } catch (e: any) { setAddError(`Image upload failed: ${e.message}`) }
+    setUploadingImgId(null)
   }
 
   const inp = { background: 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 12px', fontSize: 14, color: 'var(--text)', width: '100%', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const }
@@ -1302,12 +1315,20 @@ function AdminShopManageModal({ shop, onClose, onRefresh }: { shop: any; onClose
                   ? <p style={{ color: 'var(--text-3)', fontSize: 13 }}>No products yet.</p>
                   : products.map(p => (
                     <div key={p.id} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '10px 12px', background: 'var(--bg-3)', borderRadius: 12 }}>
-                      {p.image_url
-                        ? <img src={p.image_url} alt={p.name} style={{ width: 44, height: 44, borderRadius: 8, objectFit: 'cover', flexShrink: 0 }} />
-                        : <div style={{ width: 44, height: 44, borderRadius: 8, background: 'var(--bg-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>🛍</div>}
+                      <label style={{ cursor: 'pointer', flexShrink: 0, position: 'relative', display: 'block', width: 44, height: 44 }} title="Tap to upload image">
+                        {uploadingImgId === p.id
+                          ? <div style={{ width: 44, height: 44, borderRadius: 8, background: 'var(--bg-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: 'var(--text-3)', fontWeight: 700 }}>…</div>
+                          : p.image_url
+                            ? <img src={p.image_url} alt={p.name} style={{ width: 44, height: 44, borderRadius: 8, objectFit: 'cover' }} />
+                            : <div style={{ width: 44, height: 44, borderRadius: 8, background: 'var(--bg-2)', border: '2px dashed var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>📷</div>}
+                        <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => {
+                          const f = e.target.files?.[0]; if (f) uploadProductImg(f, p.id)
+                        }} />
+                      </label>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <p style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</p>
                         <p style={{ fontSize: 12, color: 'var(--text-3)' }}>₹{p.price}{p.original_price ? ` · was ₹${p.original_price}` : ''} · {p.is_available ? 'Available' : 'Unavailable'}</p>
+                        {!p.image_url && <p style={{ fontSize: 11, color: '#f59e0b', fontWeight: 600, marginTop: 2 }}>Tap photo to add image</p>}
                       </div>
                       <button onClick={() => deleteProduct(p.id)}
                         style={{ fontSize: 12, fontWeight: 700, color: '#ef4444', background: 'rgba(239,68,68,.1)', border: 'none', borderRadius: 8, padding: '5px 10px', cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 }}>
