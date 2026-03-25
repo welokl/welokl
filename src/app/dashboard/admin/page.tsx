@@ -54,6 +54,8 @@ export default function AdminDashboard() {
   const [boostSaving, setBoostSaving] = useState(false)
   const [loading, setLoading]     = useState(true)
   const [saving, setSaving]       = useState(false)
+  const [adminManagingShop, setAdminManagingShop] = useState<Shop | null>(null)
+  const [deleteConfirm, setDeleteConfirm] = useState<{ shop: Shop; readyAt: number } | null>(null)
   const [edits, setEdits]         = useState<Record<string, string>>({})
   const [search, setSearch]       = useState('')
   const [shopSearch,  setShopSearch]  = useState('')
@@ -555,7 +557,7 @@ export default function AdminDashboard() {
                     <p style={{ fontSize: 12, color: 'var(--text-3)' }}>{shop.category_name} · {shop.area}, {shop.city} · {shop.rating} stars</p>
                     <p style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>Owner: {shop.owner?.name} · {shop.owner?.phone || shop.owner?.email}</p>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, flexWrap: 'wrap' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-3)' }}>Comm %</span>
                       <input type="number" defaultValue={shop.commission_percent} min="0" max="50" step="0.5"
@@ -565,6 +567,14 @@ export default function AdminDashboard() {
                     <button onClick={() => createClient().from('shops').update({ is_active: !shop.is_active }).eq('id', shop.id).then(load)}
                       style={{ fontSize: 12, fontWeight: 700, padding: '7px 14px', borderRadius: 10, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: shop.is_active ? 'rgba(239,68,68,0.12)' : 'rgba(34,197,94,0.12)', color: shop.is_active ? '#ef4444' : '#16a34a' }}>
                       {shop.is_active ? 'Deactivate' : 'Activate'}
+                    </button>
+                    <button onClick={() => setAdminManagingShop(shop)}
+                      style={{ fontSize: 12, fontWeight: 700, padding: '7px 14px', borderRadius: 10, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: 'rgba(59,130,246,0.12)', color: '#3b82f6' }}>
+                      Manage
+                    </button>
+                    <button onClick={() => setDeleteConfirm({ shop, readyAt: Date.now() + 5 * 60 * 1000 })}
+                      style={{ fontSize: 12, fontWeight: 700, padding: '7px 14px', borderRadius: 10, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: 'rgba(239,68,68,0.12)', color: '#ef4444' }}>
+                      Delete
                     </button>
                   </div>
                 </div>
@@ -1123,6 +1133,290 @@ export default function AdminDashboard() {
           )}
 
         </>}
+      </div>
+
+      {adminManagingShop && (
+        <AdminShopManageModal
+          shop={adminManagingShop}
+          onClose={() => setAdminManagingShop(null)}
+          onRefresh={() => { load(); setAdminManagingShop(s => s ? { ...s } : s) }}
+        />
+      )}
+
+      {deleteConfirm && (
+        <DeleteShopConfirm
+          confirm={deleteConfirm}
+          onCancel={() => setDeleteConfirm(null)}
+          onDeleted={() => { setDeleteConfirm(null); load() }}
+        />
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────
+// Admin: manage shop products + images
+// ─────────────────────────────────────────────────────────────
+function AdminShopManageModal({ shop, onClose, onRefresh }: { shop: any; onClose: () => void; onRefresh: () => void }) {
+  const [products, setProducts]     = useState<any[]>([])
+  const [loadingProds, setLoadingProds] = useState(true)
+  const [activeTab, setActiveTab]   = useState<'products' | 'images'>('products')
+  const [showAdd, setShowAdd]       = useState(false)
+  const [addForm, setAddForm]       = useState({ name: '', description: '', price: '', original_price: '', category: '', is_veg: '' })
+  const [addImg, setAddImg]         = useState<File | null>(null)
+  const [addImgPreview, setAddImgPreview] = useState<string | null>(null)
+  const [addLoading, setAddLoading] = useState(false)
+  const [addError, setAddError]     = useState('')
+  const [logoProg, setLogoProg]     = useState(0)
+  const [bannerProg, setBannerProg] = useState(0)
+  const [imgError, setImgError]     = useState('')
+  const [shopData, setShopData]     = useState(shop)
+
+  const sb = createClient()
+
+  const loadProducts = useCallback(async () => {
+    setLoadingProds(true)
+    const { data } = await sb.from('products').select('*').eq('shop_id', shop.id).order('name')
+    setProducts(data || [])
+    setLoadingProds(false)
+  }, [shop.id]) // eslint-disable-line
+
+  useEffect(() => { loadProducts() }, [loadProducts])
+
+  async function deleteProduct(productId: string) {
+    if (!confirm('Delete this product? This cannot be undone.')) return
+    await sb.from('products').delete().eq('id', productId)
+    loadProducts()
+  }
+
+  async function addProduct() {
+    if (!addForm.name.trim() || !addForm.price) { setAddError('Name and price required'); return }
+    setAddLoading(true); setAddError('')
+    const { data: product, error } = await sb.from('products').insert({
+      shop_id: shop.id,
+      name: addForm.name.trim(),
+      description: addForm.description.trim() || null,
+      price: parseInt(addForm.price),
+      original_price: addForm.original_price ? parseInt(addForm.original_price) : null,
+      category: addForm.category.trim() || null,
+      is_veg: addForm.is_veg === 'veg' ? true : addForm.is_veg === 'nonveg' ? false : null,
+      is_available: true,
+    }).select().single()
+    if (error) { setAddError(error.message); setAddLoading(false); return }
+    if (addImg && product) {
+      try {
+        const { uploadProductImage } = await import('@/lib/imageService')
+        const { url } = await uploadProductImage(addImg, shop.owner_id, product.id, 1, () => {})
+        await sb.from('products').update({ image_url: url }).eq('id', product.id)
+      } catch (e: any) { setAddError(`Product saved but image failed: ${e.message}`) }
+    }
+    setAddLoading(false)
+    setShowAdd(false)
+    setAddForm({ name: '', description: '', price: '', original_price: '', category: '', is_veg: '' })
+    setAddImg(null); setAddImgPreview(null)
+    loadProducts()
+  }
+
+  async function uploadShopImg(file: File, type: 'logo' | 'banner') {
+    setImgError('')
+    try {
+      const { uploadShopImage } = await import('@/lib/imageService')
+      const { url } = await uploadShopImage(file, shop.owner_id, type, type === 'logo' ? setLogoProg : setBannerProg)
+      await sb.from('shops').update(type === 'logo' ? { image_url: url } : { banner_url: url }).eq('id', shop.id)
+      setShopData((p: any) => ({ ...p, ...(type === 'logo' ? { image_url: url } : { banner_url: url }) }))
+      onRefresh()
+    } catch (e: any) { setImgError(`Upload failed: ${e.message}`) }
+  }
+
+  const inp = { background: 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 12px', fontSize: 14, color: 'var(--text)', width: '100%', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(0,0,0,.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div style={{ background: 'var(--card-bg)', borderRadius: 20, width: '100%', maxWidth: 560, maxHeight: '90vh', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+
+        {/* Header */}
+        <div style={{ padding: '20px 20px 0', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+          <div>
+            <p style={{ fontWeight: 900, fontSize: 17, color: 'var(--text)' }}>{shop.name}</p>
+            <p style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>Owner: {shop.owner?.name} · {shop.owner?.phone || shop.owner?.email}</p>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: 'var(--text-3)', flexShrink: 0 }}>✕</button>
+        </div>
+
+        {/* Tabs */}
+        <div style={{ display: 'flex', gap: 4, padding: '16px 20px 0', borderBottom: '1px solid var(--border)', marginTop: 12 }}>
+          {(['products', 'images'] as const).map(t => (
+            <button key={t} onClick={() => setActiveTab(t)}
+              style={{ padding: '8px 18px', borderRadius: '10px 10px 0 0', fontSize: 13, fontWeight: 700, background: activeTab === t ? 'var(--bg-3)' : 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', color: activeTab === t ? 'var(--text)' : 'var(--text-3)' }}>
+              {t === 'products' ? `Products (${products.length})` : 'Shop Images'}
+            </button>
+          ))}
+        </div>
+
+        <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
+
+          {/* PRODUCTS TAB */}
+          {activeTab === 'products' && (
+            <>
+              <button onClick={() => { setShowAdd(v => !v); setAddError('') }}
+                style={{ padding: '9px 18px', borderRadius: 11, background: showAdd ? 'var(--bg-3)' : '#ff3008', color: showAdd ? 'var(--text-2)' : '#fff', fontWeight: 800, fontSize: 13, border: 'none', cursor: 'pointer', fontFamily: 'inherit', alignSelf: 'flex-start' }}>
+                {showAdd ? 'Cancel' : '+ Add Product'}
+              </button>
+
+              {showAdd && (
+                <div style={{ background: 'var(--bg-3)', borderRadius: 14, padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {addError && <p style={{ color: '#ef4444', fontSize: 13, fontWeight: 600 }}>{addError}</p>}
+                  <label style={{ cursor: 'pointer', display: 'block' }}>
+                    <div style={{ height: 100, borderRadius: 10, border: '2px dashed var(--border)', background: 'var(--bg-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                      {addImgPreview
+                        ? <img src={addImgPreview} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" />
+                        : <span style={{ fontSize: 12, color: 'var(--text-3)', fontWeight: 600 }}>Tap to add product image (optional)</span>}
+                    </div>
+                    <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => {
+                      const f = e.target.files?.[0]; if (!f) return
+                      setAddImg(f); setAddImgPreview(URL.createObjectURL(f))
+                    }} />
+                  </label>
+                  <input placeholder="Product name *" value={addForm.name} onChange={e => setAddForm(p => ({ ...p, name: e.target.value }))} style={inp} />
+                  <input placeholder="Description" value={addForm.description} onChange={e => setAddForm(p => ({ ...p, description: e.target.value }))} style={inp} />
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <input placeholder="Price ₹ *" type="number" value={addForm.price} onChange={e => setAddForm(p => ({ ...p, price: e.target.value }))} style={inp} />
+                    <input placeholder="Original ₹" type="number" value={addForm.original_price} onChange={e => setAddForm(p => ({ ...p, original_price: e.target.value }))} style={inp} />
+                  </div>
+                  <input placeholder="Category (e.g. Snacks)" value={addForm.category} onChange={e => setAddForm(p => ({ ...p, category: e.target.value }))} style={inp} />
+                  <select value={addForm.is_veg} onChange={e => setAddForm(p => ({ ...p, is_veg: e.target.value }))} style={{ ...inp, cursor: 'pointer' }}>
+                    <option value="">Veg / Non-veg (optional)</option>
+                    <option value="veg">Veg</option>
+                    <option value="nonveg">Non-veg</option>
+                  </select>
+                  <button onClick={addProduct} disabled={addLoading}
+                    style={{ padding: 12, borderRadius: 12, background: addLoading ? 'var(--bg-4)' : '#ff3008', color: '#fff', fontWeight: 800, fontSize: 14, border: 'none', cursor: addLoading ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
+                    {addLoading ? 'Saving…' : 'Save Product'}
+                  </button>
+                </div>
+              )}
+
+              {loadingProds
+                ? <p style={{ color: 'var(--text-3)', fontSize: 13 }}>Loading products…</p>
+                : products.length === 0
+                  ? <p style={{ color: 'var(--text-3)', fontSize: 13 }}>No products yet.</p>
+                  : products.map(p => (
+                    <div key={p.id} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '10px 12px', background: 'var(--bg-3)', borderRadius: 12 }}>
+                      {p.image_url
+                        ? <img src={p.image_url} alt={p.name} style={{ width: 44, height: 44, borderRadius: 8, objectFit: 'cover', flexShrink: 0 }} />
+                        : <div style={{ width: 44, height: 44, borderRadius: 8, background: 'var(--bg-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>🛍</div>}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</p>
+                        <p style={{ fontSize: 12, color: 'var(--text-3)' }}>₹{p.price}{p.original_price ? ` · was ₹${p.original_price}` : ''} · {p.is_available ? 'Available' : 'Unavailable'}</p>
+                      </div>
+                      <button onClick={() => deleteProduct(p.id)}
+                        style={{ fontSize: 12, fontWeight: 700, color: '#ef4444', background: 'rgba(239,68,68,.1)', border: 'none', borderRadius: 8, padding: '5px 10px', cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 }}>
+                        Delete
+                      </button>
+                    </div>
+                  ))
+              }
+            </>
+          )}
+
+          {/* IMAGES TAB */}
+          {activeTab === 'images' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {imgError && <p style={{ color: '#ef4444', fontSize: 13, fontWeight: 600 }}>{imgError}</p>}
+              {(['logo', 'banner'] as const).map(type => (
+                <div key={type}>
+                  <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-3)', marginBottom: 8, textTransform: 'uppercase' as const }}>{type === 'logo' ? 'Shop Logo' : 'Banner Image'}</p>
+                  <label style={{ cursor: 'pointer', display: 'block' }}>
+                    <div style={{ height: type === 'banner' ? 130 : 90, borderRadius: 12, border: '2px dashed var(--border)', background: 'var(--bg-3)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', position: 'relative' }}>
+                      {(type === 'logo' ? shopData.image_url : shopData.banner_url)
+                        ? <img src={type === 'logo' ? shopData.image_url : shopData.banner_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        : <p style={{ fontSize: 13, color: 'var(--text-3)', fontWeight: 600 }}>Tap to upload {type}</p>}
+                      {(type === 'logo' ? logoProg : bannerProg) > 0 && (type === 'logo' ? logoProg : bannerProg) < 100 && (
+                        <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.6)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <p style={{ color: '#fff', fontWeight: 800 }}>{type === 'logo' ? logoProg : bannerProg}%</p>
+                        </div>
+                      )}
+                    </div>
+                    <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => {
+                      const f = e.target.files?.[0]; if (f) uploadShopImg(f, type)
+                    }} />
+                  </label>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────
+// Admin: delete shop with 5-minute countdown confirmation
+// ─────────────────────────────────────────────────────────────
+function DeleteShopConfirm({ confirm, onCancel, onDeleted }: {
+  confirm: { shop: any; readyAt: number };
+  onCancel: () => void;
+  onDeleted: () => void;
+}) {
+  const [secs, setSecs] = useState(() => Math.max(0, Math.ceil((confirm.readyAt - Date.now()) / 1000)))
+  const [deleting, setDeleting] = useState(false)
+
+  useEffect(() => {
+    if (secs <= 0) return
+    const t = setInterval(() => {
+      const remaining = Math.max(0, Math.ceil((confirm.readyAt - Date.now()) / 1000))
+      setSecs(remaining)
+      if (remaining <= 0) clearInterval(t)
+    }, 1000)
+    return () => clearInterval(t)
+  }, [confirm.readyAt]) // eslint-disable-line
+
+  async function handleDelete() {
+    setDeleting(true)
+    await createClient().from('shops').delete().eq('id', confirm.shop.id)
+    setDeleting(false)
+    onDeleted()
+  }
+
+  const mins = Math.floor(secs / 60)
+  const s    = secs % 60
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 70, background: 'rgba(0,0,0,.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div style={{ background: 'var(--card-bg)', borderRadius: 20, width: '100%', maxWidth: 400, padding: 28 }}>
+        <p style={{ fontWeight: 900, fontSize: 18, color: '#ef4444', marginBottom: 8 }}>Delete Shop</p>
+        <p style={{ fontSize: 14, color: 'var(--text-2)', marginBottom: 20, lineHeight: 1.5 }}>
+          You are about to permanently delete <strong style={{ color: 'var(--text)' }}>{confirm.shop.name}</strong> and all its products. This cannot be undone.
+        </p>
+
+        <div style={{ background: 'rgba(239,68,68,.07)', border: '1px solid rgba(239,68,68,.25)', borderRadius: 14, padding: '16px', marginBottom: 20, textAlign: 'center' }}>
+          {secs > 0 ? (
+            <>
+              <p style={{ fontSize: 40, fontWeight: 900, color: '#ef4444', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
+                {mins}:{String(s).padStart(2, '0')}
+              </p>
+              <p style={{ fontSize: 12, color: '#ef4444', opacity: 0.8, fontWeight: 600, marginTop: 6 }}>
+                Confirm delete unlocks after countdown
+              </p>
+            </>
+          ) : (
+            <p style={{ fontSize: 13, color: '#ef4444', fontWeight: 700 }}>
+              Countdown complete — deletion is now unlocked
+            </p>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button onClick={onCancel}
+            style={{ flex: 1, padding: 13, borderRadius: 12, background: 'var(--bg-3)', border: '1px solid var(--border)', color: 'var(--text-2)', fontWeight: 800, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}>
+            Cancel
+          </button>
+          <button onClick={handleDelete} disabled={secs > 0 || deleting}
+            style={{ flex: 1, padding: 13, borderRadius: 12, background: secs > 0 ? 'var(--bg-3)' : '#ef4444', color: secs > 0 ? 'var(--text-3)' : '#fff', fontWeight: 800, fontSize: 14, cursor: secs > 0 ? 'not-allowed' : 'pointer', fontFamily: 'inherit', border: 'none', opacity: secs > 0 ? 0.5 : 1, transition: 'all .3s' }}>
+            {deleting ? 'Deleting…' : 'Delete Forever'}
+          </button>
+        </div>
       </div>
     </div>
   )
