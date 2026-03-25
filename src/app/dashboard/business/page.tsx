@@ -765,8 +765,9 @@ function ShopSettings({ shop, onSaved }: { shop: any; onSaved: () => void }) {
     setImgError('')
     try {
       const { uploadShopImage } = await import('@/lib/imageService')
-      const url = await uploadShopImage(file, shop.id, type, type === 'logo' ? setLogoProg : setBannerProg)
-      if (url) { await sb.from('shops').update(type === 'logo' ? { image_url: url } : { banner_url: url }).eq('id', shop.id); onSaved() }
+      const { url } = await uploadShopImage(file, shop.owner_id, type, type === 'logo' ? setLogoProg : setBannerProg)
+      await sb.from('shops').update(type === 'logo' ? { image_url: url } : { banner_url: url }).eq('id', shop.id)
+      onSaved()
     } catch(e: any) { setImgError(e.message || 'Upload failed') }
   }
 
@@ -1078,10 +1079,18 @@ function AddProductModal({ shopId, userId, onClose, onSuccess }: { shopId: strin
         try {
           const { url } = await uploadProductImage(imgFiles[i]!, userId, product.id, (i + 1) as 1 | 2, (pct: number) => setImgProgress(prev => { const n = [...prev]; n[i] = pct; return n }))
           if (i === 0) image_url = url
-        } catch (uploadErr: any) { console.error('Image upload error:', uploadErr.message) }
+        } catch (uploadErr: any) {
+          setError(`Image upload failed: ${uploadErr.message}. Product saved without image — you can re-upload from the edit screen.`)
+          setLoading(false)
+          onSuccess() // product was saved — just image failed
+          return
+        }
       }
     }
-    if (image_url) await supabase.from('products').update({ image_url }).eq('id', product.id)
+    if (image_url) {
+      const { error: imgUpdateErr } = await supabase.from('products').update({ image_url }).eq('id', product.id)
+      if (imgUpdateErr) setError(`Product saved but image link failed: ${imgUpdateErr.message}`)
+    }
     onSuccess()
   }
 
@@ -1171,8 +1180,12 @@ function EditProductModal({ product, userId, onClose, onSuccess }: { product: an
       try {
         const { uploadProductImage } = await import('@/lib/imageService')
         const { url } = await uploadProductImage(imgFile, userId, product.id, 1, () => {})
-        await supabase.from('products').update({ image_url: url }).eq('id', product.id)
-      } catch (e: any) { console.error('Image upload failed:', e.message) }
+        const { error: imgErr } = await supabase.from('products').update({ image_url: url }).eq('id', product.id)
+        if (imgErr) setError(`Product saved but image link failed: ${imgErr.message}`)
+      } catch (e: any) {
+        setError(`Image upload failed: ${e.message}. Product saved — re-upload from edit screen.`)
+        setUploading(false); onSuccess(); return
+      }
     }
     setUploading(false); onSuccess()
   }
