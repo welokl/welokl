@@ -660,9 +660,32 @@ function Footer() {
 const LANDING_CACHE_KEY = 'welokl_landing_v1'
 const LANDING_TTL_MS    = 10 * 60 * 1000 // 10 minutes
 
+const ROLE_HOME: Record<string, string> = {
+  customer: '/dashboard/customer', business: '/dashboard/business',
+  shopkeeper: '/dashboard/business', delivery: '/dashboard/delivery',
+  delivery_partner: '/dashboard/delivery', admin: '/dashboard/admin',
+  management: '/dashboard/management',
+}
+
 export default function LandingPage() {
   const [shops, setShops] = useState<Shop[]>([])
   const [stats, setStats] = useState<Stats>({ shops: 0, orders: 0 })
+
+  // If user already has a session (e.g. after Google OAuth lands here instead of
+  // the dashboard, or they manually navigate to /), send them straight to their dashboard.
+  useEffect(() => {
+    const sb = createClient()
+    sb.auth.getSession().then(({ data: { session } }) => {
+      if (!session) return
+      const role = session.user.user_metadata?.role as string | undefined
+      if (role && ROLE_HOME[role]) { window.location.replace(ROLE_HOME[role]); return }
+      // Role not in metadata — query users table (Google OAuth users)
+      sb.from('users').select('role').eq('id', session.user.id).single().then(({ data }) => {
+        const r = data?.role || 'customer'
+        window.location.replace(ROLE_HOME[r] ?? '/dashboard/customer')
+      })
+    })
+  }, [])
 
   useEffect(() => {
     // Serve from cache immediately — no loading flash for return visitors
