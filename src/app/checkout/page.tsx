@@ -5,13 +5,10 @@ import { createClient } from '@/lib/supabase/client'
 import { useCart } from '@/store/cart'
 import Link from 'next/link'
 
-const WELOKL_UPI_NAME  = 'Welokl'
-
 // Fallback constants — overridden at runtime by platform_config table values
 const DEFAULT_DELIVERY_FEE  = 30
 const DEFAULT_FREE_DELIVERY = 299
 const DEFAULT_PLATFORM_FEE  = 5
-const DEFAULT_UPI_ID        = 'welokl@upi'
 
 export default function CheckoutPage() {
   const router = useRouter()
@@ -21,15 +18,11 @@ export default function CheckoutPage() {
     delivery_fee: DEFAULT_DELIVERY_FEE,
     free_delivery_threshold: DEFAULT_FREE_DELIVERY,
     platform_fee: DEFAULT_PLATFORM_FEE,
-    upi_id: DEFAULT_UPI_ID,
   })
   const [address,       setAddress]       = useState('')
   const [savedAddrs,    setSavedAddrs]    = useState<{id:string;label:string;address:string}[]>([])
   const [saveLabel,     setSaveLabel]     = useState('')
   const [note,          setNote]          = useState('')
-  const [payment,       setPayment]       = useState<'cod'|'upi'|'wallet'>('cod')
-  const [walletBalance, setWalletBalance] = useState(0)
-  const [walletId,      setWalletId]      = useState<string|null>(null)
   const [type,          setType]          = useState<'delivery'|'pickup'>('delivery')
   const [loading,       setLoading]       = useState(false)
   const [userId,        setUserId]        = useState<string|null>(null)
@@ -38,8 +31,6 @@ export default function CheckoutPage() {
   const [locStatus,     setLocStatus]     = useState<'idle'|'detecting'|'done'|'denied'>('idle')
   const [deliveryLat,   setDeliveryLat]   = useState<number|null>(null)
   const [deliveryLng,   setDeliveryLng]   = useState<number|null>(null)
-  const [upiStep,       setUpiStep]       = useState<'select'|'pay'|'confirm'>('select')
-  const [placedOrderId, setPlacedOrderId] = useState<string|null>(null)
 
   useEffect(() => {
     cart._hydrate?.()
@@ -47,16 +38,14 @@ export default function CheckoutPage() {
 
     const sb = createClient()
 
-    // ── Load platform config (pricing + UPI) from DB ───────────
+    // ── Load platform config (pricing) from DB ─────────────────
     sb.from('platform_config').select('key,value').then(({ data: cfg }) => {
       if (!cfg?.length) return
       const get = (key: string, fb: number) => Number(cfg.find(c => c.key === key)?.value ?? fb)
-      const getStr = (key: string, fb: string) => cfg.find(c => c.key === key)?.value ?? fb
       setPlatformCfg({
         delivery_fee:            get('delivery_fee_base', DEFAULT_DELIVERY_FEE),
         free_delivery_threshold: get('free_delivery_above', DEFAULT_FREE_DELIVERY),
         platform_fee:            get('platform_fee_flat', DEFAULT_PLATFORM_FEE),
-        upi_id:                  getStr('upi_id', DEFAULT_UPI_ID),
       })
     })
 
@@ -114,14 +103,6 @@ export default function CheckoutPage() {
       .then(({ data }) => { if (data) setShopInfo(data) })
   }, [mounted, cart.shop_id])
 
-  useEffect(() => {
-    if (!userId) return
-    const sb = createClient()
-    sb.from('wallets').select('id,balance').eq('user_id', userId).single()
-      .then(({ data }) => {
-        if (data) { setWalletId(data.id); setWalletBalance(data.balance ?? 0) }
-      })
-  }, [userId])
 
   if (!mounted) return null
 
@@ -170,7 +151,7 @@ export default function CheckoutPage() {
       platform_fee:          platformCfg.platform_fee,
       discount:              0,
       total_amount:          total,
-      payment_method:        payment === 'upi' ? 'online' : payment === 'wallet' ? 'wallet' : 'cod',
+      payment_method:        'cod',
       payment_status:        paymentStatus,
     }
 
@@ -249,90 +230,6 @@ export default function CheckoutPage() {
     } finally { setLoading(false) }
   }
 
-  // ── UPI Step 1: create order, open UPI deep link ────────────
-  async function handleUPIStart() {
-    if (type === 'delivery' && !address.trim()) { alert('Please enter a delivery address'); return }
-    setLoading(true)
-    try {
-      const id = await createOrder('pending')
-      setPlacedOrderId(id)
-
-      // Build UPI deep link
-      const upiNote = encodeURIComponent(`Welokl order - ${cart.shop_name}`)
-      const upiUrl  = `upi://pay?pa=${platformCfg.upi_id}&pn=${encodeURIComponent(WELOKL_UPI_NAME)}&am=${total}&cu=INR&tn=${upiNote}`
-
-      // Open UPI app
-      window.location.href = upiUrl
-
-      // Show confirm step after a short delay (user returns from UPI app)
-      setTimeout(() => setUpiStep('confirm'), 1000)
-    } catch (e: any) {
-      alert('Failed to initiate payment. Please try again.')
-    } finally { setLoading(false) }
-  }
-
-  // ── UPI Step 2: user confirms payment done ──────────────────
-  async function handleUPIConfirm() {
-    if (!placedOrderId) return
-    setLoading(true)
-    try {
-      await createClient().from('orders').update({ payment_status: 'paid' }).eq('id', placedOrderId)
-      cart.clear?.()
-      router.push(`/orders/${placedOrderId}`)
-    } catch {
-      alert('Could not confirm payment. Please contact support.')
-    } finally { setLoading(false) }
-  }
-
-  // ── UPI Step 2: user says payment failed ────────────────────
-  async function handleUPIFailed() {
-    if (!placedOrderId) return
-    await createClient().from('orders').update({ status: 'cancelled', payment_status: 'failed' }).eq('id', placedOrderId)
-    setPlacedOrderId(null)
-    setUpiStep('select')
-    setPayment('cod')
-  }
-
-  // ── Wallet flow ──────────────────────────────────────────────
-  async function handleWallet() {
-    if (type === 'delivery' && !address.trim()) { alert('Please enter a delivery address'); return }
-    if (!walletId) { alert('Wallet not found. Please try again.'); return }
-    if (walletBalance < total) { alert('Insufficient wallet balance.'); return }
-    setLoading(true)
-    try {
-      const sb = createClient()
-      // Deduct from wallet — always read fresh balance from DB, never use stale state
-      const { data: freshWallet, error: fetchErr } = await sb.from('wallets').select('balance, total_spent').eq('id', walletId).single()
-      if (fetchErr || !freshWallet) throw new Error('Could not read wallet balance')
-      if (freshWallet.balance < total) throw new Error('Insufficient wallet balance')
-      const { error: walletErr } = await sb.from('wallets').update({
-        balance:     freshWallet.balance - total,
-        total_spent: (freshWallet.total_spent ?? 0) + total,
-      }).eq('id', walletId)
-      if (walletErr) throw walletErr
-
-      // Log debit transaction
-      await sb.from('transactions').insert({
-        wallet_id:   walletId,
-        amount:      total,
-        type:        'debit',
-        description: `Order payment — ${cart.shop_name}`,
-      })
-
-      const id = await createOrder('paid')
-      cart.clear?.()
-      router.push(`/orders/${id}`)
-    } catch (e: any) {
-      alert('Wallet payment failed: ' + (e?.message || JSON.stringify(e)))
-    } finally { setLoading(false) }
-  }
-
-  function handlePlaceOrder() {
-    if (payment === 'cod')    { handleCOD(); return }
-    if (payment === 'upi')    { handleUPIStart(); return }
-    if (payment === 'wallet') { handleWallet(); return }
-  }
-
   const inp: React.CSSProperties = {
     width:'100%', padding:'12px 14px', borderRadius:14,
     border:'1.5px solid var(--divider)', background:'var(--input-bg)',
@@ -340,51 +237,6 @@ export default function CheckoutPage() {
     outline:'none', boxSizing:'border-box', transition:'border .2s',
   }
 
-  // ── UPI payment screen ──────────────────────────────────────
-  if (upiStep === 'confirm') return (
-    <div style={{ minHeight:'100vh', background:'var(--page-bg)', fontFamily:"'Plus Jakarta Sans',sans-serif", display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}>
-      <div style={{ background:'var(--card-white)', borderRadius:24, padding:32, maxWidth:400, width:'100%', textAlign:'center' }}>
-        {/* UPI icon */}
-        <div style={{ width:72, height:72, background:'var(--blue-light)', borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 20px' }}>
-          <svg viewBox="0 0 24 24" fill="none" width={36} height={36}>
-            <rect x="2" y="5" width="20" height="14" rx="2" stroke="#4f46e5" strokeWidth="2"/>
-            <path d="M2 10h20M6 15h2M10 15h4" stroke="#4f46e5" strokeWidth="2" strokeLinecap="round"/>
-          </svg>
-        </div>
-
-        <p style={{ fontWeight:900, fontSize:20, color:'var(--text-primary)', marginBottom:8, letterSpacing:'-0.02em' }}>Complete your payment</p>
-        <p style={{ fontSize:14, color:'var(--text-muted)', marginBottom:6 }}>Pay <strong style={{ color:'var(--text-primary)' }}>₹{total}</strong> to</p>
-        <div style={{ background:'var(--page-bg)', borderRadius:14, padding:'12px 20px', marginBottom:6, display:'inline-block' }}>
-          <p style={{ fontSize:16, fontWeight:800, color:'#4f46e5', letterSpacing:'0.01em' }}>{platformCfg.upi_id}</p>
-        </div>
-        <p style={{ fontSize:12, color:'var(--text-faint)', marginBottom:28 }}>via Google Pay, PhonePe, Paytm or any UPI app</p>
-
-        {/* Retry open UPI */}
-        <button
-          onClick={() => {
-            const upiNote = encodeURIComponent(`Welokl order - ${cart.shop_name}`)
-            window.location.href = `upi://pay?pa=${platformCfg.upi_id}&pn=${encodeURIComponent(WELOKL_UPI_NAME)}&am=${total}&cu=INR&tn=${upiNote}`
-          }}
-          style={{ width:'100%', padding:'14px', borderRadius:16, border:'2px solid #4f46e5', background:'var(--blue-light)', color:'#4f46e5', fontWeight:800, fontSize:15, cursor:'pointer', fontFamily:'inherit', marginBottom:10 }}>
-          Open UPI app →
-        </button>
-
-        {/* Confirm paid */}
-        <button onClick={handleUPIConfirm} disabled={loading}
-          style={{ width:'100%', padding:'16px', borderRadius:16, border:'none', background:'#FF3008', color:'#fff', fontWeight:900, fontSize:16, cursor:'pointer', fontFamily:'inherit', marginBottom:10, boxShadow:'0 8px 24px rgba(255,48,8,.3)' }}>
-          {loading ? 'Confirming…' : '✓ I have paid ₹' + total}
-        </button>
-
-        {/* Payment failed */}
-        <button onClick={handleUPIFailed}
-          style={{ width:'100%', padding:'12px', borderRadius:16, border:'1.5px solid var(--divider)', background:'transparent', color:'var(--text-muted)', fontWeight:700, fontSize:14, cursor:'pointer', fontFamily:'inherit' }}>
-          Payment failed — try again
-        </button>
-      </div>
-    </div>
-  )
-
-  // ── Main checkout screen ────────────────────────────────────
   return (
     <div style={{ minHeight:'100vh', background:'var(--page-bg)', fontFamily:"'Plus Jakarta Sans',sans-serif", paddingBottom:100 }}>
 
@@ -519,56 +371,13 @@ export default function CheckoutPage() {
         </div>
 
         {/* Payment */}
-        <div style={{ background:'var(--card-white)', borderRadius:20, padding:'18px 16px', marginBottom:12 }}>
-          <p style={{ fontWeight:800, fontSize:14, color:'var(--text-primary)', marginBottom:12 }}>Payment method</p>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
-            {([
-              { id:'cod' as const, label:'Cash on delivery', sub:'Pay at doorstep',
-                icon:<svg viewBox="0 0 24 24" fill="none" width={20} height={20}><rect x="2" y="6" width="20" height="12" rx="2" stroke="currentColor" strokeWidth="2"/><path d="M2 10h20M6 14h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg> },
-              { id:'upi' as const, label:'UPI / Online',     sub:'GPay, PhonePe, Paytm',
-                icon:<svg viewBox="0 0 24 24" fill="none" width={20} height={20}><rect x="2" y="5" width="20" height="14" rx="2" stroke="currentColor" strokeWidth="2"/><path d="M2 10h20M6 15h2M10 15h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg> },
-            ]).map(opt => (
-              <button key={opt.id} onClick={() => setPayment(opt.id)}
-                style={{ padding:'14px', borderRadius:16, border:`2px solid ${payment===opt.id ? '#FF3008' : 'var(--divider)'}`, background:payment===opt.id ? 'var(--red-light)' : 'var(--page-bg)', cursor:'pointer', textAlign:'left', fontFamily:'inherit', transition:'all .15s' }}>
-                <div style={{ color:payment===opt.id ? '#FF3008' : 'var(--text-muted)', marginBottom:6 }}>{opt.icon}</div>
-                <p style={{ fontWeight:800, fontSize:13, color:payment===opt.id ? '#FF3008' : 'var(--text-primary)', marginBottom:2 }}>{opt.label}</p>
-                <p style={{ fontSize:11, color:'var(--text-muted)' }}>{opt.sub}</p>
-              </button>
-            ))}
+        <div style={{ background:'var(--card-white)', borderRadius:20, padding:'18px 16px', marginBottom:12, display:'flex', alignItems:'center', gap:12 }}>
+          <svg viewBox="0 0 24 24" fill="none" width={20} height={20}><rect x="2" y="6" width="20" height="12" rx="2" stroke="#FF3008" strokeWidth="2"/><path d="M2 10h20M6 14h4" stroke="#FF3008" strokeWidth="2" strokeLinecap="round"/></svg>
+          <div>
+            <p style={{ fontWeight:800, fontSize:14, color:'var(--text-primary)' }}>Cash on delivery</p>
+            <p style={{ fontSize:12, color:'var(--text-muted)' }}>Pay at doorstep</p>
           </div>
-
-          {/* Wallet option — full width */}
-          {walletBalance > 0 && (
-            <button onClick={() => setPayment('wallet')}
-              style={{ marginTop:10, width:'100%', padding:'14px 16px', borderRadius:16, border:`2px solid ${payment==='wallet' ? '#FF3008' : 'var(--divider)'}`, background:payment==='wallet' ? 'var(--red-light)' : 'var(--page-bg)', cursor:'pointer', textAlign:'left', fontFamily:'inherit', transition:'all .15s', display:'flex', alignItems:'center', gap:12 }}>
-              <div style={{ color:payment==='wallet' ? '#FF3008' : 'var(--text-muted)', flexShrink:0 }}>
-                <svg viewBox="0 0 24 24" fill="none" width={20} height={20}><path d="M21 12V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2h14a2 2 0 002-2v-3" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><path d="M16 12h5v4h-5a2 2 0 010-4z" stroke="currentColor" strokeWidth="2"/></svg>
-              </div>
-              <div style={{ flex:1 }}>
-                <p style={{ fontWeight:800, fontSize:13, color:payment==='wallet' ? '#FF3008' : 'var(--text-primary)', marginBottom:2 }}>Welokl Wallet</p>
-                <p style={{ fontSize:11, color:'var(--text-muted)' }}>Balance: ₹{walletBalance.toFixed(0)}</p>
-              </div>
-              {walletBalance >= total
-                ? <span style={{ fontSize:11, fontWeight:800, color:'#16a34a', background:'rgba(22,163,74,.1)', borderRadius:8, padding:'3px 8px', flexShrink:0 }}>Covers full ✓</span>
-                : <span style={{ fontSize:11, fontWeight:700, color:'#d97706', flexShrink:0 }}>Short ₹{(total-walletBalance).toFixed(0)}</span>
-              }
-            </button>
-          )}
-
-          {payment === 'upi' && (
-            <div style={{ marginTop:10, padding:'10px 14px', background:'var(--blue-light)', borderRadius:12 }}>
-              <p style={{ fontSize:12, fontWeight:700, color:'#4f46e5' }}>
-                You'll be redirected to your UPI app to pay ₹{total}. Return here to confirm.
-              </p>
-            </div>
-          )}
-          {payment === 'wallet' && walletBalance < total && (
-            <div style={{ marginTop:10, padding:'10px 14px', background:'rgba(245,158,11,.08)', borderRadius:12 }}>
-              <p style={{ fontSize:12, fontWeight:700, color:'#d97706' }}>
-                Insufficient balance — you have ₹{walletBalance.toFixed(0)}, need ₹{total}. Please choose another payment method.
-              </p>
-            </div>
-          )}
+          <span style={{ marginLeft:'auto', fontSize:11, fontWeight:800, color:'#16a34a', background:'rgba(22,163,74,.1)', borderRadius:8, padding:'3px 10px' }}>Selected</span>
         </div>
 
         {/* Bill summary */}
@@ -599,23 +408,11 @@ export default function CheckoutPage() {
       {/* Place order bar */}
       <div style={{ position:'fixed', bottom:0, left:0, right:0, padding:'12px 12px 20px', background:'var(--card-white)', borderTop:'1px solid var(--divider)', zIndex:50 }}>
         <div style={{ maxWidth:560, margin:'0 auto' }}>
-          {(() => {
-            const walletInsufficient = payment === 'wallet' && walletBalance < total
-            const disabled = loading || belowMin || walletInsufficient
-            const btnLabel = loading ? 'Please wait…'
-              : belowMin           ? `Add ₹${minOrder-subtotal} more`
-              : walletInsufficient ? 'Insufficient wallet balance'
-              : payment === 'upi'  ? 'Pay with UPI'
-              : payment === 'wallet' ? `Pay ₹${total} from Wallet`
-              : 'Place order'
-            return (
-              <button onClick={handlePlaceOrder} disabled={disabled}
-                style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'space-between', padding:'16px 22px', borderRadius:18, border:'none', background:disabled ? 'var(--chip-bg)' : '#FF3008', color:disabled ? 'var(--text-muted)' : '#fff', fontWeight:900, fontSize:16, cursor:disabled ? 'not-allowed' : 'pointer', fontFamily:'inherit', transition:'background .2s', boxShadow:disabled ? 'none' : '0 8px 24px rgba(255,48,8,.3)' }}>
-                <span>{btnLabel}</span>
-                {!loading && !belowMin && !walletInsufficient && <span>₹{total}</span>}
-              </button>
-            )
-          })()}
+          <button onClick={handleCOD} disabled={loading || belowMin}
+            style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'space-between', padding:'16px 22px', borderRadius:18, border:'none', background: loading || belowMin ? 'var(--chip-bg)' : '#FF3008', color: loading || belowMin ? 'var(--text-muted)' : '#fff', fontWeight:900, fontSize:16, cursor: loading || belowMin ? 'not-allowed' : 'pointer', fontFamily:'inherit', transition:'background .2s', boxShadow: loading || belowMin ? 'none' : '0 8px 24px rgba(255,48,8,.3)' }}>
+            <span>{loading ? 'Please wait…' : belowMin ? `Add ₹${minOrder - subtotal} more` : 'Place order'}</span>
+            {!loading && !belowMin && <span>₹{total}</span>}
+          </button>
         </div>
       </div>
     </div>

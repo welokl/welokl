@@ -1053,7 +1053,16 @@ function AddProductModal({ shopId, userId, onClose, onSuccess }: { shopId: strin
   const [imgFiles, setImgFiles] = useState<(File | null)[]>([null, null])
   const [imgPreviews, setImgPreviews] = useState<(string | null)[]>([null, null])
   const [imgProgress, setImgProgress] = useState<number[]>([0, 0])
+  const [existingCats, setExistingCats] = useState<string[]>([])
   function update(field: string, value: string | boolean) { setForm(p => ({ ...p, [field]: value })) }
+
+  useEffect(() => {
+    createClient().from('products').select('category').eq('shop_id', shopId).not('category', 'is', null)
+      .then(({ data }) => {
+        const cats = [...new Set((data ?? []).map((r: any) => r.category).filter(Boolean))] as string[]
+        setExistingCats(cats)
+      })
+  }, [shopId])
   function handleImgSelect(file: File, slot: 0 | 1) {
     const newFiles = [...imgFiles]; newFiles[slot] = file; setImgFiles(newFiles)
     const newPreviews = [...imgPreviews]; newPreviews[slot] = URL.createObjectURL(file); setImgPreviews(newPreviews)
@@ -1109,7 +1118,19 @@ function AddProductModal({ shopId, userId, onClose, onSuccess }: { shopId: strin
             <div><label style={{display:"block", fontSize:13, fontWeight:700, color:"var(--text-2)", marginBottom:6}}>Selling Price (₹) *</label><input type="number" value={form.price} onChange={e => update('price', e.target.value)} className="input-field" placeholder="199" min="0" required /></div>
             <div><label style={{display:"block", fontSize:13, fontWeight:700, color:"var(--text-2)", marginBottom:6}}>Original Price (₹)</label><input type="number" value={form.original_price} onChange={e => update('original_price', e.target.value)} className="input-field" placeholder="249" min="0" /></div>
           </div>
-          <div><label style={{display:"block", fontSize:13, fontWeight:700, color:"var(--text-2)", marginBottom:6}}>Category</label><input type="text" value={form.category} onChange={e => update('category', e.target.value)} className="input-field" placeholder="Main Course, Dairy, Medicines..." /></div>
+          <div>
+            <label style={{display:"block", fontSize:13, fontWeight:700, color:"var(--text-2)", marginBottom:6}}>Category</label>
+            {existingCats.length > 0 ? (
+              <select value={existingCats.includes(form.category) ? form.category : form.category ? '__custom__' : ''} onChange={e => { if (e.target.value === '__custom__') update('category', ''); else update('category', e.target.value) }} className="input-field" style={{cursor:'pointer'}}>
+                <option value="">-- Select category --</option>
+                {existingCats.map(c => <option key={c} value={c}>{c}</option>)}
+                <option value="__custom__">+ Add new category</option>
+              </select>
+            ) : null}
+            {(existingCats.length === 0 || !existingCats.includes(form.category)) && (
+              <input type="text" value={form.category} onChange={e => update('category', e.target.value)} className="input-field" placeholder="e.g. Starters, Main Course, Dairy…" style={{marginTop: existingCats.length > 0 ? 8 : 0}} />
+            )}
+          </div>
           <div>
             <label style={{display:"block", fontSize:13, fontWeight:700, color:"var(--text-2)", marginBottom:8}}>Type</label>
             <div className="flex gap-2">
@@ -1157,6 +1178,15 @@ function EditProductModal({ product, userId, onClose, onSuccess }: { product: an
   const [imgPreview, setImgPreview] = useState<string | null>(product.image_url || null)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState('')
+  const [existingCats, setExistingCats] = useState<string[]>([])
+
+  useEffect(() => {
+    createClient().from('products').select('category').eq('shop_id', product.shop_id).not('category', 'is', null)
+      .then(({ data }) => {
+        const cats = [...new Set((data ?? []).map((r: any) => r.category).filter(Boolean))] as string[]
+        setExistingCats(cats)
+      })
+  }, [product.shop_id])
 
   function handleImgSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]; if (!file) return
@@ -1222,7 +1252,16 @@ function EditProductModal({ product, userId, onClose, onSuccess }: { product: an
             <input placeholder="Price ₹ *" type="number" value={form.price} onChange={e => setForm(p => ({ ...p, price: e.target.value }))} style={inp} />
             <input placeholder="Original ₹ (optional)" type="number" value={form.original_price} onChange={e => setForm(p => ({ ...p, original_price: e.target.value }))} style={inp} />
           </div>
-          <input placeholder="Category (e.g. Snacks)" value={form.category} onChange={e => setForm(p => ({ ...p, category: e.target.value }))} style={inp} />
+          {existingCats.length > 0 ? (
+            <select value={existingCats.includes(form.category) ? form.category : form.category ? '__custom__' : ''} onChange={e => { if (e.target.value === '__custom__') setForm(p => ({ ...p, category: '' })); else setForm(p => ({ ...p, category: e.target.value })) }} style={{ ...inp, cursor: 'pointer' }}>
+              <option value="">-- Select category --</option>
+              {existingCats.map(c => <option key={c} value={c}>{c}</option>)}
+              <option value="__custom__">+ Add new category</option>
+            </select>
+          ) : null}
+          {(existingCats.length === 0 || !existingCats.includes(form.category)) && (
+            <input placeholder="e.g. Starters, Main Course, Dairy…" value={form.category} onChange={e => setForm(p => ({ ...p, category: e.target.value }))} style={{ ...inp, marginTop: existingCats.length > 0 ? 8 : 0 }} />
+          )}
           <select value={form.is_veg} onChange={e => setForm(p => ({ ...p, is_veg: e.target.value }))} style={{ ...inp, cursor: 'pointer' }}>
             <option value="">Veg / Non-veg (optional)</option>
             <option value="veg">🟢 Veg</option>

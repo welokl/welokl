@@ -30,6 +30,23 @@ function getRange(period: Period): { from: Date; to: Date } {
   return { from, to }
 }
 
+function getPrevRange(period: Period): { from: Date; to: Date } {
+  const now = new Date()
+  if (period === 'today') {
+    const from = new Date(now); from.setDate(from.getDate() - 1); from.setHours(0, 0, 0, 0)
+    const to   = new Date(now); to.setDate(to.getDate()     - 1); to.setHours(23, 59, 59, 999)
+    return { from, to }
+  } else if (period === 'week') {
+    const from = new Date(now); from.setDate(from.getDate() - 13); from.setHours(0, 0, 0, 0)
+    const to   = new Date(now); to.setDate(to.getDate()    - 7);   to.setHours(23, 59, 59, 999)
+    return { from, to }
+  } else {
+    const from = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+    const to   = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999)
+    return { from, to }
+  }
+}
+
 function calcStats(orders: SaleRow[], commissionPercent: number): Stats {
   const delivered = orders.filter(o => o.status === 'delivered')
   const cancelled = orders.filter(o => ['cancelled','rejected'].includes(o.status)).length
@@ -45,7 +62,6 @@ function calcStats(orders: SaleRow[], commissionPercent: number): Stats {
   }
 }
 
-// Group delivered orders by day for chart — uses net earnings (subtotal minus commission)
 function groupByDay(orders: SaleRow[], period: Period, commissionPercent: number) {
   const map: Record<string, number> = {}
   const days = period === 'today' ? 1 : period === 'week' ? 7 : 30
@@ -66,7 +82,18 @@ function groupByDay(orders: SaleRow[], period: Period, commissionPercent: number
   return Object.entries(map)
 }
 
-// Top products
+function groupByHour(orders: SaleRow[]) {
+  const map: Record<number, number> = {}
+  for (let h = 0; h < 24; h++) map[h] = 0
+  orders.filter(o => o.status === 'delivered').forEach(o => {
+    const h = new Date(o.created_at).getHours()
+    map[h]++
+  })
+  return Object.entries(map)
+    .filter(([h]) => Number(h) >= 6 && Number(h) <= 23)
+    .map(([h, c]) => [Number(h), c] as [number, number])
+}
+
 function topProducts(orders: SaleRow[]) {
   const map: Record<string, { qty: number; rev: number }> = {}
   orders.filter(o => o.status === 'delivered').forEach(o => {
@@ -79,39 +106,55 @@ function topProducts(orders: SaleRow[]) {
   return Object.entries(map).sort((a, b) => b[1].rev - a[1].rev).slice(0, 5)
 }
 
+function pctTrend(curr: number, prev: number) {
+  if (prev === 0) return curr > 0 ? 100 : 0
+  return Math.round(((curr - prev) / prev) * 100)
+}
+
 export default function BusinessAnalytics({ shopId, commissionPercent = 15 }: { shopId: string; commissionPercent?: number }) {
-  const [period, setPeriod] = useState<Period>('week')
-  const [orders, setOrders] = useState<SaleRow[]>([])
-  const [loading, setLoading] = useState(true)
+  const [period, setPeriod]       = useState<Period>('week')
+  const [orders, setOrders]       = useState<SaleRow[]>([])
+  const [prevOrders, setPrevOrders] = useState<SaleRow[]>([])
+  const [loading, setLoading]     = useState(true)
 
   useEffect(() => { load() }, [period, shopId])
 
   async function load() {
     setLoading(true)
-    const { from, to } = getRange(period)
     const sb = createClient()
-    const { data } = await sb.from('orders')
-      .select('created_at, total_amount, subtotal, platform_fee, status, type, items:order_items(product_name, quantity, price)')
-      .eq('shop_id', shopId)
-      .gte('created_at', from.toISOString())
-      .lte('created_at', to.toISOString())
-      .order('created_at', { ascending: true })
+    const { from, to }         = getRange(period)
+    const { from: pf, to: pt } = getPrevRange(period)
+    const [{ data }, { data: prevData }] = await Promise.all([
+      sb.from('orders')
+        .select('created_at, total_amount, subtotal, platform_fee, status, type, items:order_items(product_name, quantity, price)')
+        .eq('shop_id', shopId).gte('created_at', from.toISOString()).lte('created_at', to.toISOString())
+        .order('created_at', { ascending: true }),
+      sb.from('orders')
+        .select('created_at, total_amount, subtotal, platform_fee, status, type')
+        .eq('shop_id', shopId).gte('created_at', pf.toISOString()).lte('created_at', pt.toISOString()),
+    ])
     setOrders((data || []) as SaleRow[])
+    setPrevOrders((prevData || []) as SaleRow[])
     setLoading(false)
   }
 
-  const stats = calcStats(orders, commissionPercent)
-  const chartData = groupByDay(orders, period, commissionPercent)
-  const maxRev = Math.max(...chartData.map(d => d[1]), 1)
-  const tops = topProducts(orders)
+  const stats      = calcStats(orders, commissionPercent)
+  const prevStats  = calcStats(prevOrders, commissionPercent)
+  const chartData  = groupByDay(orders, period, commissionPercent)
+  const maxRev     = Math.max(...chartData.map(d => d[1]), 1)
+  const tops       = topProducts(orders)
+  const hourData   = groupByHour(orders)
+  const maxHour    = Math.max(...hourData.map(h => h[1]), 1)
 
-  const statCards = [
-    { label: 'Your earnings', value: `₹${stats.netEarnings.toLocaleString('en-IN')}`, icon: '💰', color: '#16a34a' },
-    { label: 'Total orders',  value: stats.orders,                                     icon: '📦', color: '#2563eb' },
-    { label: 'Delivered',     value: stats.delivered,                                  icon: '✅', color: '#16a34a' },
-    { label: 'Avg earning',   value: `₹${stats.avgEarning}`,                           icon: '📊', color: '#d97706' },
-    { label: 'Cancelled',     value: stats.cancelled,                                  icon: '❌', color: '#ef4444' },
-  ]
+  const successRate    = stats.orders > 0 ? Math.round((stats.delivered / stats.orders) * 100) : 0
+  const earningsTrend  = pctTrend(stats.netEarnings, prevStats.netEarnings)
+  const ordersTrend    = pctTrend(stats.orders, prevStats.orders)
+
+  const r = 28
+  const circumference = 2 * Math.PI * r
+  const dashOffset    = circumference - (successRate / 100) * circumference
+
+  const periodLabel = period === 'today' ? 'yesterday' : period === 'week' ? 'prev week' : 'prev month'
 
   return (
     <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
@@ -130,38 +173,109 @@ export default function BusinessAnalytics({ shopId, commissionPercent = 15 }: { 
       {loading ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <style>{`@keyframes sh{0%{background-position:-400px 0}100%{background-position:400px 0}}.sk{background:linear-gradient(90deg,var(--bg-3) 25%,var(--bg-2) 50%,var(--bg-3) 75%);background-size:400px 100%;animation:sh 1.4s infinite;border-radius:12px;}`}</style>
+          <div className="sk" style={{ height: 100 }} />
           <div className="sk" style={{ height: 80 }} />
           <div className="sk" style={{ height: 180 }} />
         </div>
       ) : (
         <>
-          {/* Stat cards */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 10, marginBottom: 20 }}>
-            {statCards.map(s => (
-              <div key={s.label} style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 14, padding: '14px 16px' }}>
-                <div style={{ fontSize: 22, marginBottom: 6 }}>{s.icon}</div>
-                <p style={{ fontWeight: 900, fontSize: 20, color: s.color, marginBottom: 2 }}>{s.value}</p>
-                <p style={{ fontSize: 12, color: 'var(--text-3)', fontWeight: 600 }}>{s.label}</p>
+          {/* Hero: earnings + success rate ring */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, marginBottom: 12 }}>
+            <div style={{ background: 'linear-gradient(135deg, #0c4a6e 0%, #0891B2 100%)', borderRadius: 20, padding: '20px 20px', color: '#fff' }}>
+              <p style={{ fontSize: 11, fontWeight: 700, opacity: .7, textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 6 }}>Net earnings</p>
+              <p style={{ fontSize: 34, fontWeight: 900, lineHeight: 1, marginBottom: 6 }}>₹{stats.netEarnings.toLocaleString('en-IN')}</p>
+              {earningsTrend !== 0 ? (
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: earningsTrend > 0 ? 'rgba(74,222,128,.18)' : 'rgba(248,113,113,.18)', borderRadius: 6, padding: '3px 8px' }}>
+                  <span style={{ fontSize: 12, fontWeight: 800, color: earningsTrend > 0 ? '#86efac' : '#fca5a5' }}>
+                    {earningsTrend > 0 ? '▲' : '▼'} {Math.abs(earningsTrend)}% vs {periodLabel}
+                  </span>
+                </div>
+              ) : (
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'rgba(255,255,255,.1)', borderRadius: 6, padding: '3px 8px' }}>
+                  <span style={{ fontSize: 11, color: 'rgba(255,255,255,.6)' }}>No change vs {periodLabel}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Success rate ring */}
+            <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 20, padding: '14px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minWidth: 88 }}>
+              <div style={{ position: 'relative', width: 64, height: 64 }}>
+                <svg width="64" height="64" viewBox="0 0 64 64" style={{ transform: 'rotate(-90deg)' }}>
+                  <circle cx="32" cy="32" r={r} fill="none" stroke="var(--bg-3)" strokeWidth="6" />
+                  <circle cx="32" cy="32" r={r} fill="none"
+                    stroke={successRate >= 80 ? '#16a34a' : successRate >= 50 ? '#d97706' : '#ef4444'}
+                    strokeWidth="6"
+                    strokeDasharray={circumference}
+                    strokeDashoffset={dashOffset}
+                    strokeLinecap="round"
+                    style={{ transition: 'stroke-dashoffset .5s ease' }} />
+                </svg>
+                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <span style={{ fontSize: 13, fontWeight: 900, color: 'var(--text)' }}>{successRate}%</span>
+                </div>
+              </div>
+              <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textAlign: 'center', marginTop: 6 }}>Success<br/>rate</p>
+            </div>
+          </div>
+
+          {/* Stat grid */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16 }}>
+            {[
+              { label: 'Total orders',  value: stats.orders,    trend: ordersTrend, color: '#2563eb', bg: 'rgba(37,99,235,.07)' },
+              { label: 'Delivered',     value: stats.delivered, color: '#16a34a',   bg: 'rgba(22,163,74,.07)' },
+              { label: 'Avg per order', value: `₹${stats.avgEarning}`, color: '#d97706', bg: 'rgba(217,119,6,.07)' },
+              { label: 'Cancelled',     value: stats.cancelled, color: '#ef4444',   bg: 'rgba(239,68,68,.07)' },
+              { label: 'Gross sales',   value: `₹${stats.grossRevenue.toLocaleString('en-IN')}`, color: '#7c3aed', bg: 'rgba(124,58,237,.07)' },
+              { label: 'Commission',    value: `₹${stats.commission.toLocaleString('en-IN')}`,   color: '#9ca3af', bg: 'rgba(156,163,175,.07)' },
+            ].map(s => (
+              <div key={s.label} style={{ background: s.bg, borderRadius: 14, padding: '12px 14px' }}>
+                <p style={{ fontWeight: 900, fontSize: 16, color: s.color, marginBottom: 2, lineHeight: 1.2 }}>
+                  {s.value}
+                  {'trend' in s && (s.trend as number) !== 0 && (
+                    <span style={{ fontSize: 10, fontWeight: 700, color: (s.trend as number) > 0 ? '#16a34a' : '#ef4444', marginLeft: 4 }}>
+                      {(s.trend as number) > 0 ? '▲' : '▼'}{Math.abs(s.trend as number)}%
+                    </span>
+                  )}
+                </p>
+                <p style={{ fontSize: 10, color: 'var(--text-3)', fontWeight: 600 }}>{s.label}</p>
               </div>
             ))}
           </div>
 
           {/* Earnings breakdown */}
           {stats.delivered > 0 && (
-            <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, padding: '18px 16px', marginBottom: 20 }}>
-              <h3 style={{ fontWeight: 800, fontSize: 14, color: 'var(--text)', marginBottom: 14 }}>Earnings breakdown</h3>
+            <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, padding: '18px 16px', marginBottom: 16 }}>
+              <h3 style={{ fontWeight: 800, fontSize: 14, color: 'var(--text)', marginBottom: 14 }}>How your earnings work</h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-                  <span style={{ color: 'var(--text-2)' }}>Orders value (items)</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ width: 8, height: 8, borderRadius: 2, background: '#7c3aed', flexShrink: 0 }} />
+                    <span style={{ color: 'var(--text-2)' }}>Gross sales (items)</span>
+                  </div>
                   <span style={{ fontWeight: 700, color: 'var(--text)' }}>₹{stats.grossRevenue.toLocaleString('en-IN')}</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-                  <span style={{ color: 'var(--text-2)' }}>Welokl commission ({commissionPercent}%)</span>
+                {/* Split bar */}
+                {stats.grossRevenue > 0 && (
+                  <div style={{ height: 8, background: 'var(--bg-3)', borderRadius: 4, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', display: 'flex', borderRadius: 4, overflow: 'hidden' }}>
+                      <div style={{ flex: stats.netEarnings, background: '#16a34a', transition: 'flex .4s' }} />
+                      <div style={{ flex: stats.commission,  background: '#ef4444', transition: 'flex .4s' }} />
+                    </div>
+                  </div>
+                )}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ width: 8, height: 8, borderRadius: 2, background: '#ef4444', flexShrink: 0 }} />
+                    <span style={{ color: 'var(--text-2)' }}>Welokl commission ({commissionPercent}%)</span>
+                  </div>
                   <span style={{ fontWeight: 700, color: '#ef4444' }}>− ₹{stats.commission.toLocaleString('en-IN')}</span>
                 </div>
-                <div style={{ borderTop: '1.5px dashed var(--border)', paddingTop: 10, display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ fontWeight: 800, fontSize: 14, color: 'var(--text)' }}>Your earnings</span>
-                  <span style={{ fontWeight: 900, fontSize: 15, color: '#16a34a' }}>₹{stats.netEarnings.toLocaleString('en-IN')}</span>
+                <div style={{ borderTop: '1.5px dashed var(--border)', paddingTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ width: 8, height: 8, borderRadius: 2, background: '#16a34a', flexShrink: 0 }} />
+                    <span style={{ fontWeight: 800, fontSize: 14, color: 'var(--text)' }}>Your net earnings</span>
+                  </div>
+                  <span style={{ fontWeight: 900, fontSize: 16, color: '#16a34a' }}>₹{stats.netEarnings.toLocaleString('en-IN')}</span>
                 </div>
               </div>
               <p style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 10 }}>
@@ -170,18 +284,77 @@ export default function BusinessAnalytics({ shopId, commissionPercent = 15 }: { 
             </div>
           )}
 
-          {/* Earnings chart */}
-          {chartData.length > 1 && (
-            <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, padding: '18px 16px', marginBottom: 20 }}>
-              <h3 style={{ fontWeight: 800, fontSize: 14, color: 'var(--text)', marginBottom: 16 }}>Your earnings</h3>
-              <div style={{ display: 'flex', alignItems: 'flex-end', gap: period === 'month' ? 3 : 6, height: 120 }}>
-                {chartData.map(([label, val]) => (
-                  <div key={label} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-                    <div style={{ width: '100%', background: val > 0 ? '#0891B2' : 'var(--bg-3)', borderRadius: '4px 4px 0 0', height: `${Math.max(4, (val / maxRev) * 100)}px`, transition: 'height .3s' }} />
-                    {period !== 'month' && <span style={{ fontSize: 9, color: 'var(--text-3)', fontWeight: 600, whiteSpace: 'nowrap' }}>{label}</span>}
-                  </div>
-                ))}
+          {/* Daily earnings chart */}
+          {chartData.length > 1 && stats.netEarnings > 0 && (
+            <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, padding: '18px 16px', marginBottom: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 16 }}>
+                <h3 style={{ fontWeight: 800, fontSize: 14, color: 'var(--text)' }}>
+                  {period === 'today' ? "Today's earnings" : period === 'week' ? 'Daily earnings' : 'Monthly earnings'}
+                </h3>
+                <span style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 600 }}>
+                  Peak: ₹{maxRev.toLocaleString('en-IN')}
+                </span>
               </div>
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: period === 'month' ? 3 : 8, height: 120 }}>
+                {chartData.map(([label, val]) => {
+                  const h = Math.max(4, (val / maxRev) * 110)
+                  const isPeak = val === maxRev && maxRev > 0
+                  return (
+                    <div key={label} title={`${label}: ₹${val}`}
+                      style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                      <div style={{
+                        width: '100%', borderRadius: '4px 4px 0 0', height: `${h}px`,
+                        background: isPeak
+                          ? 'linear-gradient(180deg, #FF3008, #e02d07)'
+                          : val > 0
+                            ? 'linear-gradient(180deg, #0891B2, #0e7490)'
+                            : 'var(--bg-3)',
+                        transition: 'height .3s',
+                        boxShadow: isPeak ? '0 2px 8px rgba(255,48,8,.3)' : 'none',
+                      }} />
+                      {period !== 'month' && (
+                        <span style={{ fontSize: 9, color: 'var(--text-3)', fontWeight: 600, whiteSpace: 'nowrap' }}>{label}</span>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Peak hours */}
+          {orders.filter(o => o.status === 'delivered').length >= 3 && (
+            <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, padding: '18px 16px', marginBottom: 16 }}>
+              <h3 style={{ fontWeight: 800, fontSize: 14, color: 'var(--text)', marginBottom: 14 }}>Peak hours</h3>
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 56 }}>
+                {hourData.map(([h, c]) => {
+                  const barH = c > 0 ? Math.max(8, (c / maxHour) * 50) : 3
+                  const isPeak = c === maxHour && maxHour > 0
+                  return (
+                    <div key={h} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                      <div style={{
+                        width: '100%', borderRadius: '3px 3px 0 0', height: `${barH}px`,
+                        background: isPeak ? '#FF3008' : c > 0 ? '#0891B2' : 'var(--bg-3)',
+                        transition: 'height .3s',
+                      }} />
+                      {h % 4 === 0 && (
+                        <span style={{ fontSize: 8, color: 'var(--text-3)', fontWeight: 600 }}>
+                          {h === 0 ? '12a' : h < 12 ? `${h}a` : h === 12 ? '12p' : `${h - 12}p`}
+                        </span>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+              {maxHour > 0 && (() => {
+                const peakH = hourData.find(x => x[1] === maxHour)?.[0] ?? 0
+                const label = peakH === 0 ? '12:00 AM' : peakH < 12 ? `${peakH}:00 AM` : peakH === 12 ? '12:00 PM' : `${peakH - 12}:00 PM`
+                return (
+                  <p style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 8 }}>
+                    Busiest hour: <strong style={{ color: 'var(--text)' }}>{label}</strong> — {maxHour} order{maxHour > 1 ? 's' : ''}
+                  </p>
+                )
+              })()}
             </div>
           )}
 
@@ -189,19 +362,34 @@ export default function BusinessAnalytics({ shopId, commissionPercent = 15 }: { 
           {tops.length > 0 && (
             <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, padding: '18px 16px' }}>
               <h3 style={{ fontWeight: 800, fontSize: 14, color: 'var(--text)', marginBottom: 14 }}>Top products</h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {tops.map(([name, d], i) => (
-                  <div key={name} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <div style={{ width: 24, height: 24, borderRadius: 8, background: i === 0 ? '#0891B2' : 'var(--bg-3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      <span style={{ fontSize: 11, fontWeight: 900, color: i === 0 ? '#fff' : 'var(--text-3)' }}>{i + 1}</span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {tops.map(([name, d], i) => {
+                  const maxTopRev = tops[0][1].rev
+                  return (
+                    <div key={name} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <div style={{
+                        width: 26, height: 26, borderRadius: 8, flexShrink: 0,
+                        background: i === 0 ? 'linear-gradient(135deg, #0891B2, #0e7490)' : 'var(--bg-3)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        boxShadow: i === 0 ? '0 2px 8px rgba(8,145,178,.3)' : 'none',
+                      }}>
+                        <span style={{ fontSize: 11, fontWeight: 900, color: i === 0 ? '#fff' : 'var(--text-3)' }}>{i + 1}</span>
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 4 }}>{name}</p>
+                        <div style={{ height: 4, background: 'var(--bg-3)', borderRadius: 2, overflow: 'hidden' }}>
+                          <div style={{
+                            height: '100%', borderRadius: 2, transition: 'width .4s',
+                            width: `${(d.rev / maxTopRev) * 100}%`,
+                            background: i === 0 ? '#0891B2' : '#94a3b8',
+                          }} />
+                        </div>
+                        <p style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>{d.qty} sold</p>
+                      </div>
+                      <span style={{ fontWeight: 800, fontSize: 13, color: 'var(--text)', flexShrink: 0 }}>₹{d.rev.toLocaleString('en-IN')}</span>
                     </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <p style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</p>
-                      <p style={{ fontSize: 11, color: 'var(--text-3)' }}>{d.qty} sold</p>
-                    </div>
-                    <span style={{ fontWeight: 800, fontSize: 13, color: 'var(--text)', flexShrink: 0 }}>&#8377;{d.rev.toLocaleString('en-IN')}</span>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
           )}

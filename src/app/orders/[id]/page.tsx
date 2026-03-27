@@ -400,7 +400,7 @@ export default function OrderPage() {
           </div>
           <div style={{ marginTop:10, paddingTop:10, borderTop:'1px solid var(--divider)', display:'flex', justifyContent:'space-between', fontSize:13 }}>
             <span style={{ color:'var(--text-muted)' }}>Payment</span>
-            <span style={{ fontWeight:700, color:'var(--text-primary)' }}>{order.payment_method === 'cod' ? 'Cash on delivery' : 'UPI / Online'}</span>
+            <span style={{ fontWeight:700, color:'var(--text-primary)' }}>Cash on delivery</span>
           </div>
         </div>
 

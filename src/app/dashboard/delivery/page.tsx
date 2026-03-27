@@ -678,10 +678,62 @@ export default function DeliveryDashboard() {
               )
             })()}
 
-            <div className="flex items-center justify-between mb-4 p-3 bg-surface-50 rounded-2xl">
-              <span className="text-surface-500 text-sm">Order total</span>
-              <span className="font-bold text-brand-500">{'\u20B9'}{assignedOrder.total_amount}</span>
-            </div>
+            {/* Money flow breakdown */}
+            {(() => {
+              const subtotal    = (assignedOrder as any).subtotal ?? assignedOrder.total_amount
+              const platformFee = (assignedOrder as any).platform_fee ?? 0
+              const payToShop   = subtotal
+              const weloklCut   = Math.max(0, platformFee - partnerPayout)
+              return (
+                <div style={{ background: 'var(--bg-3)', borderRadius: 16, padding: '14px 16px', marginBottom: 16 }}>
+                  <p style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 12 }}>Money flow (COD)</p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(37,99,235,.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>💵</div>
+                        <div>
+                          <p style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)' }}>Collect from customer</p>
+                          <p style={{ fontSize: 11, color: 'var(--text-3)' }}>Cash on delivery</p>
+                        </div>
+                      </div>
+                      <span style={{ fontWeight: 900, fontSize: 15, color: '#2563eb' }}>₹{assignedOrder.total_amount}</span>
+                    </div>
+                    <div style={{ borderTop: '1px dashed var(--border)', paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(239,68,68,.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>🏪</div>
+                          <div>
+                            <p style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-2)' }}>Pay to shop</p>
+                            <p style={{ fontSize: 11, color: 'var(--text-3)' }}>Items subtotal</p>
+                          </div>
+                        </div>
+                        <span style={{ fontWeight: 800, fontSize: 13, color: '#ef4444' }}>− ₹{payToShop}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(217,119,6,.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>🏢</div>
+                          <div>
+                            <p style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-2)' }}>Welokl platform fee</p>
+                            <p style={{ fontSize: 11, color: 'var(--text-3)' }}>Delivery fee share</p>
+                          </div>
+                        </div>
+                        <span style={{ fontWeight: 800, fontSize: 13, color: '#d97706' }}>− ₹{weloklCut}</span>
+                      </div>
+                    </div>
+                    <div style={{ borderTop: '2px solid var(--border)', paddingTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(22,163,74,.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>🏍️</div>
+                        <div>
+                          <p style={{ fontWeight: 800, fontSize: 14, color: 'var(--text)' }}>Your earnings</p>
+                          <p style={{ fontSize: 11, color: 'var(--text-3)' }}>Added to wallet on delivery</p>
+                        </div>
+                      </div>
+                      <span style={{ fontWeight: 900, fontSize: 16, color: '#16a34a' }}>₹{partnerPayout}</span>
+                    </div>
+                  </div>
+                </div>
+              )
+            })()}
 
             {/* Pickup OTP code — show when order is ready and rider is assigned */}
             {(assignedOrder as any).pickup_code && assignedOrder.status === 'ready' && (
@@ -742,16 +794,17 @@ export default function DeliveryDashboard() {
 
                 <div className="flex items-center justify-between">
                   <div className="flex flex-col gap-1">
-                    <div className="flex items-center gap-3">
-                      <span className="text-sm font-bold text-surface-900">{'\u20B9'}{order.total_amount}</span>
-                      <span className="text-xs text-surface-400">
-                        {order.payment_method === 'cod' ? 'Cash on delivery' : 'Paid online'}
-                      </span>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'rgba(37,99,235,0.08)', border: '1px solid rgba(37,99,235,0.2)', borderRadius: 8, padding: '3px 9px' }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: '#1d4ed8' }}>💵 Collect ₹{order.total_amount}</span>
+                      </div>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'rgba(22,163,74,0.1)', border: '1px solid rgba(22,163,74,0.25)', borderRadius: 8, padding: '3px 9px' }}>
+                        <span style={{ fontSize: 11, fontWeight: 800, color: '#15803d' }}>🏍️ Earn ₹{partnerPayout}</span>
+                      </div>
                     </div>
-                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'rgba(22,163,74,0.1)', border: '1px solid rgba(22,163,74,0.25)', borderRadius: 8, padding: '3px 9px', width: 'fit-content' }}>
-                      <svg viewBox="0 0 16 16" fill="none" width={11} height={11}><circle cx="8" cy="8" r="7" stroke="#16a34a" strokeWidth="1.5"/><path d="M8 4.5V5M8 11V11.5M10 6.5C10 5.7 9.1 5 8 5S6 5.7 6 6.5 7.2 7.5 8 7.5 10 8.3 10 9.5 9 11 8 11 6 10.3 6 9.5" stroke="#16a34a" strokeWidth="1.3" strokeLinecap="round"/></svg>
-                      <span style={{ fontSize: 11, fontWeight: 800, color: '#15803d' }}>You earn ₹{partnerPayout}</span>
-                    </div>
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                      Pay shop ₹{order.subtotal ?? order.total_amount} · {order.payment_method === 'cod' ? 'Cash on delivery' : 'Paid online'}
+                    </span>
                   </div>
                   <button
                     onClick={() => acceptOrder(order.id)}

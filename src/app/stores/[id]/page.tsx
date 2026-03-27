@@ -102,6 +102,7 @@ export default function StorePage() {
   }
 
   function handleAdd(product: Product) {
+    if (!shop?.is_open) { alert('This shop is currently closed and not accepting orders.'); return }
     if (cart.shop_id && cart.shop_id !== id && cart.count() > 0) { setDiffWarn(true); return }
     cart.addItem(product, id, shop?.name ?? '')
   }
@@ -376,27 +377,39 @@ export default function StorePage() {
             <button onClick={() => setSearch('')} style={{ color:'#FF3008', fontWeight:800, fontSize:14, background:'#fff5f5', border:'none', cursor:'pointer', fontFamily:'inherit', padding:'8px 20px', borderRadius:11 }}>Clear search</button>
           </div>
         ) : (
-          Object.entries(filteredGroups).map(([cat, items]) => (
-            <div key={cat} style={{ marginBottom:24 }}>
-              {categories.length > 1 && (
-                <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:12, paddingLeft:4 }}>
-                  <p style={{ fontWeight:900, fontSize:15, color:'#111', letterSpacing:'-0.01em' }}>{cat}</p>
-                  <span style={{ fontSize:12, color:'#ccc', fontWeight:700 }}>{items.length}</span>
+          <>
+            {!shop?.is_open && (
+              <div style={{ background:'rgba(239,68,68,.08)', border:'1px solid rgba(239,68,68,.2)', borderRadius:14, padding:'12px 16px', marginBottom:16, display:'flex', alignItems:'center', gap:10 }}>
+                <span style={{ fontSize:18 }}>🔒</span>
+                <div>
+                  <p style={{ fontWeight:800, fontSize:13, color:'#dc2626' }}>Shop is currently closed</p>
+                  <p style={{ fontSize:12, color:'#dc2626', opacity:.8, marginTop:1 }}>You can browse the menu but cannot place orders right now.</p>
                 </div>
-              )}
-              <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-                {items.map(product => (
-                  <ProductCard key={product.id}
-                    product={product}
-                    qty={cart.items?.find((i: any) => i.product.id === product.id)?.quantity ?? 0}
-                    onAdd={() => handleAdd(product)}
-                    onRemove={() => cart.removeItem(product.id)}
-                    onUpdate={(q: number) => cart.updateQty(product.id, q)}
-                  />
-                ))}
               </div>
-            </div>
-          ))
+            )}
+            {Object.entries(filteredGroups).map(([cat, items]) => (
+              <div key={cat} style={{ marginBottom:24 }}>
+                {categories.length > 1 && (
+                  <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:12, paddingLeft:4 }}>
+                    <p style={{ fontWeight:900, fontSize:15, color:'#111', letterSpacing:'-0.01em' }}>{cat}</p>
+                    <span style={{ fontSize:12, color:'#ccc', fontWeight:700 }}>{items.length}</span>
+                  </div>
+                )}
+                <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                  {items.map(product => (
+                    <ProductCard key={product.id}
+                      product={product}
+                      shopClosed={!shop?.is_open}
+                      qty={cart.items?.find((i: any) => i.product.id === product.id)?.quantity ?? 0}
+                      onAdd={() => handleAdd(product)}
+                      onRemove={() => cart.removeItem(product.id)}
+                      onUpdate={(q: number) => cart.updateQty(product.id, q)}
+                    />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </>
         )}
       </div>
 
@@ -436,13 +449,13 @@ export default function StorePage() {
 }
 
 // ── Product Card ──────────────────────────────────────────────────
-function ProductCard({ product, qty, onAdd, onRemove, onUpdate }: {
-  product: Product; qty: number
+function ProductCard({ product, qty, shopClosed, onAdd, onRemove, onUpdate }: {
+  product: Product; qty: number; shopClosed?: boolean
   onAdd: () => void; onRemove: () => void; onUpdate: (q: number) => void
 }) {
   const disc = product.original_price && product.original_price > product.price
     ? Math.round((1 - product.price / product.original_price) * 100) : 0
-  const unavailable = product.is_available === false
+  const unavailable = product.is_available === false || !!shopClosed
 
   return (
     <div className="pcard" style={{ opacity: unavailable ? 0.55 : 1 }}>
@@ -463,7 +476,7 @@ function ProductCard({ product, qty, onAdd, onRemove, onUpdate }: {
           <span style={{ fontWeight:900, fontSize:15, color:'#111' }}>₹{product.price}</span>
           {disc > 0 && <span style={{ fontSize:11, color:'#bbb', textDecoration:'line-through' }}>₹{product.original_price}</span>}
         </div>
-        {unavailable && (
+        {product.is_available === false && !shopClosed && (
           <span style={{ fontSize:11, color:'#bbb', fontWeight:700, marginTop:4 }}>Unavailable</span>
         )}
       </div>

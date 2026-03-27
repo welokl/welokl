@@ -1186,7 +1186,8 @@ function AdminShopManageModal({ shop, onClose, onRefresh }: { shop: any; onClose
 
   async function deleteProduct(productId: string) {
     if (!confirm('Delete this product? This cannot be undone.')) return
-    await sb.from('products').delete().eq('id', productId)
+    const { error } = await sb.from('products').delete().eq('id', productId)
+    if (error) { setAddError(`Delete failed: ${error.message}`); return }
     loadProducts()
   }
 

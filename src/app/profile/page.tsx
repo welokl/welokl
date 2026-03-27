@@ -12,7 +12,6 @@ const Icons = {
   back: <svg viewBox="0 0 24 24" fill="none" width={20} height={20}><path d="M19 12H5M5 12l7 7M5 12l7-7" stroke="#111" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>,
   orders: <svg viewBox="0 0 24 24" fill="none" width={20} height={20}><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2" stroke="#555" strokeWidth="2" strokeLinecap="round"/><rect x="9" y="3" width="6" height="4" rx="2" stroke="#555" strokeWidth="2"/><path d="M9 12h6M9 16h4" stroke="#555" strokeWidth="2" strokeLinecap="round"/></svg>,
   heart: <svg viewBox="0 0 24 24" fill="none" width={20} height={20}><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z" stroke="#555" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>,
-  wallet: <svg viewBox="0 0 24 24" fill="none" width={20} height={20}><path d="M21 4H3a2 2 0 00-2 2v12a2 2 0 002 2h18a2 2 0 002-2V6a2 2 0 00-2-2z" stroke="#555" strokeWidth="2"/><path d="M16 12a1 1 0 100 2 1 1 0 000-2z" fill="#555"/></svg>,
   lock: <svg viewBox="0 0 24 24" fill="none" width={20} height={20}><rect x="3" y="11" width="18" height="11" rx="2" stroke="#555" strokeWidth="2"/><path d="M7 11V7a5 5 0 0110 0v4" stroke="#555" strokeWidth="2" strokeLinecap="round"/></svg>,
   chevron: <svg viewBox="0 0 24 24" fill="none" width={16} height={16}><path d="M9 18l6-6-6-6" stroke="#ccc" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>,
   pin: <svg viewBox="0 0 24 24" fill="none" width={18} height={18}><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="#888"/></svg>,
@@ -30,7 +29,6 @@ export default function ProfilePage() {
   const [saved,     setSaved]     = useState(false)
   const [addresses, setAddresses] = useState<SavedAddress[]>([])
   const [orderCount,setOrderCount]= useState(0)
-  const [walletBal, setWalletBal] = useState(0)
   const [editing,   setEditing]   = useState(false)
   const [err,       setErr]       = useState('')
 
@@ -40,13 +38,12 @@ export default function ProfilePage() {
     const sb = createClient()
     const { data: { user: au } } = await sb.auth.getUser()
     if (!au) { window.location.href = '/auth/login'; return }
-    const [{ data: profile }, { count }, { data: wallet }] = await Promise.all([
+    const [{ data: profile }, { count }] = await Promise.all([
       sb.from('users').select('*').eq('id', au.id).single(),
       sb.from('orders').select('*', { count:'exact', head:true }).eq('customer_id', au.id).eq('status', 'delivered'),
-      sb.from('wallets').select('balance').eq('user_id', au.id).single(),
     ])
     setUser(profile); setName(profile?.name || ''); setPhone(profile?.phone || '')
-    setOrderCount(count || 0); setWalletBal(wallet?.balance || 0)
+    setOrderCount(count || 0)
     try { setAddresses(JSON.parse(localStorage.getItem('welokl_addresses') || '[]')) } catch {}
     setLoading(false)
   }
@@ -70,10 +67,9 @@ export default function ProfilePage() {
   const inp: React.CSSProperties = { width:'100%', padding:'13px 14px', borderRadius:14, border:'1.5px solid var(--divider)', background:'var(--input-bg)', color:'var(--text-primary)', fontSize:15, fontFamily:'inherit', outline:'none', boxSizing:'border-box', transition:'border .2s' }
 
   const QUICK_LINKS = [
-    { icon: Icons.orders, label:'My Orders',     sub:`${orderCount} delivered`,   href:'/orders/history', color:'var(--blue-light)', iconColor:'#4f46e5' },
-    { icon: Icons.heart,  label:'Saved Shops',   sub:'Your favourites',           href:'/favourites',     color:'var(--red-light)', iconColor:'#FF3008' },
-    { icon: Icons.wallet, label:'Wallet',         sub:`₹${walletBal.toFixed(0)} balance`, href:'/wallet', color:'var(--green-light)', iconColor:'#16a34a' },
-    { icon: Icons.lock,   label:'Privacy Policy', sub:'How we use your data',     href:'/privacy',        color:'var(--page-bg)', iconColor:'var(--text-muted)' },
+    { icon: Icons.orders, label:'My Orders',     sub:`${orderCount} delivered`, href:'/orders/history', color:'var(--blue-light)', iconColor:'#4f46e5' },
+    { icon: Icons.heart,  label:'Saved Shops',   sub:'Your favourites',         href:'/favourites',     color:'var(--red-light)', iconColor:'#FF3008' },
+    { icon: Icons.lock,   label:'Privacy Policy', sub:'How we use your data',   href:'/privacy',        color:'var(--page-bg)', iconColor:'var(--text-muted)' },
   ]
 
   const ADDRESS_ICONS: Record<string,JSX.Element> = {
@@ -120,14 +116,10 @@ export default function ProfilePage() {
             </div>
 
             {/* Stats */}
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginTop:20 }}>
+            <div style={{ marginTop:20 }}>
               <div style={{ background:'var(--red-light)', borderRadius:16, padding:'14px 16px', textAlign:'center' }}>
                 <p style={{ fontSize:22, fontWeight:900, color:'#FF3008', letterSpacing:'-0.03em' }}>{orderCount}</p>
                 <p style={{ fontSize:11, fontWeight:700, color:'var(--text-muted)', marginTop:2 }}>Orders delivered</p>
-              </div>
-              <div style={{ background:'var(--green-light)', borderRadius:16, padding:'14px 16px', textAlign:'center' }}>
-                <p style={{ fontSize:22, fontWeight:900, color:'#16a34a', letterSpacing:'-0.03em' }}>₹{walletBal.toFixed(0)}</p>
-                <p style={{ fontSize:11, fontWeight:700, color:'var(--text-muted)', marginTop:2 }}>Wallet balance</p>
               </div>
             </div>
           </div>
