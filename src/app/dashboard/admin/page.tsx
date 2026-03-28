@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { WelklLogo } from '@/components/WelklLogo'
  
 type Tab = 'overview' | 'orders' | 'shops' | 'users' | 'verify' | 'pricing' | 'delivery' | 'categories' | 'wallets' | 'boosts'
  
@@ -307,10 +308,9 @@ export default function AdminDashboard() {
       <div style={{ background: '#0f0f0f', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
         <div style={{ maxWidth: 1280, margin: '0 auto', padding: '14px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ width: 34, height: 34, borderRadius: 10, background: '#ff3008', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 900, fontSize: 16 }}>W</div>
+            <WelklLogo height={28} dark={true} />
             <div className="admin-topbar-brand">
               <p style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.08em' }}>ADMIN CONSOLE</p>
-              <p style={{ fontSize: 15, fontWeight: 900, color: '#fff', lineHeight: 1.1 }}>Welokl Platform</p>
             </div>
           </div>
           <div className="admin-topbar-right" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -1405,9 +1405,7 @@ function DeleteShopConfirm({ confirm, onCancel, onDeleted }: {
       const data = await res.json()
       setDeleting(false)
       if (!res.ok) {
-        setDeleteErr(res.status === 409 || (data.error || '').includes('foreign key')
-          ? 'Cannot delete — shop has order history. Deactivate it instead to hide it from customers.'
-          : `Delete failed: ${data.error || 'Unknown error'}`)
+        setDeleteErr(`Delete failed: ${data.error || 'Unknown error'}`)
         return
       }
       onDeleted()

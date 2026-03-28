@@ -43,14 +43,24 @@ export async function DELETE(req: NextRequest) {
     await admin.storage.from('shop-images').remove([`${ownerId}/logo.webp`, `${ownerId}/banner.webp`])
   }
 
-  // Delete in dependency order
+  // Delete all order-dependent records first
   if (orderIds.length) {
     await admin.from('shop_activity_log').delete().in('order_id', orderIds)
     await admin.from('order_status_log').delete().in('order_id', orderIds)
     await admin.from('order_items').delete().in('order_id', orderIds)
     await admin.from('order_ratings').delete().in('order_id', orderIds)
+    await admin.from('reviews').delete().in('order_id', orderIds)
+    await admin.from('transactions').delete().in('order_id', orderIds)
+    await admin.from('wallet_transactions').delete().in('order_id', orderIds)
     await admin.from('orders').delete().in('id', orderIds)
   }
+  // Delete all shop-dependent records
+  await admin.from('reviews').delete().eq('shop_id', shopId)
+  await admin.from('order_ratings').delete().eq('shop_id', shopId)
+  await admin.from('vendor_boost_metrics').delete().eq('shop_id', shopId)
+  await admin.from('vendor_boosts').delete().eq('shop_id', shopId)
+  await admin.from('customer_subscriptions').delete().eq('shop_id', shopId)
+  await admin.from('subscription_plans').delete().eq('shop_id', shopId)
   await admin.from('shop_activity_log').delete().eq('shop_id', shopId)
   await admin.from('products').delete().eq('shop_id', shopId)
 

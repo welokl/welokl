@@ -5,18 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useCartStore } from '@/store/cart'
 import type { User as UserType } from '@/types'
 
-// Welokl logo mark — location pin with W
-function WelloklMark({ size = 34 }: { size?: number }) {
-  return (
-    <svg viewBox="0 0 52 52" fill="none" width={size} height={size}>
-      <rect width="52" height="52" rx="15" fill="#FF3008"/>
-      <path d="M26 11C19.9 11 15 15.9 15 22C15 30.2 26 43 26 43C26 43 37 30.2 37 22C37 15.9 32.1 11 26 11Z"
-            stroke="white" strokeWidth="2" fill="rgba(255,255,255,0.18)"/>
-      <path d="M20 21L22.8 28L26 23L29.2 28L32 21"
-            stroke="white" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
-  )
-}
+import { WelklLogo } from '@/components/WelklLogo'
 
 export default function Navbar() {
   const [user,    setUser]    = useState<UserType | null>(null)
@@ -64,10 +53,7 @@ export default function Navbar() {
 
         {/* Logo */}
         <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: 9, textDecoration: 'none' }}>
-          <WelloklMark size={34} />
-          <span style={{ fontWeight: 900, fontSize: 18, color: '#111', letterSpacing: '-0.03em', lineHeight: 1 }}>
-            welokl
-          </span>
+          <WelklLogo height={28} />
         </Link>
 
         {/* Right side */}

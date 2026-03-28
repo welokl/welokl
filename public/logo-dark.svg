@@ -1,11 +1,12 @@
-<svg viewBox="0 0 210 52" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect width="52" height="52" rx="15" fill="#FF3008"/>
-  <path d="M26 11C19.9 11 15 15.9 15 22C15 30.2 26 43 26 43C26 43 37 30.2 37 22C37 15.9 32.1 11 26 11Z"
-        stroke="white" stroke-width="2" fill="rgba(255,255,255,0.18)"/>
-  <path d="M20 21L22.8 28L26 23L29.2 28L32 21"
-        stroke="white" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
-  <text x="62" y="34"
-    font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif"
-    font-size="26" font-weight="800" letter-spacing="-0.5" fill="#ffffff">welokl</text>
-  <circle cx="199" cy="34" r="4" fill="#FF3008"/>
+<svg viewBox="0 0 152 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <text x="0" y="38" font-size="40" font-weight="900" font-style="italic"
+    font-family="'Plus Jakarta Sans', 'Nunito', system-ui, sans-serif"
+    fill="#FF5500" letter-spacing="-1">Wel</text>
+  <g transform="translate(68, 0)">
+    <path d="M12 1C5.9 1 1 5.9 1 12C1 20.5 12 38 12 38C12 38 23 20.5 23 12C23 5.9 18.1 1 12 1Z" fill="#FF5500"/>
+    <circle cx="12" cy="12" r="5" fill="#111"/>
+  </g>
+  <text x="95" y="38" font-size="40" font-weight="900" font-style="italic"
+    font-family="'Plus Jakarta Sans', 'Nunito', system-ui, sans-serif"
+    fill="#FF5500" letter-spacing="-1">kl</text>
 </svg>

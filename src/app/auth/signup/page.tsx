@@ -3,6 +3,7 @@ import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
+import { WelklLogo } from '@/components/WelklLogo'
 import type { UserRole } from '@/types'
 
 const ROLES: { id: UserRole; label: string; sub: string }[] = [
@@ -117,11 +118,8 @@ function SignupPageInner() {
 
         {/* Logo */}
         <div style={{ textAlign:'center', marginBottom:28 }}>
-          <Link href="/" style={{ textDecoration:'none', display:'inline-flex', alignItems:'center', gap:10 }}>
-            <div style={{ width:44, height:44, background:'#FF3008', borderRadius:14, display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 8px 24px rgba(255,48,8,.3)' }}>
-              <svg viewBox="0 0 24 24" fill="none" width={22} height={22}><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 010-5 2.5 2.5 0 010 5z" fill="white"/></svg>
-            </div>
-            <span style={{ fontWeight:900, fontSize:22, color:'var(--text-primary)', letterSpacing:'-0.03em' }}>welokl</span>
+          <Link href="/" style={{ textDecoration:'none', display:'inline-flex', alignItems:'center', justifyContent:'center' }}>
+            <WelklLogo height={36} />
           </Link>
           <p style={{ color:'var(--text-muted)', fontSize:14, marginTop:8 }}>Create your account</p>
         </div>

@@ -1,7 +1,6 @@
 <svg viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect width="52" height="52" rx="15" fill="#FF3008"/>
-  <path d="M26 11C19.9 11 15 15.9 15 22C15 30.2 26 43 26 43C26 43 37 30.2 37 22C37 15.9 32.1 11 26 11Z"
-        stroke="white" stroke-width="2" fill="rgba(255,255,255,0.18)"/>
-  <path d="M20 21L22.8 28L26 23L29.2 28L32 21"
-        stroke="white" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect width="52" height="52" rx="14" fill="#FF5500"/>
+  <!-- Location pin -->
+  <path d="M26 10C19.4 10 14 15.4 14 22C14 31.2 26 44 26 44C26 44 38 31.2 38 22C38 15.4 32.6 10 26 10Z" fill="white"/>
+  <circle cx="26" cy="22" r="6" fill="#FF5500"/>
 </svg>
