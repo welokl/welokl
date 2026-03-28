@@ -748,8 +748,10 @@ export default function CustomerHome() {
               {Array.from({length:4}).map((_,i) => <div key={i} className="sk" style={{ height:200, borderRadius:16 }} />)}
             </div>
           ) : (
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, padding:'0 16px' }}>
-              {featuredProds.slice(0, 6).map(p => <DealCard key={p.id} product={p} />)}
+            <div style={{ overflowY:'auto', maxHeight:680, paddingBottom:4, scrollbarWidth:'none' }}>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, padding:'0 16px' }}>
+                {featuredProds.map(p => <DealCard key={p.id} product={p} />)}
+              </div>
             </div>
           )}
         </div>
