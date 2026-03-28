@@ -39,7 +39,12 @@ const IcoWallet   = () => <svg viewBox="0 0 16 16" fill="none" width={15} height
 const IcoBoost    = () => <svg viewBox="0 0 16 16" fill="none" width={15} height={15}><path d="M8 1l1.5 3.5L13 5.5l-2.5 2.5.5 3.5L8 10l-3 1.5.5-3.5L3 5.5l3.5-1L8 1z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/></svg>
  
 export default function AdminDashboard() {
-  const [tab, setTab]             = useState<Tab>('overview')
+  const [tab, setTab] = useState<Tab>(() => {
+  if (typeof window === 'undefined') return 'overview'
+  const saved = localStorage.getItem('admin_tab')
+  const valid: Tab[] = ['overview','orders','shops','users','verify','pricing','delivery','categories','wallets','boosts']
+  return (valid.includes(saved as Tab) ? saved : 'overview') as Tab
+})
   const [orders, setOrders]       = useState<Order[]>([])
   const [shops, setShops]         = useState<Shop[]>([])
   const [users, setUsers]         = useState<User[]>([])
@@ -290,20 +295,27 @@ export default function AdminDashboard() {
  
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
- 
+      <style>{`
+        @media (max-width: 600px) {
+          .admin-stat-pill { display: none !important; }
+          .admin-topbar-right { gap: 8px !important; }
+          .admin-topbar-brand p:first-child { display: none; }
+        }
+      `}</style>
+
       {/* TOP BAR */}
       <div style={{ background: '#0f0f0f', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
         <div style={{ maxWidth: 1280, margin: '0 auto', padding: '14px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{ width: 34, height: 34, borderRadius: 10, background: '#ff3008', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 900, fontSize: 16 }}>W</div>
-            <div>
+            <div className="admin-topbar-brand">
               <p style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.08em' }}>ADMIN CONSOLE</p>
               <p style={{ fontSize: 15, fontWeight: 900, color: '#fff', lineHeight: 1.1 }}>Welokl Platform</p>
             </div>
           </div>
           <div className="admin-topbar-right" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             {totalPending > 0 && (
-              <button onClick={() => setTab('verify')}
+              <button onClick={() => { setTab('verify'); localStorage.setItem('admin_tab','verify') }}
                 style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, fontWeight: 800, padding: '6px 14px', borderRadius: 10, background: 'rgba(245,158,11,0.2)', color: '#fbbf24', border: '1px solid rgba(245,158,11,0.4)', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
                 {totalPending} pending
               </button>
@@ -326,7 +338,7 @@ export default function AdminDashboard() {
       <div style={{ background: 'var(--card-bg)', borderBottom: '1px solid var(--border)', overflowX: 'auto' }}>
         <div style={{ maxWidth: 1280, margin: '0 auto', padding: '0 20px', display: 'flex' }}>
           {TABS.map(t => (
-            <button key={t.id} onClick={() => setTab(t.id)}
+            <button key={t.id} onClick={() => { setTab(t.id); localStorage.setItem('admin_tab', t.id) }}
               style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '13px 16px', fontSize: 13, fontWeight: 700, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', position: 'relative',
                 color: tab === t.id ? 'var(--brand)' : 'var(--text-3)',
                 borderBottom: tab === t.id ? '2px solid var(--brand)' : '2px solid transparent' }}>
@@ -394,7 +406,7 @@ export default function AdminDashboard() {
                       {pendingRiders.length > 0 && `${pendingRiders.length} delivery partner${pendingRiders.length > 1 ? 's' : ''}`}
                     </p>
                   </div>
-                  <button onClick={() => setTab('verify')}
+                  <button onClick={() => { setTab('verify'); localStorage.setItem('admin_tab','verify') }}
                     style={{ padding: '10px 20px', borderRadius: 12, background: '#f59e0b', color: '#fff', fontWeight: 800, fontSize: 13, border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
                     Review now
                   </button>
@@ -750,39 +762,21 @@ export default function AdminDashboard() {
           {tab === 'pricing' && (
             <div style={{ maxWidth: 560, display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <h2 style={{ fontWeight: 900, fontSize: 18, color: 'var(--text)' }}>Platform Pricing and UPI</h2>
+                <h2 style={{ fontWeight: 900, fontSize: 18, color: 'var(--text)' }}>Platform Pricing</h2>
                 <button onClick={saveConfig} disabled={saving || !Object.keys(edits).length}
                   style={{ padding: '8px 20px', fontSize: 13, fontWeight: 800, borderRadius: 12, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: Object.keys(edits).length ? 'var(--brand)' : 'var(--bg-3)', color: Object.keys(edits).length ? '#fff' : 'var(--text-4)', opacity: saving ? 0.6 : 1 }}>
                   {saving ? 'Saving...' : Object.keys(edits).length ? `Save (${Object.keys(edits).length})` : 'No changes'}
                 </button>
               </div>
  
-              <div style={{ background: 'var(--blue-bg)', border: '1px solid rgba(59,130,246,0.25)', borderRadius: 18, padding: '20px 20px' }}>
-                <div style={{ marginBottom: 14 }}>
-                  <p style={{ fontWeight: 900, fontSize: 15, color: '#1d4ed8' }}>UPI Collection ID</p>
-                  <p style={{ fontSize: 12, color: '#3b82f6', marginTop: 2 }}>Shown to customers during checkout for UPI payment</p>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <input type="text" defaultValue={cfgStr('upi_id', 'welokl@upi')}
-                    onChange={e => setEdits(p => ({ ...p, upi_id: e.target.value }))}
-                    placeholder="yourname@upi"
-                    style={{ flex: 1, padding: '11px 14px', borderRadius: 12, border: '2px solid rgba(59,130,246,0.3)', background: 'var(--card-bg)', color: 'var(--text)', fontSize: 15, fontWeight: 800, fontFamily: 'monospace', outline: 'none' }} />
-                  <button onClick={saveConfig} disabled={saving || !edits['upi_id']}
-                    style={{ padding: '11px 18px', borderRadius: 12, fontWeight: 800, fontSize: 13, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: edits['upi_id'] ? '#2563eb' : 'var(--bg-3)', color: edits['upi_id'] ? '#fff' : 'var(--text-4)' }}>
-                    {saving ? '...' : 'Update'}
-                  </button>
-                </div>
-                <p style={{ fontSize: 11, color: '#3b82f6', marginTop: 8 }}>Current: <strong style={{ fontFamily: 'monospace' }}>{cfgStr('upi_id', 'welokl@upi')}</strong></p>
-              </div>
- 
-              {config.filter(c => c.key !== 'upi_id').length === 0 ? (
+              {config.filter(c => !['upi_id','upi_name','welokl_upi_name'].includes(c.key)).length === 0 ? (
                 <div style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 16, padding: 24, textAlign: 'center' }}>
                   <p style={{ fontWeight: 900, fontSize: 15, color: '#d97706' }}>Run verification-migration.sql first</p>
                   <p style={{ fontSize: 13, color: '#d97706', marginTop: 6, opacity: 0.8 }}>The platform_config table needs to be set up in Supabase SQL Editor</p>
                 </div>
               ) : (
                 <div style={{ ...card2 }}>
-                  {config.filter(c => c.key !== 'upi_id').map((c, i) => (
+                  {config.filter(c => !['upi_id','upi_name','welokl_upi_name'].includes(c.key)).map((c, i) => (
                     <div key={c.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderTop: i > 0 ? '1px solid var(--border)' : 'none' }}>
                       <div>
                         <p style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)' }}>{c.label}</p>
@@ -1388,15 +1382,26 @@ function DeleteShopConfirm({ confirm, onCancel, onDeleted }: {
   onCancel: () => void;
   onDeleted: () => void;
 }) {
-  const [typed, setTyped]     = useState('')
+  const [typed, setTyped]       = useState('')
   const [deleting, setDeleting] = useState(false)
+  const [deleteErr, setDeleteErr] = useState('')
   const match = typed.trim() === confirm.shop.name.trim()
 
   async function handleDelete() {
     if (!match) return
     setDeleting(true)
-    await createClient().from('shops').delete().eq('id', confirm.shop.id)
+    setDeleteErr('')
+    const sb = createClient()
+    // Delete child records first to avoid FK constraint failures
+    await sb.from('products').delete().eq('shop_id', confirm.shop.id)
+    const { error } = await sb.from('shops').delete().eq('id', confirm.shop.id)
     setDeleting(false)
+    if (error) {
+      setDeleteErr(error.message.includes('violates foreign key') || error.code === '23503'
+        ? 'Cannot delete — this shop has order history. Deactivate it instead.'
+        : `Delete failed: ${error.message}`)
+      return
+    }
     onDeleted()
   }
 
@@ -1430,6 +1435,12 @@ function DeleteShopConfirm({ confirm, onCancel, onDeleted }: {
             <p style={{ fontSize: 11, color: '#ef4444', fontWeight: 600, marginTop: 5 }}>Name doesn't match</p>
           )}
         </div>
+
+        {deleteErr && (
+          <div style={{ background: 'rgba(239,68,68,.1)', border: '1px solid rgba(239,68,68,.3)', borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 13, color: '#ef4444', fontWeight: 600 }}>
+            ⚠ {deleteErr}
+          </div>
+        )}
 
         <div style={{ display: 'flex', gap: 10 }}>
           <button onClick={onCancel}
