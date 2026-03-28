@@ -97,7 +97,7 @@ export default function StorePage() {
       delivery_address: subAddr.trim(),
       delivery_time:    plan.delivery_time,
     }, { onConflict: 'customer_id,plan_id' })
-    setMySubIds(prev => new Set([...prev, plan.id]))
+    setMySubIds(prev => new Set(Array.from(prev).concat(plan.id)))
     setSubModal(null)
     setSubAddr('')
     setSubSaving(false)
