@@ -1393,9 +1393,13 @@ function DeleteShopConfirm({ confirm, onCancel, onDeleted }: {
     setDeleteErr('')
 
     try {
+      const { data: { session } } = await createClient().auth.getSession()
       const res = await fetch('/api/admin/delete-shop', {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token ?? ''}`,
+        },
         body: JSON.stringify({ shopId: confirm.shop.id }),
       })
       const data = await res.json()

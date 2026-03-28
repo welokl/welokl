@@ -1,14 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
-import { createServerSupabaseClient } from '@/lib/supabase/server'
 
 export async function DELETE(req: NextRequest) {
-  // Verify caller is admin
-  const sb = createServerSupabaseClient()
-  const { data: { user } } = await sb.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  // Get token from Authorization header (sent by client)
+  const authHeader = req.headers.get('authorization')
+  const token = authHeader?.replace('Bearer ', '').trim()
+  if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const admin = createAdminClient()
+
+  // Verify the token and get user
+  const { data: { user }, error: authErr } = await admin.auth.getUser(token)
+  if (authErr || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  // Check admin role
   const { data: profile } = await admin.from('users').select('role').eq('id', user.id).single()
   if (profile?.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
@@ -32,7 +37,7 @@ export async function DELETE(req: NextRequest) {
     await admin.storage.from('shop-images').remove([`${ownerId}/logo.webp`, `${ownerId}/banner.webp`])
   }
 
-  // Delete products then shop (service role bypasses RLS)
+  // Delete products then shop (service role bypasses RLS + triggers)
   await admin.from('products').delete().eq('shop_id', shopId)
   const { error } = await admin.from('shops').delete().eq('id', shopId)
 
