@@ -23,7 +23,7 @@ export default function BusinessDashboard() {
   const [products, setProducts] = useState<Product[]>([])
   const [tab, setTab] = useState<Tab>('orders')
   const [loading, setLoading] = useState(true)
-  const scheduleSegmentRef = useRef<string | null>(null) // tracks last boundary auto-applied
+  const lastAppliedRef = useRef<boolean | null>(null) // last is_open state we wrote to DB
   const [showAddProduct, setShowAddProduct] = useState(false)
   const [editingProduct, setEditingProduct] = useState<any>(null)
   const [verStatus, setVerStatus] = useState<'pending' | 'approved' | 'rejected' | null>(null)
@@ -77,61 +77,60 @@ export default function BusinessDashboard() {
     unlockAudio()
   }, [])
 
-  // ── Auto open/close based on shop hours ─────────────────────
-  // Rules:
-  //   • Auto-opens at opening_time only if NOT manually_closed
-  //   • Auto-closes at closing_time always, and resets manually_closed for the next day
-  //   • Manual close during working hours sets manually_closed=true in DB → stays closed
-  //     until owner manually reopens OR next day's closing_time resets the flag
-  const manuallyClosed = useRef((shop as any)?.manually_closed ?? false)
-  useEffect(() => { manuallyClosed.current = (shop as any)?.manually_closed ?? false }, [shop])
-
+  // ── Auto open/close — Swiggy/Zomato style ───────────────────
+  // Schedule is always the authority. On every tick:
+  //   • Within hours + not manually_closed → open
+  //   • Within hours + manually_closed     → stay closed (owner override)
+  //   • Outside hours                      → closed, reset manually_closed for next day
+  // No localStorage gate — we always compare current DB state and fix if wrong.
   useEffect(() => {
     const s = shop as any
     if (!s?.id || !s?.opening_time || !s?.closing_time) return
 
-    const storageKey = `sched_${s.id}`
-    scheduleSegmentRef.current = localStorage.getItem(storageKey)
-
-    function getSegment(): { shouldBeOpen: boolean; key: string } {
+    function shouldBeOpenNow(): boolean {
       const now = new Date()
+      const cur = now.getHours() * 60 + now.getMinutes()
       const [oh, om] = (s.opening_time as string).split(':').map(Number)
       const [ch, cm] = (s.closing_time  as string).split(':').map(Number)
-      const cur = now.getHours() * 60 + now.getMinutes()
-      const shouldBeOpen = cur >= oh * 60 + om && cur < ch * 60 + cm
-      const day = now.toISOString().split('T')[0]
-      return { shouldBeOpen, key: `${shouldBeOpen ? 'open' : 'closed'}-${day}` }
+      return cur >= oh * 60 + om && cur < ch * 60 + cm
     }
 
     async function tick() {
-      const { shouldBeOpen, key } = getSegment()
-      if (scheduleSegmentRef.current === key) return // boundary already applied this period
+      const withinHours = shouldBeOpenNow()
+      const manuallyClosed = !!(s.manually_closed)
 
-      // If it's time to open but owner manually closed → don't auto-open
-      if (shouldBeOpen && manuallyClosed.current) return
+      let targetOpen: boolean
+      if (!withinHours) {
+        targetOpen = false          // outside hours → always closed
+      } else if (manuallyClosed) {
+        targetOpen = false          // within hours but owner manually closed
+      } else {
+        targetOpen = true           // within hours, no override → open
+      }
 
-      scheduleSegmentRef.current = key
-      localStorage.setItem(storageKey, key)
+      // Skip DB write if already in the correct state
+      if (lastAppliedRef.current === targetOpen) return
+      lastAppliedRef.current = targetOpen
 
-      const update: Record<string, any> = { is_open: shouldBeOpen }
-      // Closing time resets the manual override so next day's auto-open works
-      if (!shouldBeOpen) update.manually_closed = false
+      const update: Record<string, any> = { is_open: targetOpen }
+      if (!withinHours) update.manually_closed = false // reset override at end of day
 
       const sb = createClient()
       await sb.from('shops').update(update).eq('id', s.id)
       setShop(prev => prev ? { ...prev, ...update } : prev)
-      // Log the auto open/close event for admin visibility
       sb.from('shop_activity_log').insert({
         shop_id: s.id,
-        type: shouldBeOpen ? 'shop_opened' : 'shop_closed',
+        type: targetOpen ? 'shop_opened' : 'shop_closed',
         source: 'auto_schedule',
       }).then(() => {})
     }
 
+    // Reset tracking when shop data changes so we always re-evaluate
+    lastAppliedRef.current = null
     tick()
-    const t = setInterval(tick, 60_000)
+    const t = setInterval(tick, 30_000) // check every 30s
     return () => clearInterval(t)
-  }, [(shop as any)?.id, (shop as any)?.opening_time, (shop as any)?.closing_time])
+  }, [(shop as any)?.id, (shop as any)?.opening_time, (shop as any)?.closing_time, (shop as any)?.manually_closed])
 
   useEffect(() => {
     loadData()
