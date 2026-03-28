@@ -115,9 +115,22 @@ export async function proxy(request: NextRequest) {
     // Dashboard routes: enforce role
     if (pathname.startsWith('/dashboard/')) {
       const segment = pathname.split('/')[2]
+
+      // Customers may access /dashboard/business if they are a shop operator
+      let allowedAsBusiness = false
+      if (segment === 'business' && role === 'customer') {
+        const { data: staffRow } = await supabase
+          .from('shop_staff')
+          .select('id')
+          .eq('user_id', user!.id)
+          .eq('is_active', true)
+          .maybeSingle()
+        allowedAsBusiness = !!staffRow
+      }
+
       const allowed =
         (segment === 'customer'   && role === 'customer') ||
-        (segment === 'business'   && (role === 'shopkeeper' || role === 'business')) ||
+        (segment === 'business'   && (role === 'shopkeeper' || role === 'business' || allowedAsBusiness)) ||
         (segment === 'delivery'   && (role === 'delivery' || role === 'delivery_partner')) ||
         (segment === 'admin'      && role === 'admin') ||
         (segment === 'management' && role === 'management')
