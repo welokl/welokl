@@ -114,6 +114,7 @@ export default function CustomerHome() {
   const [activeCats, setActiveCats]       = useState<{name:string; q:string}[]>([])
   const [showPhoneGate, setShowPhoneGate] = useState(false)
   const [staffShop, setStaffShop]         = useState<{name:string; role:string} | null>(null)
+  const [prodFreqMap, setProdFreqMap]     = useState<Record<string,number>>({})
 
   useCustomerOrderAlerts(user?.id)
 
@@ -319,56 +320,45 @@ export default function CustomerHome() {
   }, [shopsLoaded, displayShops, trackBoostImpressions])
 
   useEffect(() => {
-    // ── Personalization signals from order history ─────────────
+    // ── Frequency signals from order history ──────────────────
     const shopFreq: Record<string, number> = {}   // weighted order count per shop
-    const catFreq:  Record<string, number> = {}   // weighted order count per category
+    const prodFreq: Record<string, number> = {}   // weighted order count per product
     const thirtyDays = 30 * 24 * 60 * 60 * 1000
     const now = Date.now()
 
     orders.filter(o => o.status === 'delivered').forEach(o => {
       const sid = (o as any).shop_id
-      const cat = ((o as any).shop?.category_name || '').toLowerCase()
-      // Recent orders (≤30 days) count double — recency×frequency signal
       const recent = now - new Date((o as any).created_at || 0).getTime() < thirtyDays
       const w = recent ? 2 : 1
       if (sid) shopFreq[sid] = (shopFreq[sid] || 0) + w
-      if (cat) catFreq[cat]  = (catFreq[cat]  || 0) + w
+      // Count per-product frequency from order items
+      ;((o as any).items || []).forEach((item: any) => {
+        if (item.product_id) prodFreq[item.product_id] = (prodFreq[item.product_id] || 0) + w
+      })
     })
 
-    // Top preferred categories (ordered by score)
-    const preferredCats = Object.entries(catFreq).sort((a, b) => b[1] - a[1]).map(([c]) => c)
-
-    // Time-of-day meal period: breakfast / lunch / dinner
-    const h = new Date().getHours()
-    const isMealTime = (h >= 7 && h <= 10) || (h >= 12 && h <= 14) || (h >= 19 && h <= 21)
+    setProdFreqMap(prodFreq)
 
     // ── Personalized shop score ────────────────────────────────
-    // Target impressions per boosted shop per day (rotation resets after this)
+    // Primary signal: order frequency (uncapped — most-ordered shops float to top)
+    // Paid boost: additive overlay on top of organic rank
+    // Rating + distance: tiebreakers only
     const DAILY_IMP_TARGET = 60
     function scoreShop(s: { id: string; rating: number; km: number | null; is_open: boolean; avg_delivery_time: number; category_name?: string | null; boost_weight?: number; today_impressions?: number }): number {
       let pts = 0
-      // ── PAID BOOST (dominant signal) ──────────────────────────
+      // ORDER FREQUENCY — primary signal, 20pts per weighted order, uncapped
+      pts += (shopFreq[s.id] || 0) * 20
+      // PAID BOOST — overlay (fairness rotation applied)
       const bw = s.boost_weight ?? 0
       if (bw > 0) {
-        // Rotation fairness: penalise shops that have already had high exposure today
-        // Max 40% reduction — a Premium shop (100) will never fall below 60 pts from boost alone
         const imp = s.today_impressions ?? 0
         const rotationPenalty = Math.min(imp / DAILY_IMP_TARGET, 0.4) * bw
         pts += bw - rotationPenalty
       }
-      // ── ORGANIC SIGNALS ───────────────────────────────────────
-      // Frequency: +10 per weighted order, cap at 50
-      pts += Math.min((shopFreq[s.id] || 0) * 10, 50)
-      // Category preference: +35 for #1 preferred, +20 for #2
-      const cat = (s.category_name || '').toLowerCase()
-      if (preferredCats[0] && cat.includes(preferredCats[0])) pts += 35
-      else if (preferredCats[1] && cat.includes(preferredCats[1])) pts += 20
-      // Rating: +12.5 per star above 3.0, cap at 25
-      pts += Math.max(0, Math.min((s.rating - 3) * 12.5, 25))
-      // Distance: -6 per km, cap at -30
-      if (s.km !== null) pts -= Math.min(s.km * 6, 30)
-      // Meal-time speed bonus
-      if (isMealTime && computeIsOpen(s) && s.avg_delivery_time <= 30) pts += 12
+      // RATING — tiebreaker, +5 per star above 3.0
+      pts += Math.max(0, (s.rating - 3) * 5)
+      // DISTANCE — mild penalty, -3 per km, cap at -15
+      if (s.km !== null) pts -= Math.min(s.km * 3, 15)
       return pts
     }
 
@@ -414,7 +404,9 @@ export default function CustomerHome() {
   const openShops      = displayShops.filter(s => computeIsOpen(s))
   const closedShops    = displayShops.filter(s => !computeIsOpen(s))
   const dealProducts   = products.filter(p => p.original_price && p.original_price > p.price)
-  const featuredProds  = dealProducts.length > 0 ? dealProducts : products
+  // Sort by order frequency desc — most-ordered products surface first
+  const sortByFreq     = (arr: Product[]) => [...arr].sort((a, b) => (prodFreqMap[b.id] || 0) - (prodFreqMap[a.id] || 0))
+  const featuredProds  = sortByFreq(dealProducts.length > 0 ? dealProducts : products)
   const greeting       = (() => { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening' })()
 
   // Past-order shops sorted by frequency (most ordered = shown first)
