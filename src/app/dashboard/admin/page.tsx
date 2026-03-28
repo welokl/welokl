@@ -1515,12 +1515,15 @@ function ShopOperatorsModal({ shop, onClose }: { shop: any; onClose: () => void 
     const trimmed = phone.trim()
     if (!trimmed) { setErr('Enter a phone number'); return }
     setSearching(true)
-    // Find the user by phone
-    const { data: found } = await sb
-      .from('users')
-      .select('id, name, phone')
-      .eq('phone', trimmed)
-      .maybeSingle()
+    // Find the user by phone — try bare number, +91 prefix, and 91 prefix
+    const digits = trimmed.replace(/^\+/, '')
+    const bare   = digits.replace(/^91/, '')   // strip leading 91 if present
+    const candidates = Array.from(new Set([trimmed, `+91${bare}`, `91${bare}`, bare]))
+    let found: { id: string; name: string; phone: string } | null = null
+    for (const ph of candidates) {
+      const { data } = await sb.from('users').select('id, name, phone').eq('phone', ph).maybeSingle()
+      if (data) { found = data; break }
+    }
     if (!found) { setErr('No Welokl account found with that phone number'); setSearching(false); return }
     // Check not already added
     if (operators.find(o => (o.user as any)?.id === found.id)) {
