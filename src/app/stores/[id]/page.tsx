@@ -13,6 +13,7 @@ interface Shop {
   delivery_enabled: boolean; pickup_enabled: boolean; min_order_amount: number
   area: string; image_url: string | null; banner_url?: string | null
   offer_text?: string | null; free_delivery_above?: number | null
+  opening_time?: string | null; closing_time?: string | null
 }
 interface Product {
   id: string; name: string; description?: string | null
@@ -202,10 +203,26 @@ export default function StorePage() {
             }
           </div>
           {/* Open/Closed badge on banner */}
-          <div style={{ position:'absolute', bottom:14, right:14, display:'flex', alignItems:'center', gap:5, background: shop.is_open ? 'rgba(22,163,74,.9)' : 'rgba(60,60,60,.85)', borderRadius:999, padding:'6px 14px', backdropFilter:'blur(6px)' }}>
-            <span style={{ width:6, height:6, borderRadius:'50%', background:'#fff', display:'block', flexShrink:0 }} />
-            <span style={{ fontSize:12, fontWeight:800, color:'#fff' }}>{shop.is_open ? 'Open now' : 'Closed'}</span>
-          </div>
+          {(() => {
+            let opensLabel: string | null = null
+            if (!shop.is_open && shop.opening_time) {
+              const [oh, om] = shop.opening_time.split(':').map(Number)
+              const now = new Date()
+              const cur = now.getHours() * 60 + now.getMinutes()
+              const openMin = oh * 60 + om
+              const ampm = oh >= 12 ? 'PM' : 'AM'
+              const label = `${oh % 12 || 12}:${String(om).padStart(2, '0')} ${ampm}`
+              opensLabel = cur < openMin ? `Opens at ${label}` : `Opens tomorrow ${label}`
+            }
+            return (
+              <div style={{ position:'absolute', bottom:14, right:14, display:'flex', alignItems:'center', gap:5, background: shop.is_open ? 'rgba(22,163,74,.9)' : 'rgba(30,30,30,.88)', borderRadius:999, padding:'6px 14px', backdropFilter:'blur(6px)' }}>
+                <span style={{ width:6, height:6, borderRadius:'50%', background: shop.is_open ? '#fff' : '#ef4444', display:'block', flexShrink:0 }} />
+                <span style={{ fontSize:12, fontWeight:800, color:'#fff' }}>
+                  {shop.is_open ? 'Open now' : opensLabel ?? 'Closed'}
+                </span>
+              </div>
+            )
+          })()}
         </div>
 
         {/* Info section — paddingTop clears the overlapping DP */}
@@ -383,7 +400,17 @@ export default function StorePage() {
                 <span style={{ fontSize:18 }}>🔒</span>
                 <div>
                   <p style={{ fontWeight:800, fontSize:13, color:'#dc2626' }}>Shop is currently closed</p>
-                  <p style={{ fontSize:12, color:'#dc2626', opacity:.8, marginTop:1 }}>You can browse the menu but cannot place orders right now.</p>
+                  <p style={{ fontSize:12, color:'#dc2626', opacity:.8, marginTop:1 }}>
+                    {shop?.opening_time ? (() => {
+                      const [oh, om] = shop.opening_time!.split(':').map(Number)
+                      const now = new Date()
+                      const cur = now.getHours() * 60 + now.getMinutes()
+                      const openMin = oh * 60 + om
+                      const ampm = oh >= 12 ? 'PM' : 'AM'
+                      const label = `${oh % 12 || 12}:${String(om).padStart(2, '0')} ${ampm}`
+                      return cur < openMin ? `Opens today at ${label}` : `Opens tomorrow at ${label}`
+                    })() : 'You can browse the menu but cannot place orders right now.'}
+                  </p>
                 </div>
               </div>
             )}

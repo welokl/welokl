@@ -79,14 +79,17 @@ export default function BusinessDashboard() {
 
   // ── Auto open/close based on shop hours ─────────────────────
   // Rules:
-  //   • At opening or closing boundary → schedule fires ONCE, then manual wins
-  //   • Page refresh does NOT re-fire the schedule if already applied today
-  //   • Manual toggle always wins between boundary transitions
+  //   • Auto-opens at opening_time only if NOT manually_closed
+  //   • Auto-closes at closing_time always, and resets manually_closed for the next day
+  //   • Manual close during working hours sets manually_closed=true in DB → stays closed
+  //     until owner manually reopens OR next day's closing_time resets the flag
+  const manuallyClosed = useRef((shop as any)?.manually_closed ?? false)
+  useEffect(() => { manuallyClosed.current = (shop as any)?.manually_closed ?? false }, [shop])
+
   useEffect(() => {
     const s = shop as any
     if (!s?.id || !s?.opening_time || !s?.closing_time) return
 
-    // Restore persisted segment from localStorage so page refresh doesn't re-apply schedule
     const storageKey = `sched_${s.id}`
     scheduleSegmentRef.current = localStorage.getItem(storageKey)
 
@@ -102,17 +105,26 @@ export default function BusinessDashboard() {
 
     async function tick() {
       const { shouldBeOpen, key } = getSegment()
-      if (scheduleSegmentRef.current === key) return // already applied this boundary — manual wins
+      if (scheduleSegmentRef.current === key) return // boundary already applied this period
+
+      // If it's time to open but owner manually closed → don't auto-open
+      if (shouldBeOpen && manuallyClosed.current) return
+
       scheduleSegmentRef.current = key
       localStorage.setItem(storageKey, key)
-      await createClient().from('shops').update({ is_open: shouldBeOpen }).eq('id', s.id)
-      setShop(prev => prev ? { ...prev, is_open: shouldBeOpen } : prev)
+
+      const update: Record<string, any> = { is_open: shouldBeOpen }
+      // Closing time resets the manual override so next day's auto-open works
+      if (!shouldBeOpen) update.manually_closed = false
+
+      await createClient().from('shops').update(update).eq('id', s.id)
+      setShop(prev => prev ? { ...prev, ...update } : prev)
     }
 
     tick()
     const t = setInterval(tick, 60_000)
     return () => clearInterval(t)
-  }, [(shop as any)?.id, (shop as any)?.opening_time, (shop as any)?.closing_time]) // is_open intentionally excluded
+  }, [(shop as any)?.id, (shop as any)?.opening_time, (shop as any)?.closing_time])
 
   useEffect(() => {
     loadData()
@@ -306,10 +318,42 @@ export default function BusinessDashboard() {
               <p style={{fontSize:11,color:"var(--text-3)"}}>{shop?.area}, {shop?.city}</p>
             </div>
             <div className="biz-header-actions flex items-center gap-2">
-              <button onClick={async () => { const s = createClient(); await s.from('shops').update({ is_open: !shop?.is_open }).eq('id', shop?.id || ''); loadData() }}
+              {/* Open/Closed toggle — sets manually_closed so schedule respects manual override */}
+              <button onClick={async () => {
+                const newOpen = !shop?.is_open
+                const update: Record<string, any> = {
+                  is_open: newOpen,
+                  // Opening: clear override. Closing: set override so auto-open won't reopen today.
+                  manually_closed: !newOpen,
+                }
+                const sb = createClient()
+                await sb.from('shops').update(update).eq('id', shop?.id || '')
+                setShop(prev => prev ? { ...prev, ...update } : prev)
+              }}
                 className={`text-xs font-bold px-3 py-1.5 rounded-full border ${shop?.is_open ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-600 border-red-200'}`}>
                 {shop?.is_open ? '● Open' : '● Closed'}
               </button>
+              {/* Schedule status hint */}
+              {(shop as any)?.opening_time && (shop as any)?.closing_time && (() => {
+                const s = shop as any
+                const [oh, om] = (s.opening_time as string).split(':').map(Number)
+                const [ch, cm] = (s.closing_time  as string).split(':').map(Number)
+                const now = new Date()
+                const cur = now.getHours() * 60 + now.getMinutes()
+                const withinHours = cur >= oh * 60 + om && cur < ch * 60 + cm
+                const fmt = (h: number, m: number) => {
+                  const ampm = h >= 12 ? 'PM' : 'AM'
+                  return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${ampm}`
+                }
+                if (shop?.is_open) {
+                  return <span style={{ fontSize: 10, color: '#16a34a', fontWeight: 700, whiteSpace: 'nowrap' }}>Auto-closes {fmt(ch, cm)}</span>
+                } else if (s.manually_closed) {
+                  return <span style={{ fontSize: 10, color: '#ef4444', fontWeight: 700, whiteSpace: 'nowrap' }}>Manually closed</span>
+                } else if (!withinHours) {
+                  return <span style={{ fontSize: 10, color: 'var(--text-3)', fontWeight: 700, whiteSpace: 'nowrap' }}>Opens {fmt(oh, om)}</span>
+                }
+                return null
+              })()}
               {!alertsOn ? (
                 <button onClick={() => {
                   try { const A = window.AudioContext || (window as any).webkitAudioContext; if (A) { const c = new A(); c.resume(); c.close() } } catch {}
@@ -899,14 +943,23 @@ function ShopSettings({ shop, onSaved }: { shop: any; onSaved: () => void }) {
 
       {section === 'hours' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div style={{ background: 'rgba(255,48,8,.06)', border: '1px solid rgba(255,48,8,.15)', borderRadius: 14, padding: '14px 16px', fontSize: 13, color: 'var(--text-2)', lineHeight: 1.6 }}>
-            💡 These are your default hours. You can still toggle Open/Closed anytime from the header.
+          <div style={{ background: 'rgba(255,48,8,.06)', border: '1px solid rgba(255,48,8,.15)', borderRadius: 14, padding: '14px 16px', fontSize: 13, color: 'var(--text-2)', lineHeight: 1.7 }}>
+            <p style={{ fontWeight: 800, color: 'var(--text)', marginBottom: 6 }}>⏰ How automatic hours work</p>
+            <p>• Your shop <strong>auto-opens</strong> at the opening time every day</p>
+            <p>• Your shop <strong>auto-closes</strong> at the closing time every day</p>
+            <p>• If you <strong>manually close</strong> during working hours, it stays closed until you reopen it or the closing time resets it for the next day</p>
           </div>
           <div><label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-2)', marginBottom: 6 }}>Opening time</label><input type="time" value={openTime} onChange={e => setOpenTime(e.target.value)} style={inp} /></div>
           <div><label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-2)', marginBottom: 6 }}>Closing time</label><input type="time" value={closeTime} onChange={e => setCloseTime(e.target.value)} style={inp} /></div>
           <div style={{ background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 14, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
             <span style={{ fontSize: 20 }}>⏰</span>
-            <div><p style={{ fontSize: 13, fontWeight: 800, color: 'var(--text)', marginBottom: 2 }}>Current hours</p><p style={{ fontSize: 13, color: 'var(--text-3)' }}>{openTime} – {closeTime}</p></div>
+            <div>
+              <p style={{ fontSize: 13, fontWeight: 800, color: 'var(--text)', marginBottom: 2 }}>Current schedule</p>
+              <p style={{ fontSize: 13, color: 'var(--text-3)' }}>{openTime} – {closeTime}</p>
+              {(shop as any).manually_closed && (
+                <p style={{ fontSize: 11, fontWeight: 700, color: '#ef4444', marginTop: 4 }}>⚠ Manually closed override active</p>
+              )}
+            </div>
           </div>
           <SaveBtn id="hours" />
         </div>
