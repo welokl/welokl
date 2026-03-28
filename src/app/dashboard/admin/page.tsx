@@ -1391,40 +1391,26 @@ function DeleteShopConfirm({ confirm, onCancel, onDeleted }: {
     if (!match) return
     setDeleting(true)
     setDeleteErr('')
-    const sb = createClient()
-    const ownerId = (confirm.shop as any).owner_id as string | undefined
 
-    // 1. Delete storage files via Storage API (not SQL — triggers are blocked)
-    if (ownerId) {
-      // Get all product IDs for this shop to clean up their images
-      const { data: prods } = await sb.from('products').select('id').eq('shop_id', confirm.shop.id)
-      if (prods?.length) {
-        const productPaths = prods.flatMap(p => [
-          `${ownerId}/${p.id}/1.webp`,
-          `${ownerId}/${p.id}/2.webp`,
-        ])
-        await sb.storage.from('product-images').remove(productPaths)
+    try {
+      const res = await fetch('/api/admin/delete-shop', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shopId: confirm.shop.id }),
+      })
+      const data = await res.json()
+      setDeleting(false)
+      if (!res.ok) {
+        setDeleteErr(res.status === 409 || (data.error || '').includes('foreign key')
+          ? 'Cannot delete — shop has order history. Deactivate it instead to hide it from customers.'
+          : `Delete failed: ${data.error || 'Unknown error'}`)
+        return
       }
-      // Delete shop logo + banner
-      await sb.storage.from('shop-images').remove([
-        `${ownerId}/logo.webp`,
-        `${ownerId}/banner.webp`,
-      ])
+      onDeleted()
+    } catch (e: any) {
+      setDeleting(false)
+      setDeleteErr(`Delete failed: ${e?.message || 'Unknown error'}`)
     }
-
-    // 2. Delete products from DB (storage is already cleaned above)
-    await sb.from('products').delete().eq('shop_id', confirm.shop.id)
-
-    // 3. Delete the shop
-    const { error } = await sb.from('shops').delete().eq('id', confirm.shop.id)
-    setDeleting(false)
-    if (error) {
-      setDeleteErr(error.code === '23503' || error.message.includes('foreign key')
-        ? 'Cannot delete — shop has order history. Deactivate it instead to hide it from customers.'
-        : `Delete failed: ${error.message}`)
-      return
-    }
-    onDeleted()
   }
 
   return (
