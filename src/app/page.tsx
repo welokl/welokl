@@ -3,11 +3,13 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { createClient } from '@/lib/supabase/client'
+import { computeIsOpen } from '@/lib/shopHours'
 
 interface Shop {
   id: string; name: string; category_name: string; area: string
   rating: number | null; avg_delivery_time: number; is_open: boolean
   image_url: string | null; offer_text: string | null; delivery_enabled: boolean
+  opening_time?: string | null; closing_time?: string | null; manually_closed?: boolean | null
 }
 interface Stats { shops: number; orders: number }
 
@@ -509,9 +511,9 @@ function FeaturedShops({ shops }: { shops: Shop[] }) {
                     </div>
                 }
                 <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
-                <div className={`absolute bottom-2 left-2.5 flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold ${shop.is_open ? 'bg-green-500 text-white' : 'bg-black/60 text-white/60'}`}>
-                  <span className={`w-1 h-1 rounded-full ${shop.is_open ? 'bg-white' : 'bg-white/40'}`} />
-                  {shop.is_open ? 'Open' : 'Closed'}
+                <div className={`absolute bottom-2 left-2.5 flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold ${computeIsOpen(shop) ? 'bg-green-500 text-white' : 'bg-black/60 text-white/60'}`}>
+                  <span className={`w-1 h-1 rounded-full ${computeIsOpen(shop) ? 'bg-white' : 'bg-white/40'}`} />
+                  {computeIsOpen(shop) ? 'Open' : 'Closed'}
                 </div>
               </div>
               <div className="p-3.5">
@@ -704,7 +706,7 @@ export default function LandingPage() {
       sb.from('shops').select('*', { count: 'exact', head: true }).eq('is_active', true).eq('verification_status', 'approved'),
       sb.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'delivered'),
       sb.from('shops')
-        .select('id,name,category_name,area,rating,avg_delivery_time,is_open,image_url,offer_text,delivery_enabled')
+        .select('id,name,category_name,area,rating,avg_delivery_time,is_open,image_url,offer_text,delivery_enabled,opening_time,closing_time,manually_closed')
         .eq('is_active', true).eq('verification_status', 'approved')
         .order('rating', { ascending: false, nullsFirst: false }).limit(6),
     ]).then(([{ count: sc }, { count: oc }, { data }]) => {

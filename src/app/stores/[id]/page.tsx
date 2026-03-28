@@ -4,6 +4,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
 import { createClient } from '@/lib/supabase/client'
+import { computeIsOpen } from '@/lib/shopHours'
 import { useCart } from '@/store/cart'
 import FavouriteButton from '@/components/FavouriteButton'
 
@@ -13,7 +14,7 @@ interface Shop {
   delivery_enabled: boolean; pickup_enabled: boolean; min_order_amount: number
   area: string; image_url: string | null; banner_url?: string | null
   offer_text?: string | null; free_delivery_above?: number | null
-  opening_time?: string | null; closing_time?: string | null
+  opening_time?: string | null; closing_time?: string | null; manually_closed?: boolean | null
 }
 interface Product {
   id: string; name: string; description?: string | null
@@ -103,7 +104,7 @@ export default function StorePage() {
   }
 
   function handleAdd(product: Product) {
-    if (!shop?.is_open) { alert('This shop is currently closed and not accepting orders.'); return }
+    if (!computeIsOpen(shop ?? { is_open: false })) { alert('This shop is currently closed and not accepting orders.'); return }
     if (cart.shop_id && cart.shop_id !== id && cart.count() > 0) { setDiffWarn(true); return }
     cart.addItem(product, id, shop?.name ?? '')
   }
@@ -205,7 +206,7 @@ export default function StorePage() {
           {/* Open/Closed badge on banner */}
           {(() => {
             let opensLabel: string | null = null
-            if (!shop.is_open && shop.opening_time) {
+            if (!computeIsOpen(shop) && shop.opening_time) {
               const [oh, om] = shop.opening_time.split(':').map(Number)
               const now = new Date()
               const cur = now.getHours() * 60 + now.getMinutes()
@@ -215,10 +216,10 @@ export default function StorePage() {
               opensLabel = cur < openMin ? `Opens at ${label}` : `Opens tomorrow ${label}`
             }
             return (
-              <div style={{ position:'absolute', bottom:14, right:14, display:'flex', alignItems:'center', gap:5, background: shop.is_open ? 'rgba(22,163,74,.9)' : 'rgba(30,30,30,.88)', borderRadius:999, padding:'6px 14px', backdropFilter:'blur(6px)' }}>
-                <span style={{ width:6, height:6, borderRadius:'50%', background: shop.is_open ? '#fff' : '#ef4444', display:'block', flexShrink:0 }} />
+              <div style={{ position:'absolute', bottom:14, right:14, display:'flex', alignItems:'center', gap:5, background: computeIsOpen(shop) ? 'rgba(22,163,74,.9)' : 'rgba(30,30,30,.88)', borderRadius:999, padding:'6px 14px', backdropFilter:'blur(6px)' }}>
+                <span style={{ width:6, height:6, borderRadius:'50%', background: computeIsOpen(shop) ? '#fff' : '#ef4444', display:'block', flexShrink:0 }} />
                 <span style={{ fontSize:12, fontWeight:800, color:'#fff' }}>
-                  {shop.is_open ? 'Open now' : opensLabel ?? 'Closed'}
+                  {computeIsOpen(shop) ? 'Open now' : opensLabel ?? 'Closed'}
                 </span>
               </div>
             )
@@ -395,7 +396,7 @@ export default function StorePage() {
           </div>
         ) : (
           <>
-            {!shop?.is_open && (
+            {!computeIsOpen(shop ?? { is_open: false }) && (
               <div style={{ background:'rgba(239,68,68,.08)', border:'1px solid rgba(239,68,68,.2)', borderRadius:14, padding:'12px 16px', marginBottom:16, display:'flex', alignItems:'center', gap:10 }}>
                 <span style={{ fontSize:18 }}>🔒</span>
                 <div>
@@ -426,7 +427,7 @@ export default function StorePage() {
                   {items.map(product => (
                     <ProductCard key={product.id}
                       product={product}
-                      shopClosed={!shop?.is_open}
+                      shopClosed={!computeIsOpen(shop ?? { is_open: false })}
                       qty={cart.items?.find((i: any) => i.product.id === product.id)?.quantity ?? 0}
                       onAdd={() => handleAdd(product)}
                       onRemove={() => cart.removeItem(product.id)}
