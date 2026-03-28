@@ -1490,7 +1490,7 @@ function DeleteShopConfirm({ confirm, onCancel, onDeleted }: {
 function ShopOperatorsModal({ shop, onClose }: { shop: any; onClose: () => void }) {
   const [operators, setOperators] = useState<any[]>([])
   const [loading, setLoading]     = useState(true)
-  const [phone, setPhone]         = useState('')
+  const [email, setEmail]         = useState('')
   const [role, setRole]           = useState<'manager' | 'staff'>('manager')
   const [searching, setSearching] = useState(false)
   const [err, setErr]             = useState('')
@@ -1512,19 +1512,16 @@ function ShopOperatorsModal({ shop, onClose }: { shop: any; onClose: () => void 
 
   async function addOperator() {
     setErr(''); setSuccess('')
-    const trimmed = phone.trim()
-    if (!trimmed) { setErr('Enter a phone number'); return }
+    const trimmed = email.trim().toLowerCase()
+    if (!trimmed) { setErr('Enter an email address'); return }
     setSearching(true)
-    // Find the user by phone — try bare number, +91 prefix, and 91 prefix
-    const digits = trimmed.replace(/^\+/, '')
-    const bare   = digits.replace(/^91/, '')   // strip leading 91 if present
-    const candidates = Array.from(new Set([trimmed, `+91${bare}`, `91${bare}`, bare]))
-    let found: { id: string; name: string; phone: string } | null = null
-    for (const ph of candidates) {
-      const { data } = await sb.from('users').select('id, name, phone').eq('phone', ph).maybeSingle()
-      if (data) { found = data; break }
-    }
-    if (!found) { setErr('No Welokl account found with that phone number'); setSearching(false); return }
+    // Find the user by email
+    const { data: found } = await sb
+      .from('users')
+      .select('id, name, email')
+      .eq('email', trimmed)
+      .maybeSingle()
+    if (!found) { setErr('No Welokl account found with that email'); setSearching(false); return }
     // Check not already added
     if (operators.find(o => (o.user as any)?.id === found.id)) {
       setErr('This user is already an operator for this shop'); setSearching(false); return
@@ -1536,7 +1533,7 @@ function ShopOperatorsModal({ shop, onClose }: { shop: any; onClose: () => void 
     })
     if (error) { setErr(error.message); setSearching(false); return }
     setSuccess(`${found.name} added as ${role}`)
-    setPhone('')
+    setEmail('')
     setSearching(false)
     loadOperators()
   }
@@ -1568,11 +1565,12 @@ function ShopOperatorsModal({ shop, onClose }: { shop: any; onClose: () => void 
 
         {/* Add operator */}
         <div style={{ background:'var(--bg-2)', borderRadius:16, padding:16, marginBottom:20 }}>
-          <p style={{ fontSize:12, fontWeight:800, color:'var(--text-3)', textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:12 }}>Add operator by phone</p>
+          <p style={{ fontSize:12, fontWeight:800, color:'var(--text-3)', textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:12 }}>Add operator by email</p>
           <div style={{ display:'flex', gap:8, marginBottom:10 }}>
             <input
-              value={phone} onChange={e => { setPhone(e.target.value); setErr(''); setSuccess('') }}
-              placeholder="Operator's phone number"
+              type="email"
+              value={email} onChange={e => { setEmail(e.target.value); setErr(''); setSuccess('') }}
+              placeholder="Operator's email address"
               onKeyDown={e => e.key === 'Enter' && addOperator()}
               style={{ flex:1, padding:'10px 13px', borderRadius:12, border:'1.5px solid var(--border-2)', background:'var(--input-bg)', color:'var(--text)', fontSize:14, fontFamily:'inherit', outline:'none' }}
             />
@@ -1582,8 +1580,8 @@ function ShopOperatorsModal({ shop, onClose }: { shop: any; onClose: () => void 
               <option value="staff">Staff</option>
             </select>
           </div>
-          <button onClick={addOperator} disabled={searching || !phone.trim()}
-            style={{ width:'100%', padding:'11px', borderRadius:12, border:'none', background: phone.trim() ? '#7c3aed' : 'var(--bg-3)', color: phone.trim() ? '#fff' : 'var(--text-3)', fontWeight:800, fontSize:14, cursor: phone.trim() ? 'pointer' : 'not-allowed', fontFamily:'inherit', transition:'background .15s' }}>
+          <button onClick={addOperator} disabled={searching || !email.trim()}
+            style={{ width:'100%', padding:'11px', borderRadius:12, border:'none', background: email.trim() ? '#7c3aed' : 'var(--bg-3)', color: email.trim() ? '#fff' : 'var(--text-3)', fontWeight:800, fontSize:14, cursor: email.trim() ? 'pointer' : 'not-allowed', fontFamily:'inherit', transition:'background .15s' }}>
             {searching ? 'Adding…' : 'Add Operator'}
           </button>
           {err     && <p style={{ fontSize:12, color:'#ef4444', fontWeight:600, marginTop:8 }}>{err}</p>}
