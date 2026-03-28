@@ -126,7 +126,11 @@ export default function BusinessDashboard() {
       const cur = now.getHours() * 60 + now.getMinutes()
       const [oh, om] = (openingTime as string).split(':').map(Number)
       const [ch, cm] = (closingTime  as string).split(':').map(Number)
-      return cur >= oh * 60 + om && cur < ch * 60 + cm
+      const open  = oh * 60 + om
+      const close = ch * 60 + cm
+      // Handle overnight schedules (e.g. 20:00 – 03:00)
+      if (close <= open) return cur >= open || cur < close
+      return cur >= open && cur < close
     }
 
     async function tick() {
@@ -399,9 +403,10 @@ export default function BusinessDashboard() {
                 const s = shop as any
                 const [oh, om] = (s.opening_time as string).split(':').map(Number)
                 const [ch, cm] = (s.closing_time  as string).split(':').map(Number)
-                const now = new Date()
-                const cur = now.getHours() * 60 + now.getMinutes()
-                const withinHours = cur >= oh * 60 + om && cur < ch * 60 + cm
+                const now  = new Date()
+                const cur  = now.getHours() * 60 + now.getMinutes()
+                const open = oh * 60 + om, close = ch * 60 + cm
+                const withinHours = close <= open ? (cur >= open || cur < close) : (cur >= open && cur < close)
                 const fmt = (h: number, m: number) => {
                   const ampm = h >= 12 ? 'PM' : 'AM'
                   return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${ampm}`
