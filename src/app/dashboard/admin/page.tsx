@@ -55,7 +55,7 @@ export default function AdminDashboard() {
   const [loading, setLoading]     = useState(true)
   const [saving, setSaving]       = useState(false)
   const [adminManagingShop, setAdminManagingShop] = useState<Shop | null>(null)
-  const [deleteConfirm, setDeleteConfirm] = useState<{ shop: Shop; readyAt: number } | null>(null)
+  const [deleteConfirm, setDeleteConfirm] = useState<{ shop: Shop } | null>(null)
   const [edits, setEdits]         = useState<Record<string, string>>({})
   const [search, setSearch]       = useState('')
   const [shopSearch,  setShopSearch]  = useState('')
@@ -535,7 +535,14 @@ export default function AdminDashboard() {
           {tab === 'shops' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
-                <h2 style={{ fontWeight: 900, fontSize: 18, color: 'var(--text)' }}>Shops ({filteredShops.length})</h2>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <h2 style={{ fontWeight: 900, fontSize: 18, color: 'var(--text)' }}>Shops ({filteredShops.length})</h2>
+                  <a href="/dashboard/admin/activity"
+                    style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 10, background: 'rgba(8,145,178,.1)', color: '#0891b2', fontWeight: 800, fontSize: 12, textDecoration: 'none', border: '1px solid rgba(8,145,178,.2)' }}>
+                    <svg viewBox="0 0 16 16" fill="none" width={13} height={13}><circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.5"/><path d="M8 5v3l2 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+                    Activity log
+                  </a>
+                </div>
                 <input value={shopSearch} onChange={e => setShopSearch(e.target.value)} placeholder="Search name, area, owner..."
                   style={{ width: 220, maxWidth: '100%', minWidth: 0, fontSize: 13, border: '1px solid var(--border-2)', borderRadius: 10, padding: '8px 12px', background: 'var(--input-bg)', color: 'var(--text)', fontFamily: 'inherit', outline: 'none' }} />
               </div>
@@ -572,7 +579,7 @@ export default function AdminDashboard() {
                       style={{ fontSize: 12, fontWeight: 700, padding: '7px 14px', borderRadius: 10, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: 'rgba(59,130,246,0.12)', color: '#3b82f6' }}>
                       Manage
                     </button>
-                    <button onClick={() => setDeleteConfirm({ shop, readyAt: Date.now() + 5 * 60 * 1000 })}
+                    <button onClick={() => setDeleteConfirm({ shop })}
                       style={{ fontSize: 12, fontWeight: 700, padding: '7px 14px', borderRadius: 10, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: 'rgba(239,68,68,0.12)', color: '#ef4444' }}>
                       Delete
                     </button>
@@ -1374,58 +1381,53 @@ function AdminShopManageModal({ shop, onClose, onRefresh }: { shop: any; onClose
 }
 
 // ─────────────────────────────────────────────────────────────
-// Admin: delete shop with 5-minute countdown confirmation
+// Admin: delete shop — type shop name to confirm
 // ─────────────────────────────────────────────────────────────
 function DeleteShopConfirm({ confirm, onCancel, onDeleted }: {
-  confirm: { shop: any; readyAt: number };
+  confirm: { shop: any };
   onCancel: () => void;
   onDeleted: () => void;
 }) {
-  const [secs, setSecs] = useState(() => Math.max(0, Math.ceil((confirm.readyAt - Date.now()) / 1000)))
+  const [typed, setTyped]     = useState('')
   const [deleting, setDeleting] = useState(false)
-
-  useEffect(() => {
-    if (secs <= 0) return
-    const t = setInterval(() => {
-      const remaining = Math.max(0, Math.ceil((confirm.readyAt - Date.now()) / 1000))
-      setSecs(remaining)
-      if (remaining <= 0) clearInterval(t)
-    }, 1000)
-    return () => clearInterval(t)
-  }, [confirm.readyAt]) // eslint-disable-line
+  const match = typed.trim() === confirm.shop.name.trim()
 
   async function handleDelete() {
+    if (!match) return
     setDeleting(true)
     await createClient().from('shops').delete().eq('id', confirm.shop.id)
     setDeleting(false)
     onDeleted()
   }
 
-  const mins = Math.floor(secs / 60)
-  const s    = secs % 60
-
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 70, background: 'rgba(0,0,0,.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-      <div style={{ background: 'var(--card-bg)', borderRadius: 20, width: '100%', maxWidth: 400, padding: 28 }}>
+      <div style={{ background: 'var(--card-bg)', borderRadius: 20, width: '100%', maxWidth: 420, padding: 28 }}>
+        <div style={{ width: 48, height: 48, borderRadius: 14, background: 'rgba(239,68,68,.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, marginBottom: 16 }}>🗑️</div>
         <p style={{ fontWeight: 900, fontSize: 18, color: '#ef4444', marginBottom: 8 }}>Delete Shop</p>
-        <p style={{ fontSize: 14, color: 'var(--text-2)', marginBottom: 20, lineHeight: 1.5 }}>
-          You are about to permanently delete <strong style={{ color: 'var(--text)' }}>{confirm.shop.name}</strong> and all its products. This cannot be undone.
+        <p style={{ fontSize: 14, color: 'var(--text-2)', marginBottom: 20, lineHeight: 1.6 }}>
+          This will permanently delete <strong style={{ color: 'var(--text)' }}>{confirm.shop.name}</strong> and all its products, orders, and images. This <strong>cannot be undone</strong>.
         </p>
 
-        <div style={{ background: 'rgba(239,68,68,.07)', border: '1px solid rgba(239,68,68,.25)', borderRadius: 14, padding: '16px', marginBottom: 20, textAlign: 'center' }}>
-          {secs > 0 ? (
-            <>
-              <p style={{ fontSize: 40, fontWeight: 900, color: '#ef4444', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
-                {mins}:{String(s).padStart(2, '0')}
-              </p>
-              <p style={{ fontSize: 12, color: '#ef4444', opacity: 0.8, fontWeight: 600, marginTop: 6 }}>
-                Confirm delete unlocks after countdown
-              </p>
-            </>
-          ) : (
-            <p style={{ fontSize: 13, color: '#ef4444', fontWeight: 700 }}>
-              Countdown complete — deletion is now unlocked
-            </p>
+        <div style={{ marginBottom: 20 }}>
+          <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-2)', marginBottom: 8 }}>
+            Type <strong style={{ color: '#ef4444' }}>{confirm.shop.name}</strong> to confirm
+          </label>
+          <input
+            value={typed}
+            onChange={e => setTyped(e.target.value)}
+            onPaste={e => e.preventDefault()}
+            placeholder={confirm.shop.name}
+            autoFocus
+            style={{
+              width: '100%', padding: '11px 14px', borderRadius: 12, boxSizing: 'border-box',
+              border: `1.5px solid ${typed.length > 0 ? (match ? '#16a34a' : '#ef4444') : 'var(--border)'}`,
+              background: 'var(--bg-2)', color: 'var(--text)', fontSize: 14,
+              fontFamily: 'inherit', outline: 'none', transition: 'border .15s',
+            }}
+          />
+          {typed.length > 0 && !match && (
+            <p style={{ fontSize: 11, color: '#ef4444', fontWeight: 600, marginTop: 5 }}>Name doesn't match</p>
           )}
         </div>
 
@@ -1434,8 +1436,13 @@ function DeleteShopConfirm({ confirm, onCancel, onDeleted }: {
             style={{ flex: 1, padding: 13, borderRadius: 12, background: 'var(--bg-3)', border: '1px solid var(--border)', color: 'var(--text-2)', fontWeight: 800, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}>
             Cancel
           </button>
-          <button onClick={handleDelete} disabled={secs > 0 || deleting}
-            style={{ flex: 1, padding: 13, borderRadius: 12, background: secs > 0 ? 'var(--bg-3)' : '#ef4444', color: secs > 0 ? 'var(--text-3)' : '#fff', fontWeight: 800, fontSize: 14, cursor: secs > 0 ? 'not-allowed' : 'pointer', fontFamily: 'inherit', border: 'none', opacity: secs > 0 ? 0.5 : 1, transition: 'all .3s' }}>
+          <button onClick={handleDelete} disabled={!match || deleting}
+            style={{ flex: 1, padding: 13, borderRadius: 12, border: 'none', fontWeight: 800, fontSize: 14, fontFamily: 'inherit', transition: 'all .15s',
+              background: match ? '#ef4444' : 'var(--bg-3)',
+              color: match ? '#fff' : 'var(--text-3)',
+              cursor: match ? 'pointer' : 'not-allowed',
+              boxShadow: match ? '0 4px 14px rgba(239,68,68,.3)' : 'none',
+            }}>
             {deleting ? 'Deleting…' : 'Delete Forever'}
           </button>
         </div>

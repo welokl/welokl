@@ -117,8 +117,15 @@ export default function BusinessDashboard() {
       // Closing time resets the manual override so next day's auto-open works
       if (!shouldBeOpen) update.manually_closed = false
 
-      await createClient().from('shops').update(update).eq('id', s.id)
+      const sb = createClient()
+      await sb.from('shops').update(update).eq('id', s.id)
       setShop(prev => prev ? { ...prev, ...update } : prev)
+      // Log the auto open/close event for admin visibility
+      sb.from('shop_activity_log').insert({
+        shop_id: s.id,
+        type: shouldBeOpen ? 'shop_opened' : 'shop_closed',
+        source: 'auto_schedule',
+      }).then(() => {})
     }
 
     tick()
@@ -150,28 +157,42 @@ export default function BusinessDashboard() {
   }, [shop?.id, loadData])
 
   async function updateOrderStatus(orderId: string, status: string) {
+    // Optimistic update — move the order to the new status instantly so the
+    // shop owner sees the change immediately without waiting for the round-trip
+    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: status as Order['status'] } : o))
+
     const notifyMap: Record<string, string> = {
       accepted: 'order_accepted',
       ready: 'order_ready',
     }
-    if (notifyMap[status]) {
-      const sb2 = createClient()
-      const { data: ord } = await sb2.from('orders').select('customer_id, shop_id').eq('id', orderId).single()
-      if (ord) fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-notification`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}` },
-        body: JSON.stringify({ type: notifyMap[status], order_id: orderId, customer_id: ord.customer_id, shop_id: ord.shop_id })
-      }).catch(() => {})
-    }
     const supabase = createClient()
+    // Fire DB update + notification in parallel — don't await notification fetch
     await supabase.from('orders').update({ status }).eq('id', orderId)
-    await supabase.from('order_status_log').insert({ order_id: orderId, status, message: `Status: ${status}` })
+    supabase.from('order_status_log').insert({ order_id: orderId, status, message: `Status: ${status}` }).then(() => {})
+    // Log to shop activity for admin visibility
+    if (shop?.id) {
+      supabase.from('shop_activity_log').insert({
+        shop_id: shop.id,
+        type: `order_${status}`,
+        source: 'order',
+        note: `Order ${orderId.slice(-6).toUpperCase()}`,
+      }).then(() => {})
+    }
+    if (notifyMap[status]) {
+      supabase.from('orders').select('customer_id, shop_id').eq('id', orderId).single()
+        .then(({ data: ord }) => {
+          if (ord) fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-notification`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}` },
+            body: JSON.stringify({ type: notifyMap[status], order_id: orderId, customer_id: ord.customer_id, shop_id: ord.shop_id })
+          }).catch(() => {})
+        })
+    }
     if (status === 'preparing' && shop) {
-      // Broadcast to nearby riders: try auto-assign nearest; if none available the
-      // order stays unassigned and appears in ALL online riders' available-orders list
       fetch('/api/orders/assign', { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orderId, shopLat: shop.latitude, shopLng: shop.longitude }) }).catch(() => {})
     }
+    // Sync with server in the background to catch any realtime deltas
     loadData()
   }
 
@@ -323,12 +344,17 @@ export default function BusinessDashboard() {
                 const newOpen = !shop?.is_open
                 const update: Record<string, any> = {
                   is_open: newOpen,
-                  // Opening: clear override. Closing: set override so auto-open won't reopen today.
                   manually_closed: !newOpen,
                 }
                 const sb = createClient()
                 await sb.from('shops').update(update).eq('id', shop?.id || '')
                 setShop(prev => prev ? { ...prev, ...update } : prev)
+                // Log manual open/close for admin activity feed
+                sb.from('shop_activity_log').insert({
+                  shop_id: shop?.id,
+                  type: newOpen ? 'shop_opened' : 'shop_closed',
+                  source: 'manual',
+                }).then(() => {})
               }}
                 className={`text-xs font-bold px-3 py-1.5 rounded-full border ${shop?.is_open ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-600 border-red-200'}`}>
                 {shop?.is_open ? '● Open' : '● Closed'}
@@ -1112,7 +1138,7 @@ function AddProductModal({ shopId, userId, onClose, onSuccess }: { shopId: strin
   useEffect(() => {
     createClient().from('products').select('category').eq('shop_id', shopId).not('category', 'is', null)
       .then(({ data }) => {
-        const cats = [...new Set((data ?? []).map((r: any) => r.category).filter(Boolean))] as string[]
+        const cats = Array.from(new Set((data ?? []).map((r: any) => r.category).filter(Boolean))) as string[]
         setExistingCats(cats)
       })
   }, [shopId])
@@ -1236,7 +1262,7 @@ function EditProductModal({ product, userId, onClose, onSuccess }: { product: an
   useEffect(() => {
     createClient().from('products').select('category').eq('shop_id', product.shop_id).not('category', 'is', null)
       .then(({ data }) => {
-        const cats = [...new Set((data ?? []).map((r: any) => r.category).filter(Boolean))] as string[]
+        const cats = Array.from(new Set((data ?? []).map((r: any) => r.category).filter(Boolean))) as string[]
         setExistingCats(cats)
       })
   }, [product.shop_id])
