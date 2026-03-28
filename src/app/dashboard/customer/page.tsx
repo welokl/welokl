@@ -557,60 +557,59 @@ export default function CustomerHome() {
         return (
           <div style={{ margin:'16px 0 0' }}>
             <p style={{ padding:'0 16px', fontSize:15, fontWeight:900, color:'var(--text-primary)', marginBottom:12 }}>Quick Actions</p>
-            <div style={{ display:'flex', gap:10, overflowX:'auto', paddingLeft:16, paddingRight:16, paddingBottom:6 }}>
-
-              {/* ── Reorder card ── */}
+                {/* ── Reorder card ── */}
               {showReorder && (
-                <button onClick={() => reorder(lastDelivered!)}
-                  style={{ flexShrink:0, background:'none', border:'none', padding:0, cursor:'pointer', textAlign:'left', fontFamily:'inherit' }}>
-                  <div style={{ width:164, height:88, borderRadius:20, overflow:'hidden', position:'relative', background:'#111', boxShadow:'0 4px 18px rgba(0,0,0,.25)' }}>
-                    {(lastDelivered as any).shop?.image_url && (
-                      <Image src={(lastDelivered as any).shop.image_url} alt="" fill sizes="164px" className="object-cover" style={{ opacity:.45 }} />
-                    )}
-                    <div style={{ position:'absolute', inset:0, background:'linear-gradient(120deg, rgba(0,0,0,.75) 0%, rgba(0,0,0,.45) 100%)' }} />
-                    {/* Icon LEFT + Text RIGHT */}
-                    <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', gap:11, padding:'0 15px' }}>
-                      <div style={{ width:36, height:36, borderRadius:11, background:'rgba(255,255,255,.14)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                        <svg viewBox="0 0 24 24" fill="none" width={19} height={19}>
-                          <path d="M1 4v6h6M23 20v-6h-6" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-                          <path d="M20.49 9A9 9 0 005.64 5.64L1 10M23 14l-4.64 4.36A9 9 0 013.51 15" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
-                      </div>
-                      <div style={{ minWidth:0 }}>
-                        <p style={{ fontSize:15, fontWeight:900, color:'#fff', marginBottom:3, letterSpacing:'-0.02em' }}>Reorder</p>
-                        <p style={{ fontSize:11, color:'rgba(255,255,255,.68)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:96 }}>
-                          {(lastDelivered as any).shop?.name || 'Last order'}
-                        </p>
+                <div style={{ padding:'0 16px', marginBottom:12 }}>
+                  <button onClick={() => reorder(lastDelivered!)}
+                    style={{ width:'100%', background:'none', border:'none', padding:0, cursor:'pointer', textAlign:'left', fontFamily:'inherit' }}>
+                    <div style={{ height:80, borderRadius:20, overflow:'hidden', position:'relative', background:'#111', boxShadow:'0 4px 18px rgba(0,0,0,.25)' }}>
+                      {(lastDelivered as any).shop?.image_url && (
+                        <Image src={(lastDelivered as any).shop.image_url} alt="" fill sizes="100vw" className="object-cover" style={{ opacity:.45 }} />
+                      )}
+                      <div style={{ position:'absolute', inset:0, background:'linear-gradient(120deg, rgba(0,0,0,.75) 0%, rgba(0,0,0,.45) 100%)' }} />
+                      <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', gap:11, padding:'0 18px' }}>
+                        <div style={{ width:36, height:36, borderRadius:11, background:'rgba(255,255,255,.14)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                          <svg viewBox="0 0 24 24" fill="none" width={19} height={19}>
+                            <path d="M1 4v6h6M23 20v-6h-6" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                            <path d="M20.49 9A9 9 0 005.64 5.64L1 10M23 14l-4.64 4.36A9 9 0 013.51 15" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        </div>
+                        <div style={{ minWidth:0 }}>
+                          <p style={{ fontSize:15, fontWeight:900, color:'#fff', marginBottom:3, letterSpacing:'-0.02em' }}>Reorder</p>
+                          <p style={{ fontSize:11, color:'rgba(255,255,255,.68)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                            {(lastDelivered as any).shop?.name || 'Last order'}
+                          </p>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </button>
+                  </button>
+                </div>
               )}
 
-              {/* ── Category tiles — compact Zomato-style ── */}
-              {displayCats.map(cat => {
-                const cfg = CATS.find(c => c.q === cat.q) || { color:'#FF3008', bg:'var(--red-light)' }
-                const isActive = activeCategory === cat.q
-                return (
-                  <button key={cat.q} onClick={() => setActiveCat(isActive ? null : cat.q)}
-                    style={{ flexShrink:0, background:'none', border:'none', padding:'0 2px', cursor:'pointer', textAlign:'center', fontFamily:'inherit', display:'flex', flexDirection:'column', alignItems:'center', gap:6 }}>
-                    <div style={{
-                      width:58, height:58, borderRadius:'50%',
-                      background: isActive ? cfg.color : `${cfg.color}14`,
-                      display:'flex', alignItems:'center', justifyContent:'center',
-                      boxShadow: isActive ? `0 4px 14px ${cfg.color}50` : 'none',
-                      transition:'all .15s',
-                    }}>
-                      <span style={{ color: isActive ? '#fff' : cfg.color, display:'flex', transform:'scale(0.72)', lineHeight:0 }}>
-                        {getCatIcon(cat.q)}
-                      </span>
-                    </div>
-                    <p style={{ fontSize:10, fontWeight:700, color: isActive ? cfg.color : 'var(--text-secondary)', lineHeight:1.2, margin:0, maxWidth:60, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{cat.name}</p>
-                  </button>
-                )
-              })}
-
-            </div>
+              {/* ── Category tiles — 4-column grid ── */}
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap:'12px 8px', padding:'0 16px' }}>
+                {displayCats.map(cat => {
+                  const cfg = CATS.find(c => c.q === cat.q) || { color:'#FF3008', bg:'var(--red-light)' }
+                  const isActive = activeCategory === cat.q
+                  return (
+                    <button key={cat.q} onClick={() => setActiveCat(isActive ? null : cat.q)}
+                      style={{ background:'none', border:'none', padding:'0 2px', cursor:'pointer', textAlign:'center', fontFamily:'inherit', display:'flex', flexDirection:'column', alignItems:'center', gap:6 }}>
+                      <div style={{
+                        width:58, height:58, borderRadius:'50%',
+                        background: isActive ? cfg.color : `${cfg.color}14`,
+                        display:'flex', alignItems:'center', justifyContent:'center',
+                        boxShadow: isActive ? `0 4px 14px ${cfg.color}50` : 'none',
+                        transition:'all .15s',
+                      }}>
+                        <span style={{ color: isActive ? '#fff' : cfg.color, display:'flex', transform:'scale(0.72)', lineHeight:0 }}>
+                          {getCatIcon(cat.q)}
+                        </span>
+                      </div>
+                      <p style={{ fontSize:10, fontWeight:700, color: isActive ? cfg.color : 'var(--text-secondary)', lineHeight:1.2, margin:0, maxWidth:64, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{cat.name}</p>
+                    </button>
+                  )
+                })}
+              </div>
           </div>
         )
       })()}
