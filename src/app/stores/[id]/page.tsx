@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import { computeIsOpen } from '@/lib/shopHours'
 import { useCart } from '@/store/cart'
 import FavouriteButton from '@/components/FavouriteButton'
+import BottomNav from '@/components/BottomNav'
 
 interface Shop {
   id: string; name: string; description: string | null; category_name: string
@@ -472,6 +473,7 @@ export default function StorePage() {
           </div>
         </div>
       )}
+      <BottomNav active="shops" />
     </div>
   )
 }

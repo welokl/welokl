@@ -56,7 +56,7 @@ export default function BusinessDashboard() {
     setVerStatus((shopData as any).verification_status ?? 'pending')
     setVerNote((shopData as any).verification_note ?? null)
     const [{ data: orderData }, { data: productData }] = await Promise.all([
-      supabase.from('orders').select('*, delivery_partner_id, pickup_code, items:order_items(*)').eq('shop_id', shopData.id).order('created_at', { ascending: false }).limit(50),
+      supabase.from('orders').select('*, delivery_partner_id, pickup_code, items:order_items(*), customer:users!customer_id(name, phone)').eq('shop_id', shopData.id).order('created_at', { ascending: false }).limit(50),
       supabase.from('products').select('*').eq('shop_id', shopData.id).order('sort_order'),
     ])
     setOrders(orderData || [])
@@ -434,14 +434,26 @@ export default function BusinessDashboard() {
                 <div className="space-y-3">
                   {newOrders.map(order => (
                     <div key={order.id} className="card p-4">
-                      <div className="flex justify-between mb-2">
+                      <div className="flex justify-between mb-1">
                         <span className="font-bold text-sm">#{order.order_number}</span>
                         <span className="font-bold">₹{order.total_amount}</span>
                       </div>
-                      <div style={{fontSize:11, color:"var(--text-3)", marginBottom:12}}>
-                        <div>{(order as any).items?.map((i: any) => `${i.product_name} ×${i.quantity}`).join(', ')}</div>
-                        <div className="mt-1">{order.payment_method === 'cod' ? '💵 COD' : '📲 UPI'} - {order.type === 'delivery' ? '🛵 Delivery' : '🏃 Pickup'}</div>
-                        {order.delivery_address && <div>📍 {order.delivery_address}</div>}
+                      {(order as any).customer?.name && (
+                        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-2)', marginBottom: 8 }}>
+                          👤 {(order as any).customer.name}
+                        </div>
+                      )}
+                      <div style={{ marginBottom: 12 }}>
+                        {(order as any).items?.map((i: any) => (
+                          <div key={i.id} style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', padding: '3px 0', borderBottom: '1px solid var(--border)' }}>
+                            {i.product_name} <span style={{ color: 'var(--text-3)', fontWeight: 700 }}>×{i.quantity}</span>
+                            {i.price && <span style={{ float: 'right', fontSize: 13, color: 'var(--text-2)' }}>₹{i.price * i.quantity}</span>}
+                          </div>
+                        ))}
+                        <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 8 }}>
+                          {order.payment_method === 'cod' ? '💵 COD' : '📲 UPI'} · {order.type === 'delivery' ? '🛵 Delivery' : '🏃 Pickup'}
+                          {order.delivery_address && <span> · 📍 {order.delivery_address}</span>}
+                        </div>
                       </div>
                       <div className="flex gap-2">
                         <button onClick={() => updateOrderStatus(order.id, 'accepted')} className="btn-primary text-sm py-2 flex-1">✓ Accept</button>
@@ -471,7 +483,7 @@ export default function BusinessDashboard() {
 
                     return (
                       <div key={order.id} style={{ background: 'var(--card-bg)', border: `1px solid ${isReady ? 'var(--brand)' : 'var(--border)'}`, borderRadius: 16, padding: 16, boxShadow: isReady ? '0 0 0 2px var(--brand-glow)' : 'var(--card-shadow)' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                           <span style={{ fontWeight: 900, fontSize: 14, color: 'var(--text)' }}>#{order.order_number}</span>
                           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                             <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: isPickupType ? 'rgba(59,130,246,0.12)' : 'rgba(245,158,11,0.12)', color: isPickupType ? '#3b82f6' : '#d97706' }}>
@@ -482,8 +494,18 @@ export default function BusinessDashboard() {
                             </span>
                           </div>
                         </div>
-                        <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 12 }}>
-                          {(order as any).items?.map((i: any) => `${i.product_name} ×${i.quantity}`).join(', ')}
+                        {(order as any).customer?.name && (
+                          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-2)', marginBottom: 8 }}>
+                            👤 {(order as any).customer.name}
+                          </div>
+                        )}
+                        <div style={{ marginBottom: 12 }}>
+                          {(order as any).items?.map((i: any) => (
+                            <div key={i.id} style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', padding: '3px 0', borderBottom: '1px solid var(--border)' }}>
+                              {i.product_name} <span style={{ color: 'var(--text-3)', fontWeight: 700 }}>×{i.quantity}</span>
+                              {i.price && <span style={{ float: 'right', fontSize: 13, color: 'var(--text-2)' }}>₹{i.price * i.quantity}</span>}
+                            </div>
+                          ))}
                         </div>
 
                         {isReady && isPickupType && (

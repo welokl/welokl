@@ -31,7 +31,6 @@ export default function CheckoutPage() {
   const [locStatus,     setLocStatus]     = useState<'idle'|'detecting'|'done'|'denied'>('idle')
   const [deliveryLat,   setDeliveryLat]   = useState<number|null>(null)
   const [deliveryLng,   setDeliveryLng]   = useState<number|null>(null)
-
   useEffect(() => {
     cart._hydrate?.()
     setMounted(true)

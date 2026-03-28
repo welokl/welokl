@@ -12,6 +12,7 @@ import { useCustomerOrderAlerts } from '@/hooks/useOrderAlerts'
 import ThemeToggle from '@/components/ThemeToggle'
 import { PhoneGate } from '@/components/PhoneGate'
 import InAppToast from '@/components/InAppToast'
+import BottomNav from '@/components/BottomNav'
 
 interface Shop {
   id: string; name: string; description: string | null; category_name: string
@@ -736,23 +737,7 @@ export default function CustomerHome() {
         <svg viewBox="0 0 24 24" fill="none" style={{ width:15, height:15, flexShrink:0 }}><path d="M9 18l6-6-6-6" stroke="var(--text-muted)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
       </Link>
 
-      {/* ── BOTTOM NAV ────────────────────────────────────────────── */}
-      <div style={{ position:'fixed', bottom:0, left:0, right:0, background:'var(--card-white)', borderTop:'1px solid var(--divider)', paddingBottom:'env(safe-area-inset-bottom,0)', zIndex:50 }}>
-        <div style={{ display:'flex', maxWidth:480, margin:'0 auto' }}>
-          {[
-            { label:'Home',   href:'/dashboard/customer', on:true,  icon: <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/> },
-            { label:'Search', href:'/search',              on:false, icon: <><circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="2"/><path d="m21 21-4.35-4.35" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></> },
-            { label:'Shops',  href:'/stores',              on:false, icon: <><path d="M3 3h18v4H3zM5 7v11a2 2 0 002 2h10a2 2 0 002-2V7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><path d="M10 12h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></> },
-            { label:'Orders', href:'/orders/history',      on:false, icon: <><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><rect x="9" y="3" width="6" height="4" rx="2" stroke="currentColor" strokeWidth="2"/></> },
-            { label:'Account',href:'/profile',             on:false, icon: <><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><circle cx="12" cy="7" r="4" stroke="currentColor" strokeWidth="2"/></> },
-          ].map(item => (
-            <Link key={item.label} href={item.href} className={`nav-item${item.on ? ' on' : ''}`}>
-              <svg viewBox="0 0 24 24" fill="none">{item.icon}</svg>
-              <span style={{ fontSize:10, fontWeight:700 }}>{item.label}</span>
-            </Link>
-          ))}
-        </div>
-      </div>
+      <BottomNav active="home" />
     </div>
     </>
   )

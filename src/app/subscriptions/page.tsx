@@ -3,6 +3,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
+import BottomNav from '@/components/BottomNav'
 
 interface Subscription {
   id: string
@@ -93,7 +94,7 @@ export default function CustomerSubscriptions() {
   )
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--page-bg)', fontFamily: "'Plus Jakarta Sans', sans-serif", paddingBottom: 40 }}>
+    <div style={{ minHeight: '100vh', background: 'var(--page-bg)', fontFamily: "'Plus Jakarta Sans', sans-serif", paddingBottom: 80 }}>
 
       {/* Header */}
       <div style={{ position: 'sticky', top: 0, zIndex: 40, background: 'var(--card-white)', borderBottom: '1px solid var(--divider)' }}>
@@ -153,6 +154,7 @@ export default function CustomerSubscriptions() {
           </>
         )}
       </div>
+      <BottomNav active="account" />
     </div>
   )
 }

@@ -48,7 +48,6 @@ export async function DELETE(req: NextRequest) {
     await admin.from('shop_activity_log').delete().in('order_id', orderIds)
     await admin.from('order_status_log').delete().in('order_id', orderIds)
     await admin.from('order_items').delete().in('order_id', orderIds)
-    await admin.from('order_ratings').delete().in('order_id', orderIds)
     await admin.from('reviews').delete().in('order_id', orderIds)
     await admin.from('transactions').delete().in('order_id', orderIds)
     await admin.from('wallet_transactions').delete().in('order_id', orderIds)
@@ -56,7 +55,6 @@ export async function DELETE(req: NextRequest) {
   }
   // Delete all shop-dependent records
   await admin.from('reviews').delete().eq('shop_id', shopId)
-  await admin.from('order_ratings').delete().eq('shop_id', shopId)
   await admin.from('vendor_boost_metrics').delete().eq('shop_id', shopId)
   await admin.from('vendor_boosts').delete().eq('shop_id', shopId)
   await admin.from('customer_subscriptions').delete().eq('shop_id', shopId)

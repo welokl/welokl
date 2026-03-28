@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { computeIsOpen } from '@/lib/shopHours'
 import { useCart } from '@/store/cart'
+import BottomNav from '@/components/BottomNav'
 
 interface Product {
   id: string; name: string; price: number; original_price: number | null
@@ -72,7 +73,7 @@ export default function SearchPage() {
       if (!products?.length) { setResults([]); return }
 
       // ── STEP 2: get shop details for these products ─────────────
-      const shopIds = [...new Set(products.map(p => p.shop_id).filter(Boolean))]
+      const shopIds = Array.from(new Set(products.map(p => p.shop_id).filter(Boolean)))
 
       const { data: shops, error: shopErr } = await sb
         .from('shops')
@@ -336,6 +337,7 @@ export default function SearchPage() {
           </Link>
         </div>
       )}
+      <BottomNav active="search" />
     </div>
   )
 }

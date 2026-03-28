@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useCart } from '@/store/cart'
 import { createClient } from '@/lib/supabase/client'
+import BottomNav from '@/components/BottomNav'
 
 export default function CartPage() {
   const router  = useRouter()
@@ -165,6 +166,7 @@ export default function CartPage() {
           </Link>
         </div>
       </div>
+      <BottomNav active="shops" />
     </div>
   )
 }

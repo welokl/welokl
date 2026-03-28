@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import BottomNav from '@/components/BottomNav'
 
 interface Wallet {
   id: string; balance: number; total_earned: number; total_spent: number
@@ -147,6 +148,7 @@ export default function WalletPage() {
           </div>
         )}
       </div>
+      <BottomNav active="account" />
     </div>
   )
 }

@@ -31,6 +31,13 @@ export default function DeliveryDashboard() {
   const mapRef = useRef<HTMLDivElement>(null)
   const leafletRef = useRef<any>(null)
   const riderMarkerRef = useRef<any>(null)
+  // Batch delivery mode
+  const batchModeRef = useRef(false)
+  const [batchMode, setBatchModeState] = useState(false)
+  const [batchOrders, setBatchOrders] = useState<any[]>([])
+  const [expandedOrder, setExpandedOrder] = useState<string | null>(null)
+  const MAX_BATCH = 3
+  function setBatchMode(val: boolean) { batchModeRef.current = val; setBatchModeState(val) }
   const supabase = createClient()
 
   const notify = useCallback((text: string, type: 'success' | 'error' = 'success') => {
@@ -70,31 +77,50 @@ export default function DeliveryDashboard() {
     setWallet(walletData)
 
     if (partnerData) {
-      // Find active assigned order (joined with shops, not businesses)
-      const { data: activeOrder } = await supabase
+      const activeOrdersQuery = supabase
         .from('orders')
         .select('*, shop:shops(name, address, phone, latitude, longitude), customer:users!customer_id(name, phone)')
         .eq('delivery_partner_id', user.id)
-        .in('status', ['accepted', 'preparing', 'ready', 'picked_up'])  // includes preparing — pre-assigned rider sees order early
-        .maybeSingle()
+        .in('status', ['accepted', 'preparing', 'ready', 'picked_up'])
 
-      setAssignedOrder(activeOrder)
-
-      // Fetch available orders — show 'preparing' AND 'ready' with no rider assigned
-      // so all nearby riders see the request as soon as the shop starts preparing
-      if (partnerData.is_online && !activeOrder) {
-        const { data: readyOrders } = await supabase
-          .from('orders')
-          .select('*, shop:shops(name, address, phone, latitude, longitude), customer:users!customer_id(name, phone)')
-          .in('status', ['preparing', 'ready'])
-          .is('delivery_partner_id', null)
-          .eq('type', 'delivery')
-          .order('created_at', { ascending: false })
-          .limit(10)
-
-        setAvailableOrders(readyOrders ?? [])
+      if (batchModeRef.current) {
+        // Batch mode: fetch ALL active orders for this rider
+        const { data: activeOrders } = await activeOrdersQuery.order('created_at', { ascending: true })
+        setBatchOrders(activeOrders ?? [])
+        setAssignedOrder(null)
+        // Show available orders if under max batch size
+        if (partnerData.is_online && (activeOrders?.length ?? 0) < MAX_BATCH) {
+          const { data: readyOrders } = await supabase
+            .from('orders')
+            .select('*, shop:shops(name, address, phone, latitude, longitude), customer:users!customer_id(name, phone)')
+            .in('status', ['preparing', 'ready'])
+            .is('delivery_partner_id', null)
+            .eq('type', 'delivery')
+            .order('created_at', { ascending: false })
+            .limit(10)
+          const batchIds = new Set((activeOrders ?? []).map((o: any) => o.id))
+          setAvailableOrders((readyOrders ?? []).filter((o: any) => !batchIds.has(o.id)))
+        } else {
+          setAvailableOrders([])
+        }
       } else {
-        setAvailableOrders([])
+        // Individual mode: one order at a time
+        const { data: activeOrder } = await activeOrdersQuery.maybeSingle()
+        setAssignedOrder(activeOrder)
+        setBatchOrders([])
+        if (partnerData.is_online && !activeOrder) {
+          const { data: readyOrders } = await supabase
+            .from('orders')
+            .select('*, shop:shops(name, address, phone, latitude, longitude), customer:users!customer_id(name, phone)')
+            .in('status', ['preparing', 'ready'])
+            .is('delivery_partner_id', null)
+            .eq('type', 'delivery')
+            .order('created_at', { ascending: false })
+            .limit(10)
+          setAvailableOrders(readyOrders ?? [])
+        } else {
+          setAvailableOrders([])
+        }
       }
 
       // Today's earnings
@@ -334,8 +360,12 @@ export default function DeliveryDashboard() {
     loadData()
   }
 
-  const updateOrderStatus = async (status: 'picked_up' | 'delivered') => {
-    if (!assignedOrder || !partner) return
+  const updateOrderStatus = async (orderId: string, status: 'picked_up' | 'delivered') => {
+    if (!partner) return
+    const order = batchModeRef.current
+      ? batchOrders.find(o => o.id === orderId)
+      : assignedOrder
+    if (!order) return
 
     const { error } = await supabase
       .from('orders')
@@ -345,11 +375,10 @@ export default function DeliveryDashboard() {
           ? { delivered_at: new Date().toISOString() }
           : { picked_up_at: new Date().toISOString() }),
       })
-      .eq('id', assignedOrder.id)
+      .eq('id', orderId)
 
     if (error) { notify('Failed to update', 'error'); return }
 
-    // Send notification
     fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-notification`, {
       method: 'POST',
       headers: {
@@ -358,9 +387,9 @@ export default function DeliveryDashboard() {
       },
       body: JSON.stringify({
         type: status === 'delivered' ? 'order_delivered' : 'order_picked_up',
-        order_id: assignedOrder.id,
-        shop_id: assignedOrder.shop_id,
-        customer_id: assignedOrder.customer_id,
+        order_id: orderId,
+        shop_id: order.shop_id,
+        customer_id: order.customer_id,
       }),
     }).catch(() => {})
 
@@ -368,9 +397,9 @@ export default function DeliveryDashboard() {
       await fetch('/api/orders/complete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId: assignedOrder.id }),
+        body: JSON.stringify({ orderId }),
       })
-      notify(`Delivery complete! Earnings added to wallet.`)
+      notify('Delivery complete! Earnings added to wallet.')
     }
 
     loadData()
@@ -506,6 +535,43 @@ export default function DeliveryDashboard() {
           </div>
         </div>
 
+        {/* Delivery mode toggle — only shown when online */}
+        {partner?.is_online && (
+          <div style={{ background: 'var(--card-white, #fff)', borderRadius: 20, padding: '14px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+            <div>
+              <p style={{ fontWeight: 800, fontSize: 14, color: 'var(--text-primary, #111)', marginBottom: 2 }}>
+                {batchMode ? 'Batch mode' : 'Individual mode'}
+              </p>
+              <p style={{ fontSize: 12, color: 'var(--text-muted, #6b7280)' }}>
+                {batchMode ? `Accept up to ${MAX_BATCH} orders at once` : 'One order at a time'}
+              </p>
+            </div>
+            <div style={{ display: 'flex', background: '#f3f4f6', borderRadius: 12, padding: 3, gap: 3 }}>
+              {(['Individual', 'Batch'] as const).map(mode => {
+                const active = (mode === 'Batch') === batchMode
+                return (
+                  <button key={mode}
+                    onClick={() => {
+                      const newVal = mode === 'Batch'
+                      setBatchMode(newVal)
+                      // reset expanded
+                      setExpandedOrder(null)
+                    }}
+                    style={{
+                      padding: '7px 14px', borderRadius: 10, border: 'none', cursor: 'pointer',
+                      fontWeight: 700, fontSize: 12, fontFamily: 'inherit',
+                      background: active ? '#FF3008' : 'transparent',
+                      color: active ? '#fff' : '#6b7280',
+                      transition: 'all .2s',
+                    }}>
+                    {mode}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Stats */}
         <div className="grid grid-cols-3 gap-3">
           <div className="card p-4 text-center">
@@ -538,8 +604,204 @@ export default function DeliveryDashboard() {
           </div>
         </Link>
 
+        {/* ─── BATCH MODE UI ─── */}
+        {batchMode && partner?.is_online && (
+          <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+
+            {/* Batch summary bar */}
+            {batchOrders.length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, padding: '0 4px' }}>
+                <p style={{ fontWeight: 900, fontSize: 15, color: 'var(--text-primary, #111)' }}>
+                  Active batch ({batchOrders.length}/{MAX_BATCH})
+                </p>
+                <span style={{ fontSize: 12, fontWeight: 700, color: '#16a34a', background: 'rgba(22,163,74,.1)', padding: '4px 12px', borderRadius: 999 }}>
+                  ₹{batchOrders.length * partnerPayout} total earn
+                </span>
+              </div>
+            )}
+
+            {/* Active batch order cards */}
+            {batchOrders.map(order => {
+              const shopLat  = order.shop?.latitude  as number | null
+              const shopLng  = order.shop?.longitude as number | null
+              const destLat  = order.delivery_lat    as number | null
+              const destLng  = order.delivery_lng    as number | null
+              const destAddr = order.delivery_address as string | null
+              const isExpanded = expandedOrder === order.id
+              const isPickup = order.status !== 'picked_up'
+              const navLat = isPickup ? shopLat : destLat
+              const navLng = isPickup ? shopLng : destLng
+              const mapsUrl = navLat && navLng
+                ? `https://www.google.com/maps/dir/?api=1&destination=${navLat},${navLng}&travelmode=driving`
+                : !isPickup && destAddr
+                  ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destAddr)}&travelmode=driving`
+                  : null
+
+              const statusColors: Record<string,string> = {
+                preparing: '#d97706', ready: '#0891b2', picked_up: '#16a34a', accepted: '#7c3aed',
+              }
+              const statusLabels: Record<string,string> = {
+                preparing: 'Preparing', ready: 'Ready', picked_up: 'Picked up', accepted: 'Accepted',
+              }
+              const sColor = statusColors[order.status] ?? '#888'
+
+              return (
+                <div key={order.id} style={{ background: '#fff', borderRadius: 20, marginBottom: 10, border: `1.5px solid ${sColor}30`, overflow: 'hidden', boxShadow: '0 2px 12px rgba(0,0,0,.06)' }}>
+                  {/* Card header — always visible, tap to expand */}
+                  <button
+                    onClick={() => setExpandedOrder(isExpanded ? null : order.id)}
+                    style={{ width: '100%', background: 'none', border: 'none', padding: '14px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left', fontFamily: 'inherit' }}>
+                    <div style={{ width: 40, height: 40, borderRadius: 12, background: `${sColor}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 18 }}>
+                      {order.status === 'picked_up' ? '🛵' : '📦'}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ fontWeight: 800, fontSize: 14, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{order.shop?.name || 'Shop'}</p>
+                      <p style={{ fontSize: 12, color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {order.status === 'picked_up' ? `→ ${order.customer?.name || destAddr || 'Customer'}` : order.shop?.address || ''}
+                      </p>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
+                      <span style={{ fontSize: 11, fontWeight: 800, padding: '3px 10px', borderRadius: 999, background: `${sColor}15`, color: sColor }}>
+                        {statusLabels[order.status] ?? order.status}
+                      </span>
+                      <span style={{ fontSize: 12, color: '#9ca3af', transition: 'transform .2s', display: 'inline-block', transform: isExpanded ? 'rotate(180deg)' : 'none' }}>▼</span>
+                    </div>
+                  </button>
+
+                  {/* Expanded details */}
+                  {isExpanded && (
+                    <div style={{ padding: '0 16px 16px', borderTop: '1px solid #f3f4f6' }}>
+                      {/* Pickup info */}
+                      <div style={{ display: 'flex', gap: 10, marginTop: 14, marginBottom: 10 }}>
+                        <div style={{ width: 32, height: 32, borderRadius: 10, background: 'rgba(255,48,8,.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <Package size={15} style={{ color: '#FF3008' }} />
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <p style={{ fontSize: 11, fontWeight: 800, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Pickup</p>
+                          <p style={{ fontSize: 13, fontWeight: 700, color: '#111' }}>{order.shop?.name}</p>
+                          <p style={{ fontSize: 12, color: '#6b7280' }}>{order.shop?.address}</p>
+                        </div>
+                        {order.shop?.phone && (
+                          <a href={`tel:${order.shop.phone}`} style={{ width: 32, height: 32, borderRadius: 10, background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, textDecoration: 'none' }}>
+                            <Phone size={14} style={{ color: '#374151' }} />
+                          </a>
+                        )}
+                      </div>
+
+                      {/* Drop info */}
+                      <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
+                        <div style={{ width: 32, height: 32, borderRadius: 10, background: 'rgba(22,163,74,.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <MapPin size={15} style={{ color: '#16a34a' }} />
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <p style={{ fontSize: 11, fontWeight: 800, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Drop</p>
+                          <p style={{ fontSize: 13, fontWeight: 700, color: '#111' }}>{order.customer?.name || 'Customer'}</p>
+                          <p style={{ fontSize: 12, color: '#6b7280' }}>{destAddr || 'No address'}</p>
+                        </div>
+                        {order.customer?.phone && (
+                          <a href={`tel:${order.customer.phone}`} style={{ width: 32, height: 32, borderRadius: 10, background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, textDecoration: 'none' }}>
+                            <Phone size={14} style={{ color: '#374151' }} />
+                          </a>
+                        )}
+                      </div>
+
+                      {/* Pickup OTP */}
+                      {order.pickup_code && order.status === 'ready' && (
+                        <div style={{ background: '#FFF7ED', border: '2px dashed #FF3008', borderRadius: 14, padding: '12px 16px', marginBottom: 12, textAlign: 'center' }}>
+                          <p style={{ fontSize: 11, fontWeight: 700, color: '#92400E', textTransform: 'uppercase', marginBottom: 4 }}>Show to shop</p>
+                          <p style={{ fontSize: 32, fontWeight: 900, color: '#FF3008', letterSpacing: '0.3em' }}>{order.pickup_code}</p>
+                        </div>
+                      )}
+
+                      {/* Earnings pill */}
+                      <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: '#1d4ed8', background: 'rgba(37,99,235,.08)', border: '1px solid rgba(37,99,235,.2)', borderRadius: 8, padding: '3px 10px' }}>
+                          💵 Collect ₹{order.total_amount}
+                        </span>
+                        <span style={{ fontSize: 11, fontWeight: 800, color: '#15803d', background: 'rgba(22,163,74,.1)', border: '1px solid rgba(22,163,74,.25)', borderRadius: 8, padding: '3px 10px' }}>
+                          🏍️ Earn ₹{partnerPayout}
+                        </span>
+                      </div>
+
+                      {/* Action buttons */}
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        {mapsUrl && (
+                          <a href={mapsUrl} target="_blank" rel="noopener noreferrer"
+                            style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '11px 14px', borderRadius: 13, background: isPickup ? '#FF3008' : '#16a34a', color: '#fff', fontWeight: 800, fontSize: 13, textDecoration: 'none' }}>
+                            <Navigation size={15} />{isPickup ? 'Navigate to pickup' : 'Navigate to drop'}
+                          </a>
+                        )}
+                        {order.status === 'picked_up' && (
+                          <button onClick={() => updateOrderStatus(order.id, 'delivered')}
+                            style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '11px 14px', borderRadius: 13, background: '#16a34a', color: '#fff', fontWeight: 800, fontSize: 13, border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+                            <DollarSign size={15} /> Mark delivered
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+
+            {/* Available orders to add to batch */}
+            {batchOrders.length < MAX_BATCH && availableOrders.length > 0 && (
+              <div>
+                <p style={{ fontWeight: 800, fontSize: 14, color: '#6b7280', marginBottom: 8, padding: '0 4px' }}>
+                  {batchOrders.length === 0 ? `Available orders` : `Add to batch (${MAX_BATCH - batchOrders.length} slots left)`}
+                </p>
+                {availableOrders.slice(0, MAX_BATCH - batchOrders.length).map(order => (
+                  <div key={order.id} style={{ background: '#fff', borderRadius: 18, padding: '14px 16px', marginBottom: 10, border: '1px solid #e5e7eb', boxShadow: '0 1px 4px rgba(0,0,0,.05)' }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 8 }}>
+                      <div style={{ flex: 1, minWidth: 0, marginRight: 12 }}>
+                        <p style={{ fontWeight: 800, fontSize: 14, color: '#111' }}>{order.shop?.name || 'Shop'}</p>
+                        <p style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>{order.shop?.address || ''}</p>
+                      </div>
+                      <span style={{ fontSize: 11, color: '#6b7280', background: '#f3f4f6', borderRadius: 8, padding: '3px 8px', flexShrink: 0 }}>
+                        {new Date(order.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+                      <MapPin size={13} style={{ color: '#FF3008', flexShrink: 0 }} />
+                      <p style={{ fontSize: 12, color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{order.delivery_address || 'No address'}</p>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: '#1d4ed8', background: 'rgba(37,99,235,.08)', border: '1px solid rgba(37,99,235,.2)', borderRadius: 8, padding: '3px 9px' }}>💵 ₹{order.total_amount}</span>
+                        <span style={{ fontSize: 11, fontWeight: 800, color: '#15803d', background: 'rgba(22,163,74,.1)', border: '1px solid rgba(22,163,74,.25)', borderRadius: 8, padding: '3px 9px' }}>🏍️ +₹{partnerPayout}</span>
+                      </div>
+                      <button
+                        onClick={() => acceptOrder(order.id)}
+                        disabled={accepting === order.id}
+                        style={{ padding: '9px 20px', borderRadius: 12, border: 'none', background: accepting === order.id ? '#d1d5db' : '#FF3008', color: '#fff', fontWeight: 800, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', boxShadow: accepting === order.id ? 'none' : '0 3px 12px rgba(255,48,8,.3)', transition: 'all .2s' }}>
+                        {accepting === order.id ? '...' : 'Add +'}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Batch full message */}
+            {batchOrders.length >= MAX_BATCH && (
+              <div style={{ background: 'rgba(22,163,74,.08)', border: '1px solid rgba(22,163,74,.2)', borderRadius: 16, padding: '12px 16px', textAlign: 'center' }}>
+                <p style={{ fontWeight: 800, fontSize: 13, color: '#16a34a' }}>Batch full — complete a delivery to accept more</p>
+              </div>
+            )}
+
+            {/* Empty batch waiting */}
+            {batchOrders.length === 0 && availableOrders.length === 0 && (
+              <div style={{ background: '#fff', borderRadius: 20, padding: '32px 20px', textAlign: 'center' }}>
+                <div style={{ fontSize: 40, marginBottom: 12 }}>🛵</div>
+                <p style={{ fontWeight: 700, fontSize: 14, color: '#374151' }}>Waiting for orders…</p>
+                <p style={{ fontSize: 12, color: '#9ca3af', marginTop: 4 }}>Batch mode: you can accept up to {MAX_BATCH} at once</p>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Active assigned order */}
-        {assignedOrder ? (
+        {!batchMode && assignedOrder ? (
           <div className="card p-6 border-2 border-brand-100">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-display font-bold text-lg">Active delivery</h3>
@@ -761,15 +1023,15 @@ export default function DeliveryDashboard() {
             <div className="flex gap-3">
               {/* Ready status: rider waits for shop to verify OTP — no button needed */}
               {assignedOrder.status === 'picked_up' && (
-                <button onClick={() => updateOrderStatus('delivered')}
+                <button onClick={() => updateOrderStatus(assignedOrder.id, 'delivered')}
                   className="flex-1 flex items-center justify-center gap-2 bg-green-500 hover:bg-green-600 text-white font-semibold py-3 rounded-2xl transition-colors">
                   <DollarSign size={18} /> Mark delivered
                 </button>
               )}
             </div>
           </div>
-        ) : partner?.is_online && availableOrders.length > 0 ? (
-          /* Available orders for pickup */
+        ) : !batchMode && partner?.is_online && availableOrders.length > 0 ? (
+          /* Available orders for pickup — individual mode */
           <div className="space-y-3">
             <h3 className="font-display font-bold text-lg text-surface-950 px-1">
               Available orders ({availableOrders.length})
@@ -824,7 +1086,7 @@ export default function DeliveryDashboard() {
             ))}
           </div>
         ) : (
-          partner?.is_online && (
+          !batchMode && partner?.is_online && (
             <div className="card p-8 text-center">
               <div className="text-5xl mb-3">
                 <svg width="56" height="56" viewBox="0 0 100 100" style={{ margin: '0 auto' }}>
