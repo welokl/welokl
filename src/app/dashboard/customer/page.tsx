@@ -113,6 +113,7 @@ export default function CustomerHome() {
   const [activeCategory, setActiveCat]    = useState<string | null>(null)
   const [activeCats, setActiveCats]       = useState<{name:string; q:string}[]>([])
   const [showPhoneGate, setShowPhoneGate] = useState(false)
+  const [staffShop, setStaffShop]         = useState<{name:string; role:string} | null>(null)
 
   useCustomerOrderAlerts(user?.id)
 
@@ -146,6 +147,20 @@ export default function CustomerHome() {
     if (!profile.phone) setShowPhoneGate(true)
     setUser(profile as any)
     setOrders(orderData || [])
+
+    // Check if this customer is also a shop operator
+    const sb2 = createClient()
+    const { data: staffRow } = await sb2
+      .from('shop_staff')
+      .select('role, shop:shops(name)')
+      .eq('user_id', u.id)
+      .eq('is_active', true)
+      .maybeSingle()
+    if (staffRow) {
+      const shopName = (staffRow.shop as any)?.name || 'Shop'
+      setStaffShop({ name: shopName, role: staffRow.role })
+    }
+
     setLoading(false)
   }, [])
 
@@ -514,6 +529,20 @@ export default function CustomerHome() {
           <svg viewBox="0 0 24 24" fill="none" style={{ width:17, height:17, flexShrink:0 }}>
             <path d="M9 18l6-6-6-6" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
+        </Link>
+      )}
+
+      {/* ── STAFF BANNER — shown when customer is also a shop operator ── */}
+      {staffShop && (
+        <Link href="/dashboard/business" style={{ display:'flex', alignItems:'center', gap:12, margin:'10px 12px 0', background:'var(--card-white)', borderRadius:16, padding:'14px 16px', textDecoration:'none', border:'1.5px solid rgba(124,58,237,.25)', boxShadow:'0 2px 12px rgba(124,58,237,.1)' }}>
+          <div style={{ width:40, height:40, borderRadius:12, background:'rgba(124,58,237,.1)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+            <svg viewBox="0 0 24 24" fill="none" width={20} height={20}><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" stroke="#7c3aed" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><polyline points="9 22 9 12 15 12 15 22" stroke="#7c3aed" strokeWidth="2" strokeLinecap="round"/></svg>
+          </div>
+          <div style={{ flex:1 }}>
+            <p style={{ fontSize:13, fontWeight:800, color:'var(--text-primary)', marginBottom:2 }}>Manage {staffShop.name}</p>
+            <p style={{ fontSize:11, color:'#7c3aed', fontWeight:700, textTransform:'capitalize' }}>{staffShop.role} access · Tap to open dashboard</p>
+          </div>
+          <svg viewBox="0 0 24 24" fill="none" width={16} height={16}><path d="M9 18l6-6-6-6" stroke="#7c3aed" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
         </Link>
       )}
 

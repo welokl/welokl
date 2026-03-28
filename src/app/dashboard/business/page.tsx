@@ -38,13 +38,29 @@ export default function BusinessDashboard() {
     const { data: { user: authUser } } = await supabase.auth.getUser()
     if (!authUser) { window.location.href = '/auth/login'; return }
 
-    const role = authUser.user_metadata?.role || ''
-    if (role === 'customer')  { window.location.replace('/dashboard/customer'); return }
-    if (role === 'delivery')  { window.location.replace('/dashboard/delivery'); return }
-    if (role === 'admin')     { window.location.replace('/dashboard/admin');    return }
     const { data: profile } = await supabase.from('users').select('*').eq('id', authUser.id).single()
+    const role = profile?.role || authUser.user_metadata?.role || ''
+
+    // Delivery and admin always redirect — no exceptions
+    if (role === 'delivery') { window.location.replace('/dashboard/delivery'); return }
+    if (role === 'admin')    { window.location.replace('/dashboard/admin');    return }
+
+    // For customer role: check shop_staff BEFORE redirecting
+    // They may be an operator for a Welokl-owned shop
+    if (role === 'customer') {
+      const { data: staffRow } = await supabase
+        .from('shop_staff')
+        .select('shop_id, role')
+        .eq('user_id', authUser.id)
+        .eq('is_active', true)
+        .maybeSingle()
+      if (!staffRow) { window.location.replace('/dashboard/customer'); return }
+      // They are staff — fall through to load their assigned shop below
+    }
+
     if (!profile?.phone) setShowPhoneGate(true)
     setUser(profile)
+
     // Try owned shop first, then fall back to staff assignment
     let shopData: any = null
     const { data: ownedShop } = await supabase
@@ -57,7 +73,7 @@ export default function BusinessDashboard() {
     if (ownedShop) {
       shopData = ownedShop
     } else {
-      // Check if this user is a staff member for any shop
+      // Check shop_staff assignment
       const { data: staffRow } = await supabase
         .from('shop_staff')
         .select('shop_id, role')
@@ -356,7 +372,14 @@ export default function BusinessDashboard() {
         <div className="max-w-4xl mx-auto">
           <div className="flex items-start justify-between mb-3 gap-2 flex-wrap">
             <div style={{ minWidth: 0 }}>
-              <p style={{fontSize:11,color:"var(--text-3)"}}>Business Dashboard</p>
+              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                <p style={{fontSize:11,color:"var(--text-3)"}}>Business Dashboard</p>
+                {(shop as any)?._staff_role && (
+                  <span style={{ fontSize:10, fontWeight:800, padding:'2px 8px', borderRadius:999, background:'rgba(124,58,237,.12)', color:'#7c3aed', textTransform:'uppercase', letterSpacing:'0.05em' }}>
+                    {(shop as any)._staff_role}
+                  </span>
+                )}
+              </div>
               <h1 className="font-bold text-lg">{shop?.name || 'My Shop'}</h1>
               <p style={{fontSize:11,color:"var(--text-3)"}}>{shop?.area}, {shop?.city}</p>
             </div>
