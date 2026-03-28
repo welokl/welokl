@@ -447,181 +447,208 @@ export default function CustomerHome() {
   // Remaining shops after fast-delivery (no duplication in vertical list)
   const remainingShops = openShops.filter(s => !fastDeliveryShops.find(f => f.id === s.id))
 
+  const mealLabel = (() => { const h = new Date().getHours(); return h < 11 ? 'Breakfast' : h < 16 ? 'Lunch picks' : 'Dinner picks' })()
+
   return (
     <>
     <InAppToast />
     {showPhoneGate && user?.id && <PhoneGate userId={user.id} onDone={() => setShowPhoneGate(false)} />}
-    <div style={{ minHeight:'100vh', background:'var(--page-bg)', fontFamily:"'Plus Jakarta Sans',sans-serif", paddingBottom:80 }}>
+    <div style={{ minHeight:'100vh', background:'var(--page-bg)', fontFamily:"'Plus Jakarta Sans',sans-serif", paddingBottom:88 }}>
       <style>{`
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
-        @keyframes fadeUp { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} }
         @keyframes shimmer { 0%{background-position:-400px 0} 100%{background-position:400px 0} }
         .sk { background:linear-gradient(90deg,var(--bg-3) 25%,var(--bg-2) 50%,var(--bg-3) 75%); background-size:400px 100%; animation:shimmer 1.4s infinite; border-radius:12px; }
-        .shop-card { display:flex; align-items:center; background:var(--card-white); border-radius:20px; overflow:hidden; text-decoration:none; transition:transform .15s,box-shadow .15s; box-shadow:0 2px 8px rgba(0,0,0,.06); }
-        .shop-card:active { transform:scale(.98); }
-        .prod-card { background:var(--card-white); border-radius:18px; overflow:hidden; text-decoration:none; display:block; box-shadow:0 2px 8px rgba(0,0,0,.05); }
-        .prod-card:active { transform:scale(.97); }
-        .nav-item { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; flex:1; padding:8px 4px; text-decoration:none; color:var(--text-muted); transition:color .15s; }
-        .nav-item.on { color:#FF3008; }
-        .nav-item svg { width:22px; height:22px; }
+        .qa:active { transform:scale(.95); opacity:.9; }
+        .stap:active { opacity:.8; }
         ::-webkit-scrollbar { display:none; }
       `}</style>
 
-      {/* ── 1. STICKY HEADER ──────────────────────────────────────── */}
-      <div style={{ position:'sticky', top:0, zIndex:100, background:'var(--card-white)', boxShadow:'0 1px 0 rgba(0,0,0,.08)' }}>
+      {/* ═══════════════════════════════════════════════
+          1. STICKY HEADER — location + greeting + search
+          ═══════════════════════════════════════════════ */}
+      <div style={{ position:'sticky', top:0, zIndex:100, background:'var(--card-white)', boxShadow:'0 1px 0 rgba(0,0,0,.07)' }}>
         <div style={{ padding:'12px 16px 0', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-          <button onClick={detectLocation} style={{ display:'flex', alignItems:'center', gap:6, background:'none', border:'none', cursor:'pointer', padding:0, fontFamily:'inherit' }}>
-            <svg viewBox="0 0 24 24" fill="none" style={{ width:18, height:18, flexShrink:0 }}>
+          <button onClick={detectLocation} style={{ display:'flex', alignItems:'center', gap:6, background:'none', border:'none', cursor:'pointer', padding:0, fontFamily:'inherit', minHeight:44 }}>
+            <svg viewBox="0 0 24 24" fill="none" style={{ width:16, height:16, flexShrink:0 }}>
               <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="#FF3008"/>
             </svg>
             <div style={{ textAlign:'left' }}>
-              <div style={{ fontSize:10, fontWeight:700, color:'var(--text-muted)', letterSpacing:'0.05em', lineHeight:1 }}>DELIVER TO</div>
+              <div style={{ fontSize:9, fontWeight:700, color:'var(--text-muted)', letterSpacing:'0.06em' }}>DELIVER TO</div>
               <div style={{ display:'flex', alignItems:'center', gap:3, marginTop:1 }}>
-                <span style={{ fontSize:15, fontWeight:900, color:'var(--text-primary)', letterSpacing:'-0.02em' }}>
+                <span style={{ fontSize:14, fontWeight:900, color:'var(--text-primary)', letterSpacing:'-0.02em' }}>
                   {locStatus === 'detecting' ? 'Detecting…' : areaName ? areaName.split(',')[0].trim() : 'Set location'}
                 </span>
-                <svg viewBox="0 0 24 24" fill="none" style={{ width:13, height:13 }}>
-                  <path d="M7 10l5 5 5-5" stroke="var(--text-primary)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
+                <svg viewBox="0 0 24 24" fill="none" style={{ width:12, height:12 }}><path d="M7 10l5 5 5-5" stroke="var(--text-primary)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
               </div>
             </div>
           </button>
           <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-            <Link href="/cart" style={{ position:'relative', width:38, height:38, borderRadius:12, background: cartCount > 0 ? '#FF3008' : 'var(--page-bg)', display:'flex', alignItems:'center', justifyContent:'center', textDecoration:'none' }}>
+            <Link href="/cart" style={{ position:'relative', width:40, height:40, borderRadius:12, background: cartCount > 0 ? '#FF3008' : 'var(--page-bg)', display:'flex', alignItems:'center', justifyContent:'center', textDecoration:'none' }}>
               <svg viewBox="0 0 24 24" fill="none" style={{ width:20, height:20 }}>
                 <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z" stroke={cartCount > 0 ? '#fff' : 'var(--text-secondary)'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                 <line x1="3" y1="6" x2="21" y2="6" stroke={cartCount > 0 ? '#fff' : 'var(--text-secondary)'} strokeWidth="2"/>
                 <path d="M16 10a4 4 0 01-8 0" stroke={cartCount > 0 ? '#fff' : 'var(--text-secondary)'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
-              {cartCount > 0 && (
-                <span style={{ position:'absolute', top:-5, right:-5, width:18, height:18, background:'var(--card-white)', border:'2px solid #FF3008', borderRadius:'50%', fontSize:9, fontWeight:900, color:'#FF3008', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                  {cartCount > 9 ? '9+' : cartCount}
-                </span>
-              )}
+              {cartCount > 0 && <span style={{ position:'absolute', top:-4, right:-4, width:16, height:16, background:'var(--card-white)', border:'2px solid #FF3008', borderRadius:'50%', fontSize:8, fontWeight:900, color:'#FF3008', display:'flex', alignItems:'center', justifyContent:'center' }}>{cartCount > 9 ? '9+' : cartCount}</span>}
             </Link>
             <ThemeToggle />
           </div>
         </div>
-        <div style={{ padding:'3px 16px 0' }}>
-          <p style={{ fontSize:13, fontWeight:600, color:'var(--text-muted)' }}>
-            {greeting}, <span style={{ color:'var(--text-primary)', fontWeight:800 }}>{user?.name?.split(' ')[0] || 'there'}</span>
-          </p>
-        </div>
-        <div style={{ padding:'9px 16px 12px' }}>
-          <Link href="/search" style={{ textDecoration:'none', display:'flex', alignItems:'center', gap:10, background:'var(--page-bg)', borderRadius:14, padding:'11px 14px' }}>
-            <svg viewBox="0 0 24 24" fill="none" style={{ width:17, height:17, flexShrink:0 }}>
+        {/* Search bar */}
+        <div style={{ padding:'8px 16px 12px' }}>
+          <Link href="/search" style={{ textDecoration:'none', display:'flex', alignItems:'center', gap:10, background:'var(--page-bg)', borderRadius:12, padding:'0 14px', height:44 }}>
+            <svg viewBox="0 0 24 24" fill="none" style={{ width:16, height:16, flexShrink:0 }}>
               <circle cx="11" cy="11" r="8" stroke="var(--text-muted)" strokeWidth="2"/>
               <path d="m21 21-4.35-4.35" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round"/>
             </svg>
-            <span style={{ fontSize:14, color:'var(--text-muted)', fontWeight:600 }}>Search products, shops, services…</span>
+            <span style={{ fontSize:14, color:'var(--text-muted)', fontWeight:500 }}>Search food, shops, services…</span>
           </Link>
         </div>
       </div>
 
-      {/* ── 2. ACTIVE ORDER — always-visible pill ─────────────────── */}
+      {/* ═══════════════════════════════════════════════
+          2. ORDER STATUS BANNER (conditional)
+          ═══════════════════════════════════════════════ */}
       {activeOrders.length > 0 && (
-        <Link href={`/orders/${activeOrders[0].id}`} style={{ display:'flex', alignItems:'center', gap:10, margin:'10px 12px 0', background:'#FF3008', borderRadius:16, padding:'12px 16px', textDecoration:'none', boxShadow:'0 4px 16px rgba(255,48,8,.3)' }}>
-          <span style={{ width:7, height:7, borderRadius:'50%', background:'#fff', flexShrink:0, animation:'pulse 1.5s infinite', display:'block' }} />
-          <div style={{ flex:1 }}>
-            <p style={{ fontSize:13, fontWeight:800, color:'#fff' }}>{(activeOrders[0] as any).shop?.name} · {ORDER_STATUS_LABELS[activeOrders[0].status as keyof typeof ORDER_STATUS_LABELS]}</p>
-            <p style={{ fontSize:11, color:'rgba(255,255,255,.75)' }}>Tap to track your order</p>
+        <Link href={`/orders/${activeOrders[0].id}`} style={{ display:'flex', alignItems:'center', gap:10, margin:'12px 16px 0', background:'#FF3008', borderRadius:16, padding:'14px 16px', textDecoration:'none', boxShadow:'0 6px 20px rgba(255,48,8,.28)', minHeight:60 }}>
+          <span style={{ width:8, height:8, borderRadius:'50%', background:'#fff', flexShrink:0, animation:'pulse 1.5s infinite', display:'block' }} />
+          <div style={{ flex:1, minWidth:0 }}>
+            <p style={{ fontSize:13, fontWeight:800, color:'#fff', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+              {(activeOrders[0] as any).shop?.name} · {ORDER_STATUS_LABELS[activeOrders[0].status as keyof typeof ORDER_STATUS_LABELS]}
+            </p>
+            <p style={{ fontSize:11, color:'rgba(255,255,255,.8)', marginTop:2 }}>Tap to track your order</p>
           </div>
-          <svg viewBox="0 0 24 24" fill="none" style={{ width:17, height:17, flexShrink:0 }}>
-            <path d="M9 18l6-6-6-6" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
+          <svg viewBox="0 0 24 24" fill="none" style={{ width:16, height:16, flexShrink:0 }}><path d="M9 18l6-6-6-6" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
         </Link>
       )}
 
-      {/* ── STAFF BANNER — shown when customer is also a shop operator ── */}
+      {/* Staff banner */}
       {staffShop && (
-        <Link href="/dashboard/business" style={{ display:'flex', alignItems:'center', gap:12, margin:'10px 12px 0', background:'var(--card-white)', borderRadius:16, padding:'14px 16px', textDecoration:'none', border:'1.5px solid rgba(124,58,237,.25)', boxShadow:'0 2px 12px rgba(124,58,237,.1)' }}>
-          <div style={{ width:40, height:40, borderRadius:12, background:'rgba(124,58,237,.1)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-            <svg viewBox="0 0 24 24" fill="none" width={20} height={20}><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" stroke="#7c3aed" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><polyline points="9 22 9 12 15 12 15 22" stroke="#7c3aed" strokeWidth="2" strokeLinecap="round"/></svg>
+        <Link href="/dashboard/business" style={{ display:'flex', alignItems:'center', gap:12, margin:'10px 16px 0', background:'var(--card-white)', borderRadius:16, padding:'14px 16px', textDecoration:'none', border:'1.5px solid rgba(124,58,237,.25)' }}>
+          <div style={{ width:38, height:38, borderRadius:11, background:'rgba(124,58,237,.1)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+            <svg viewBox="0 0 24 24" fill="none" width={18} height={18}><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" stroke="#7c3aed" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><polyline points="9 22 9 12 15 12 15 22" stroke="#7c3aed" strokeWidth="2" strokeLinecap="round"/></svg>
           </div>
           <div style={{ flex:1 }}>
-            <p style={{ fontSize:13, fontWeight:800, color:'var(--text-primary)', marginBottom:2 }}>Manage {staffShop.name}</p>
-            <p style={{ fontSize:11, color:'#7c3aed', fontWeight:700, textTransform:'capitalize' }}>{staffShop.role} access · Tap to open dashboard</p>
+            <p style={{ fontSize:13, fontWeight:800, color:'var(--text-primary)', marginBottom:1 }}>Manage {staffShop.name}</p>
+            <p style={{ fontSize:11, color:'#7c3aed', fontWeight:700, textTransform:'capitalize' }}>{staffShop.role} access</p>
           </div>
-          <svg viewBox="0 0 24 24" fill="none" width={16} height={16}><path d="M9 18l6-6-6-6" stroke="#7c3aed" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          <svg viewBox="0 0 24 24" fill="none" width={15} height={15}><path d="M9 18l6-6-6-6" stroke="#7c3aed" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
         </Link>
       )}
 
-      {/* ── 3. QUICK ACTIONS — reorder card + category tiles ─────── */}
-      {(() => {
-        // Use DB categories when available, fallback to hardcoded so categories always show
-        const displayCats = activeCats.length > 0
-          ? activeCats
-          : CATS.map(c => ({ name: c.label, q: c.q }))
-        const showReorder = !!lastDelivered && !activeOrders.length
-        if (!showReorder && !displayCats.length) return null
-        return (
-          <div style={{ margin:'16px 0 0' }}>
-            <p style={{ padding:'0 16px', fontSize:15, fontWeight:900, color:'var(--text-primary)', marginBottom:12 }}>Quick Actions</p>
-                {/* ── Reorder card ── */}
-              {showReorder && (
-                <div style={{ padding:'0 16px', marginBottom:12 }}>
-                  <button onClick={() => reorder(lastDelivered!)}
-                    style={{ width:'100%', background:'none', border:'none', padding:0, cursor:'pointer', textAlign:'left', fontFamily:'inherit' }}>
-                    <div style={{ height:80, borderRadius:20, overflow:'hidden', position:'relative', background:'#111', boxShadow:'0 4px 18px rgba(0,0,0,.25)' }}>
-                      {(lastDelivered as any).shop?.image_url && (
-                        <Image src={(lastDelivered as any).shop.image_url} alt="" fill sizes="100vw" className="object-cover" style={{ opacity:.45 }} />
-                      )}
-                      <div style={{ position:'absolute', inset:0, background:'linear-gradient(120deg, rgba(0,0,0,.75) 0%, rgba(0,0,0,.45) 100%)' }} />
-                      <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', gap:11, padding:'0 18px' }}>
-                        <div style={{ width:36, height:36, borderRadius:11, background:'rgba(255,255,255,.14)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                          <svg viewBox="0 0 24 24" fill="none" width={19} height={19}>
-                            <path d="M1 4v6h6M23 20v-6h-6" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-                            <path d="M20.49 9A9 9 0 005.64 5.64L1 10M23 14l-4.64 4.36A9 9 0 013.51 15" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-                          </svg>
-                        </div>
-                        <div style={{ minWidth:0 }}>
-                          <p style={{ fontSize:15, fontWeight:900, color:'#fff', marginBottom:3, letterSpacing:'-0.02em' }}>Reorder</p>
-                          <p style={{ fontSize:11, color:'rgba(255,255,255,.68)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                            {(lastDelivered as any).shop?.name || 'Last order'}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </button>
-                </div>
-              )}
+      {/* ═══════════════════════════════════════════════
+          3. QUICK ACTIONS — horizontal scroll cards
+          ═══════════════════════════════════════════════ */}
+      <div style={{ marginTop:20 }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 16px', marginBottom:12 }}>
+          <p style={{ fontSize:15, fontWeight:900, color:'var(--text-primary)' }}>
+            {greeting}, <span style={{ color:'var(--text-secondary)', fontWeight:600 }}>{user?.name?.split(' ')[0] || 'there'}</span>
+          </p>
+        </div>
+        <div style={{ display:'flex', gap:12, overflowX:'auto', paddingLeft:16, paddingRight:16, paddingBottom:4, scrollbarWidth:'none' }}>
 
-              {/* ── Category tiles — 4-column grid ── */}
-              <div style={{ display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap:'12px 8px', padding:'0 16px' }}>
-                {displayCats.map(cat => {
-                  const cfg = CATS.find(c => c.q === cat.q) || { color:'#FF3008', bg:'var(--red-light)' }
-                  const isActive = activeCategory === cat.q
-                  return (
-                    <button key={cat.q} onClick={() => setActiveCat(isActive ? null : cat.q)}
-                      style={{ background:'none', border:'none', padding:'0 2px', cursor:'pointer', textAlign:'center', fontFamily:'inherit', display:'flex', flexDirection:'column', alignItems:'center', gap:6 }}>
-                      <div style={{
-                        width:58, height:58, borderRadius:'50%',
-                        background: isActive ? cfg.color : `${cfg.color}14`,
-                        display:'flex', alignItems:'center', justifyContent:'center',
-                        boxShadow: isActive ? `0 4px 14px ${cfg.color}50` : 'none',
-                        transition:'all .15s',
-                      }}>
-                        <span style={{ color: isActive ? '#fff' : cfg.color, display:'flex', transform:'scale(0.72)', lineHeight:0 }}>
-                          {getCatIcon(cat.q)}
-                        </span>
-                      </div>
-                      <p style={{ fontSize:10, fontWeight:700, color: isActive ? cfg.color : 'var(--text-secondary)', lineHeight:1.2, margin:0, maxWidth:64, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{cat.name}</p>
-                    </button>
-                  )
-                })}
+          {/* Reorder — only if past delivered order exists */}
+          {lastDelivered && !activeOrders.length && (
+            <button onClick={() => reorder(lastDelivered)} className="qa"
+              style={{ flexShrink:0, width:132, height:90, borderRadius:16, border:'none', cursor:'pointer', fontFamily:'inherit', padding:'12px', overflow:'hidden', background:'linear-gradient(135deg,#FF3008 0%,#ff6b35 100%)', boxShadow:'0 6px 18px rgba(255,48,8,.28)', transition:'transform .15s', display:'flex', flexDirection:'column', justifyContent:'space-between', alignItems:'flex-start' }}>
+              <div style={{ width:32, height:32, borderRadius:10, background:'rgba(255,255,255,.22)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                <svg viewBox="0 0 24 24" fill="none" width={16} height={16}><path d="M1 4v6h6M23 20v-6h-6" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10M23 14l-4.64 4.36A9 9 0 013.51 15" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
               </div>
+              <div style={{ textAlign:'left' }}>
+                <p style={{ fontSize:13, fontWeight:900, color:'#fff', lineHeight:1.2 }}>Reorder</p>
+                <p style={{ fontSize:10, color:'rgba(255,255,255,.75)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:108 }}>{(lastDelivered as any).shop?.name || 'Last order'}</p>
+              </div>
+            </button>
+          )}
+
+          {/* My Orders */}
+          <Link href="/orders/history" className="qa"
+            style={{ flexShrink:0, width:132, height:90, borderRadius:16, background:'linear-gradient(135deg,#7c3aed 0%,#9f67fa 100%)', boxShadow:'0 6px 18px rgba(124,58,237,.22)', textDecoration:'none', padding:'12px', display:'flex', flexDirection:'column', justifyContent:'space-between', transition:'transform .15s' }}>
+            <div style={{ width:32, height:32, borderRadius:10, background:'rgba(255,255,255,.22)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+              <svg viewBox="0 0 24 24" fill="none" width={16} height={16}><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            </div>
+            <div>
+              <p style={{ fontSize:13, fontWeight:900, color:'#fff', lineHeight:1.2 }}>My Orders</p>
+              <p style={{ fontSize:10, color:'rgba(255,255,255,.75)' }}>Track & reorder</p>
+            </div>
+          </Link>
+
+          {/* Fast Delivery */}
+          <Link href="/stores" className="qa"
+            style={{ flexShrink:0, width:132, height:90, borderRadius:16, background:'linear-gradient(135deg,#d97706 0%,#fbbf24 100%)', boxShadow:'0 6px 18px rgba(217,119,6,.22)', textDecoration:'none', padding:'12px', display:'flex', flexDirection:'column', justifyContent:'space-between', transition:'transform .15s' }}>
+            <div style={{ width:32, height:32, borderRadius:10, background:'rgba(255,255,255,.22)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+              <svg viewBox="0 0 24 24" fill="none" width={16} height={16}><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            </div>
+            <div>
+              <p style={{ fontSize:13, fontWeight:900, color:'#fff', lineHeight:1.2 }}>Fast Delivery</p>
+              <p style={{ fontSize:10, color:'rgba(255,255,255,.75)' }}>Under 30 min</p>
+            </div>
+          </Link>
+
+          {/* Meal-time picks */}
+          <Link href="/search" className="qa"
+            style={{ flexShrink:0, width:132, height:90, borderRadius:16, background:'linear-gradient(135deg,#16a34a 0%,#22c55e 100%)', boxShadow:'0 6px 18px rgba(22,163,74,.18)', textDecoration:'none', padding:'12px', display:'flex', flexDirection:'column', justifyContent:'space-between', transition:'transform .15s' }}>
+            <div style={{ width:32, height:32, borderRadius:10, background:'rgba(255,255,255,.22)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+              <svg viewBox="0 0 24 24" fill="none" width={16} height={16}><path d="M18 8h1a4 4 0 010 8h-1M2 8h16v9a4 4 0 01-4 4H6a4 4 0 01-4-4V8zM6 1v3M10 1v3M14 1v3" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            </div>
+            <div>
+              <p style={{ fontSize:13, fontWeight:900, color:'#fff', lineHeight:1.2 }}>{mealLabel}</p>
+              <p style={{ fontSize:10, color:'rgba(255,255,255,.75)' }}>What to eat now</p>
+            </div>
+          </Link>
+
+          {/* Near me */}
+          <Link href="/stores" className="qa"
+            style={{ flexShrink:0, width:132, height:90, borderRadius:16, background:'linear-gradient(135deg,#0ea5e9 0%,#38bdf8 100%)', boxShadow:'0 6px 18px rgba(14,165,233,.18)', textDecoration:'none', padding:'12px', display:'flex', flexDirection:'column', justifyContent:'space-between', transition:'transform .15s' }}>
+            <div style={{ width:32, height:32, borderRadius:10, background:'rgba(255,255,255,.22)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+              <svg viewBox="0 0 24 24" fill="none" width={16} height={16}><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 010-5 2.5 2.5 0 010 5z" fill="#fff"/></svg>
+            </div>
+            <div>
+              <p style={{ fontSize:13, fontWeight:900, color:'#fff', lineHeight:1.2 }}>Near Me</p>
+              <p style={{ fontSize:10, color:'rgba(255,255,255,.75)' }}>{openShops.length || '–'} open now</p>
+            </div>
+          </Link>
+
+        </div>
+      </div>
+
+      {/* ═══════════════════════════════════════════════
+          4. CATEGORY CHIPS — horizontal pill scroll
+          ═══════════════════════════════════════════════ */}
+      {(() => {
+        const displayCats = activeCats.length > 0 ? activeCats : CATS.map(c => ({ name: c.label, q: c.q }))
+        if (!displayCats.length) return null
+        return (
+          <div style={{ marginTop:16 }}>
+            <div style={{ display:'flex', gap:8, overflowX:'auto', paddingLeft:16, paddingRight:16, paddingBottom:2, scrollbarWidth:'none' }}>
+              {/* All pill */}
+              <button onClick={() => setActiveCat(null)}
+                style={{ flexShrink:0, height:36, padding:'0 16px', borderRadius:20, border:`1.5px solid ${!activeCategory ? '#FF3008' : 'var(--divider)'}`, background: !activeCategory ? '#FF3008' : 'var(--card-white)', color: !activeCategory ? '#fff' : 'var(--text-secondary)', fontWeight:700, fontSize:13, cursor:'pointer', fontFamily:'inherit', transition:'all .15s' }}>
+                All
+              </button>
+              {displayCats.map(cat => {
+                const cfg = CATS.find(c => c.q === cat.q) || { color:'#FF3008' }
+                const isActive = activeCategory === cat.q
+                return (
+                  <button key={cat.q} onClick={() => setActiveCat(isActive ? null : cat.q)}
+                    style={{ flexShrink:0, height:36, padding:'0 16px', borderRadius:20, border:`1.5px solid ${isActive ? cfg.color : 'var(--divider)'}`, background: isActive ? cfg.color : 'var(--card-white)', color: isActive ? '#fff' : 'var(--text-secondary)', fontWeight:700, fontSize:13, cursor:'pointer', fontFamily:'inherit', transition:'all .15s', whiteSpace:'nowrap' }}>
+                    {cat.name}
+                  </button>
+                )
+              })}
+            </div>
           </div>
         )
       })()}
 
-      {/* ── 5. HYPERLOCAL SHOPS FEED — dominant section ───────────── */}
-      <div style={{ margin:'22px 0 0' }}>
+      {/* ═══════════════════════════════════════════════
+          5. POPULAR NEAR YOU — horizontal cards 240px
+          ═══════════════════════════════════════════════ */}
+      <div style={{ marginTop:24 }}>
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 16px', marginBottom:12 }}>
           <div>
-            <p style={{ fontSize:17, fontWeight:900, color:'var(--text-primary)', letterSpacing:'-0.02em' }}>
-              {activeCategory
-                ? `${activeCats.find(c => c.q === activeCategory)?.name || activeCategory} near you`
-                : 'Popular near you'}
+            <p style={{ fontSize:16, fontWeight:900, color:'var(--text-primary)', letterSpacing:'-0.02em' }}>
+              {activeCategory ? `${activeCats.find(c => c.q === activeCategory)?.name || activeCategory} near you` : 'Popular near you'}
             </p>
             <p style={{ fontSize:12, color:'var(--text-muted)', marginTop:2 }}>
               {shopsLoaded ? `${openShops.length} shops open` : 'Finding local shops…'}
@@ -637,117 +664,125 @@ export default function CustomerHome() {
         </div>
 
         {locStatus === 'denied' && (
-          <div style={{ margin:'0 12px', background:'var(--card-white)', borderRadius:20, padding:'28px 20px', textAlign:'center' }}>
-            <div style={{ width:52, height:52, background:'var(--red-light)', borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 12px' }}>
-              <svg viewBox="0 0 24 24" fill="none" width={26} height={26}><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 010-5 2.5 2.5 0 010 5z" fill="#FF3008"/></svg>
+          <div style={{ margin:'0 16px', background:'var(--card-white)', borderRadius:20, padding:'28px 20px', textAlign:'center' }}>
+            <div style={{ width:48, height:48, background:'var(--red-light)', borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 12px' }}>
+              <svg viewBox="0 0 24 24" fill="none" width={24} height={24}><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 010-5 2.5 2.5 0 010 5z" fill="#FF3008"/></svg>
             </div>
             <p style={{ fontWeight:800, fontSize:15, color:'var(--text-primary)', marginBottom:6 }}>Allow location access</p>
             <p style={{ fontSize:13, color:'var(--text-muted)', marginBottom:16 }}>We show only shops in your neighbourhood</p>
-            <button onClick={detectLocation} style={{ background:'#FF3008', border:'none', borderRadius:14, padding:'12px 28px', fontSize:14, fontWeight:800, color:'#fff', cursor:'pointer', fontFamily:'inherit' }}>
-              Enable location
-            </button>
+            <button onClick={detectLocation} style={{ background:'#FF3008', border:'none', borderRadius:12, padding:'12px 28px', fontSize:14, fontWeight:800, color:'#fff', cursor:'pointer', fontFamily:'inherit' }}>Enable location</button>
           </div>
         )}
 
         {!shopsLoaded && (
-          <div style={{ display:'flex', flexDirection:'column', gap:10, padding:'0 12px' }}>
-            {Array.from({length:5}).map((_,i) => <div key={i} className="sk" style={{ height:90, borderRadius:20 }} />)}
+          <div style={{ display:'flex', gap:12, overflowX:'auto', paddingLeft:16, paddingRight:16, paddingBottom:4 }}>
+            {Array.from({length:4}).map((_,i) => <div key={i} className="sk" style={{ width:240, flexShrink:0, height:192, borderRadius:20 }} />)}
           </div>
         )}
 
-        {/* Fast delivery horizontal strip */}
-        {shopsLoaded && !activeCategory && fastDeliveryShops.length >= 2 && (
-          <div style={{ marginBottom:22 }}>
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 16px', marginBottom:12 }}>
-              <p style={{ fontSize:17, fontWeight:900, color:'var(--text-primary)', letterSpacing:'-0.02em' }}>Fast Delivery</p>
-              <Link href="/stores" style={{ fontSize:13, fontWeight:800, color:'#FF3008', textDecoration:'none' }}>See all</Link>
-            </div>
-            <div style={{ display:'flex', gap:12, overflowX:'auto', paddingLeft:16, paddingRight:16, paddingBottom:4 }}>
-              {fastDeliveryShops.map(shop => <ShopCardH key={shop.id} shop={shop} />)}
-            </div>
-          </div>
-        )}
-
-        {/* Popular near you — Zomato-style vertical list */}
         {shopsLoaded && openShops.length > 0 && (
-          <div style={{ marginBottom:8 }}>
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 16px', marginBottom:12 }}>
-              <p style={{ fontSize:17, fontWeight:900, color:'var(--text-primary)', letterSpacing:'-0.02em' }}>
-                {activeCategory ? `${activeCats.find(c => c.q === activeCategory)?.name || 'Nearby'} Shops` : 'Popular near you'}
-              </p>
-              <Link href="/stores" style={{ fontSize:13, fontWeight:800, color:'#FF3008', textDecoration:'none' }}>See all</Link>
-            </div>
-            <div style={{ padding:'0 12px', display:'flex', flexDirection:'column', gap:12 }}>
-              {(fastDeliveryShops.length >= 2 && !activeCategory ? remainingShops : openShops)
-                .slice(0, 10)
-                .map(shop => <ShopCardFull key={shop.id} shop={shop} />)
-              }
-            </div>
+          <div style={{ display:'flex', gap:12, overflowX:'auto', paddingLeft:16, paddingRight:16, paddingBottom:4, scrollbarWidth:'none' }}>
+            {openShops.slice(0, 8).map(shop => <PopularShopCard key={shop.id} shop={shop} />)}
           </div>
         )}
 
         {shopsLoaded && displayShops.length === 0 && locStatus !== 'denied' && (
-          <div style={{ margin:'0 12px', background:'var(--card-white)', borderRadius:20, padding:'36px 20px', textAlign:'center' }}>
-            <div style={{ width:52, height:52, background:'var(--chip-bg)', borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 12px' }}>
-              <svg viewBox="0 0 24 24" fill="none" width={26} height={26}><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" stroke="var(--text-faint)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><polyline points="9 22 9 12 15 12 15 22" stroke="var(--text-faint)" strokeWidth="2" strokeLinecap="round"/></svg>
-            </div>
+          <div style={{ margin:'0 16px', background:'var(--card-white)', borderRadius:20, padding:'32px 20px', textAlign:'center' }}>
             <p style={{ fontWeight:800, fontSize:15, color:'var(--text-primary)', marginBottom:6 }}>No shops nearby</p>
             <p style={{ fontSize:13, color:'var(--text-muted)' }}>{locStatus === 'granted' ? 'Try expanding your radius' : 'Set your location to find shops'}</p>
           </div>
         )}
       </div>
 
-      {/* ── 6. DEALS — 2-column grid (breaks monotony vs horizontal scroll) ── */}
+      {/* ═══════════════════════════════════════════════
+          6. FAST DELIVERY ⚡ — ETA-focused horizontal
+          ═══════════════════════════════════════════════ */}
+      {shopsLoaded && !activeCategory && fastDeliveryShops.length >= 2 && (
+        <div style={{ marginTop:24 }}>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 16px', marginBottom:12 }}>
+            <div>
+              <p style={{ fontSize:16, fontWeight:900, color:'var(--text-primary)', letterSpacing:'-0.02em' }}>⚡ Fast Delivery</p>
+              <p style={{ fontSize:12, color:'var(--text-muted)', marginTop:2 }}>Arrives under 30 min</p>
+            </div>
+            <Link href="/stores" style={{ fontSize:13, fontWeight:800, color:'#FF3008', textDecoration:'none' }}>See all</Link>
+          </div>
+          <div style={{ display:'flex', gap:12, overflowX:'auto', paddingLeft:16, paddingRight:16, paddingBottom:4, scrollbarWidth:'none' }}>
+            {fastDeliveryShops.map(shop => <FastShopCard key={shop.id} shop={shop} />)}
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════
+          7. BECAUSE YOU ORDERED BEFORE — 1-tap reorder
+          ═══════════════════════════════════════════════ */}
+      {!activeCategory && pastOrderShopData.length >= 1 && (
+        <div style={{ marginTop:24 }}>
+          <div style={{ padding:'0 16px', marginBottom:12 }}>
+            <p style={{ fontSize:16, fontWeight:900, color:'var(--text-primary)', letterSpacing:'-0.02em' }}>Because you ordered before</p>
+            <p style={{ fontSize:12, color:'var(--text-muted)', marginTop:2 }}>Your trusted shops · one tap reorder</p>
+          </div>
+          <div style={{ display:'flex', gap:12, overflowX:'auto', paddingLeft:16, paddingRight:16, paddingBottom:4, scrollbarWidth:'none' }}>
+            {pastOrderShopData.map(shop => {
+              const lastOrder = orders.find(o => o.status === 'delivered' && (o as any).shop_id === shop.id)
+              return <PastOrderCard key={shop.id} shop={shop} lastOrder={lastOrder} onReorder={reorder} />
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════
+          8. CATEGORY FILTERED — vertical full cards
+          ═══════════════════════════════════════════════ */}
+      {shopsLoaded && activeCategory && openShops.length > 0 && (
+        <div style={{ marginTop:8, padding:'0 12px', display:'flex', flexDirection:'column', gap:12 }}>
+          {openShops.slice(0, 12).map(shop => <ShopCardFull key={shop.id} shop={shop} />)}
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════
+          9. DEALS — 2-column grid
+          ═══════════════════════════════════════════════ */}
       {!activeCategory && featuredProds.length > 0 && (
-        <div style={{ margin:'22px 0 0' }}>
+        <div style={{ marginTop:24 }}>
           <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 16px', marginBottom:12 }}>
             <div>
               <p style={{ fontSize:16, fontWeight:900, color:'var(--text-primary)', letterSpacing:'-0.02em' }}>{dealProducts.length > 0 ? 'Deals near you' : 'Top picks'}</p>
               <p style={{ fontSize:12, color:'var(--text-muted)', marginTop:1 }}>Best from local shops</p>
             </div>
-            <Link href="/stores" style={{ fontSize:12, fontWeight:800, color:'#FF3008', textDecoration:'none' }}>See all</Link>
+            <Link href="/stores" style={{ fontSize:13, fontWeight:800, color:'#FF3008', textDecoration:'none' }}>See all</Link>
           </div>
           {products.length === 0 ? (
-            <div style={{ display:'flex', gap:10, overflowX:'auto', paddingLeft:16, paddingRight:16, paddingBottom:4, scrollbarWidth:'none' }}>
-              {Array.from({length:5}).map((_,i) => <div key={i} className="sk" style={{ width:148, flexShrink:0, height:195, borderRadius:16 }} />)}
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, padding:'0 16px' }}>
+              {Array.from({length:4}).map((_,i) => <div key={i} className="sk" style={{ height:200, borderRadius:16 }} />)}
             </div>
           ) : (
-            <div style={{ display:'flex', gap:10, overflowX:'auto', paddingLeft:16, paddingRight:16, paddingBottom:4, scrollbarWidth:'none' }}>
-              {featuredProds.map(p => <ProductGridCard key={p.id} product={p} />)}
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, padding:'0 16px' }}>
+              {featuredProds.slice(0, 6).map(p => <DealCard key={p.id} product={p} />)}
             </div>
           )}
         </div>
       )}
 
-      {/* ── 7. CLOSED SHOPS — compact horizontal, max 6 ──────────── */}
-      {shopsLoaded && closedShops.length > 0 && (
-        <div style={{ margin:'22px 0 0', opacity:0.55 }}>
+      {/* ═══════════════════════════════════════════════
+          10. CLOSED SHOPS — dimmed horizontal
+          ═══════════════════════════════════════════════ */}
+      {shopsLoaded && !activeCategory && closedShops.length > 0 && (
+        <div style={{ marginTop:24, opacity:0.5 }}>
           <div style={{ display:'flex', alignItems:'center', gap:8, padding:'0 16px', marginBottom:10 }}>
             <div style={{ flex:1, height:1, background:'var(--chip-bg)' }} />
             <span style={{ fontSize:11, fontWeight:700, color:'var(--text-faint)', letterSpacing:'0.05em', whiteSpace:'nowrap' }}>OPENS LATER · {closedShops.length}</span>
             <div style={{ flex:1, height:1, background:'var(--chip-bg)' }} />
           </div>
-          <div style={{ display:'flex', gap:10, overflowX:'auto', paddingLeft:16, paddingRight:16, paddingBottom:4 }}>
+          <div style={{ display:'flex', gap:10, overflowX:'auto', paddingLeft:16, paddingRight:16, paddingBottom:4, scrollbarWidth:'none' }}>
             {closedShops.slice(0, 6).map(shop => <ShopCardH key={shop.id} shop={shop} />)}
           </div>
         </div>
       )}
 
-      {/* ── 8. PERSONALIZATION — from past orders ─────────────────── */}
-      {pastOrderShopData.length >= 1 && (
-        <div style={{ margin:'22px 0 0' }}>
-          <div style={{ padding:'0 16px', marginBottom:12 }}>
-            <p style={{ fontSize:16, fontWeight:900, color:'var(--text-primary)', letterSpacing:'-0.02em' }}>Because you ordered before</p>
-            <p style={{ fontSize:12, color:'var(--text-muted)', marginTop:1 }}>Your trusted shops · one tap reorder</p>
-          </div>
-          <div style={{ display:'flex', gap:12, overflowX:'auto', paddingLeft:16, paddingRight:16, paddingBottom:4 }}>
-            {pastOrderShopData.map(shop => <ShopCardH key={shop.id} shop={shop} />)}
-          </div>
-        </div>
-      )}
-
-      {/* ── 9. SUBSCRIPTIONS entry point ──────────────────────────── */}
-      <Link href="/subscriptions" style={{ display:'flex', alignItems:'center', gap:10, margin:'20px 12px 0', background:'var(--card-white)', borderRadius:16, padding:'12px 16px', textDecoration:'none', border:'1.5px solid var(--divider)' }}>
+      {/* ═══════════════════════════════════════════════
+          11. SUBSCRIPTIONS entry point
+          ═══════════════════════════════════════════════ */}
+      <Link href="/subscriptions" style={{ display:'flex', alignItems:'center', gap:10, margin:'20px 16px 0', background:'var(--card-white)', borderRadius:16, padding:'14px 16px', textDecoration:'none', border:'1.5px solid var(--divider)', minHeight:56 }}>
         <div style={{ width:34, height:34, borderRadius:10, background:'rgba(255,48,8,.07)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
           <svg viewBox="0 0 24 24" fill="none" width={17} height={17}>
             <path d="M1 4v6h6M23 20v-6h-6" stroke="#FF3008" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -758,7 +793,7 @@ export default function CustomerHome() {
           <p style={{ fontSize:13, fontWeight:800, color:'var(--text-primary)' }}>My Subscriptions</p>
           <p style={{ fontSize:11, color:'var(--text-muted)' }}>Daily milk, tiffin, eggs & more</p>
         </div>
-        <svg viewBox="0 0 24 24" fill="none" style={{ width:15, height:15, flexShrink:0 }}><path d="M9 18l6-6-6-6" stroke="var(--text-muted)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" style={{ width:14, height:14, flexShrink:0 }}><path d="M9 18l6-6-6-6" stroke="var(--text-muted)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
       </Link>
 
       <BottomNav active="home" />
@@ -1019,6 +1054,166 @@ function ShopCardFull({ shop }: { shop: Shop & { km: number | null } }) {
             <span style={{ fontSize:11, fontWeight:700, color:'#FF3008' }}>{shop.offer_text}</span>
           </div>
         )}
+      </div>
+    </Link>
+  )
+}
+
+// ── POPULAR SHOP CARD — 240px wide horizontal card ────────────────
+function PopularShopCard({ shop }: { shop: Shop & { km: number | null } }) {
+  const catKey  = Object.keys(CAT_SVG).find(k => k !== 'default' && shop.category_name?.toLowerCase().replace(/[^a-z]/g,'').includes(k)) || 'default'
+  const color   = CAT_COLOR[catKey]
+  const kmTxt   = shop.km === null ? null : shop.km < 1 ? `${Math.round(shop.km * 1000)}m` : `${shop.km.toFixed(1)}km`
+  const rating  = shop.rating ?? 0
+  const ratingBg = rating >= 4 ? '#16a34a' : rating >= 3 ? '#d97706' : rating > 0 ? '#ef4444' : '#6b7280'
+  const isBoosted = (shop.boost_weight ?? 0) > 0
+  const isOpen = computeIsOpen(shop)
+
+  return (
+    <Link href={`/stores/${shop.id}`} onClick={() => { if (isBoosted) createClient().rpc('increment_boost_click', { p_shop_id: shop.id, p_date: new Date().toISOString().slice(0,10) }) }}
+      style={{ flexShrink:0, width:240, borderRadius:20, overflow:'hidden', textDecoration:'none', background:'var(--card-white)', boxShadow:'0 3px 14px rgba(0,0,0,.1)', border:'1px solid var(--divider)', display:'block' }}>
+      {/* Image — 60% of card height */}
+      <div style={{ height:136, position:'relative', background:`${color}18`, overflow:'hidden', display:'flex', alignItems:'center', justifyContent:'center' }}>
+        {shop.image_url
+          ? <Image src={shop.image_url} alt={shop.name} fill sizes="240px" className="object-cover" style={isOpen ? undefined : { filter:'grayscale(55%) brightness(.8)' }} />
+          : <span style={{ color, opacity:.25, display:'flex', transform:'scale(1.8)' }}>{getCatIcon(catKey)}</span>
+        }
+        {/* Rating pill — bottom left */}
+        {rating > 0 && (
+          <div style={{ position:'absolute', bottom:8, left:8, display:'flex', alignItems:'center', gap:3, background:ratingBg, borderRadius:7, padding:'3px 7px' }}>
+            <svg viewBox="0 0 24 24" fill="#fff" width={9} height={9}><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+            <span style={{ color:'#fff', fontWeight:800, fontSize:11 }}>{rating.toFixed(1)}</span>
+          </div>
+        )}
+        {/* Boost badge or closed */}
+        {isBoosted && shop.boost_badge ? (
+          <div style={{ position:'absolute', top:8, right:8, background: shop.boost_badge_color ?? '#6b7280', color:'#fff', fontSize:9, fontWeight:900, padding:'3px 8px', borderRadius:6, letterSpacing:'0.06em', textTransform:'uppercase' }}>{shop.boost_badge}</div>
+        ) : !isOpen ? (
+          <div style={{ position:'absolute', inset:0, background:'rgba(0,0,0,.32)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+            <span style={{ background:'rgba(0,0,0,.7)', color:'#fff', fontSize:11, fontWeight:800, padding:'4px 12px', borderRadius:8 }}>CLOSED</span>
+          </div>
+        ) : null}
+        {/* Offer badge */}
+        {shop.offer_text?.match(/\d+\s*%/) && (
+          <div style={{ position:'absolute', top:8, left:8, background:'#FF3008', color:'#fff', fontSize:10, fontWeight:900, padding:'3px 8px', borderRadius:7 }}>
+            {shop.offer_text.match(/(\d+\s*%)/)?.[1]} OFF
+          </div>
+        )}
+      </div>
+      {/* Info — 40% */}
+      <div style={{ padding:'10px 12px 12px' }}>
+        <p style={{ fontWeight:900, fontSize:14, color:'var(--text-primary)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', letterSpacing:'-0.01em', marginBottom:3 }}>{shop.name}</p>
+        <div style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, color:'var(--text-muted)', fontWeight:600 }}>
+          <svg viewBox="0 0 24 24" fill="none" width={11} height={11}><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/><path d="M12 6v6l4 2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+          <span>{shop.avg_delivery_time} min</span>
+          {kmTxt && <><span style={{ width:3, height:3, borderRadius:'50%', background:'var(--text-faint)', display:'inline-block' }} /><span>{kmTxt}</span></>}
+          {shop.category_name && <><span style={{ width:3, height:3, borderRadius:'50%', background:'var(--text-faint)', display:'inline-block' }} /><span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:70 }}>{shop.category_name.split(' ')[0]}</span></>}
+        </div>
+      </div>
+    </Link>
+  )
+}
+
+// ── FAST SHOP CARD — ETA-prominent, 180px wide ────────────────────
+function FastShopCard({ shop }: { shop: Shop & { km: number | null } }) {
+  const catKey = Object.keys(CAT_SVG).find(k => k !== 'default' && shop.category_name?.toLowerCase().replace(/[^a-z]/g,'').includes(k)) || 'default'
+  const color  = CAT_COLOR[catKey]
+  const kmTxt  = shop.km === null ? null : shop.km < 1 ? `${Math.round(shop.km * 1000)}m` : `${shop.km.toFixed(1)}km`
+
+  return (
+    <Link href={`/stores/${shop.id}`}
+      style={{ flexShrink:0, width:180, borderRadius:20, overflow:'hidden', textDecoration:'none', background:'var(--card-white)', boxShadow:'0 3px 14px rgba(0,0,0,.1)', border:'1px solid var(--divider)', display:'block' }}>
+      {/* Image with ETA badge overlaid at bottom */}
+      <div style={{ height:118, position:'relative', background:`${color}18`, overflow:'hidden', display:'flex', alignItems:'center', justifyContent:'center' }}>
+        {shop.image_url
+          ? <Image src={shop.image_url} alt={shop.name} fill sizes="180px" className="object-cover" />
+          : <span style={{ color, opacity:.25, display:'flex', transform:'scale(1.5)' }}>{getCatIcon(catKey)}</span>
+        }
+        {/* Gradient scrim for ETA badge */}
+        <div style={{ position:'absolute', inset:'40% 0 0', background:'linear-gradient(to bottom, transparent, rgba(0,0,0,.65))' }} />
+        {/* ETA badge — bottom left, always prominent */}
+        <div style={{ position:'absolute', bottom:8, left:8, display:'flex', alignItems:'center', gap:4, background:'#fbbf24', borderRadius:8, padding:'4px 8px' }}>
+          <svg viewBox="0 0 24 24" fill="none" width={10} height={10}><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="#000"/></svg>
+          <span style={{ color:'#000', fontWeight:900, fontSize:11 }}>{shop.avg_delivery_time} MIN</span>
+        </div>
+      </div>
+      {/* Info */}
+      <div style={{ padding:'9px 11px 11px' }}>
+        <p style={{ fontWeight:900, fontSize:13, color:'var(--text-primary)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', letterSpacing:'-0.01em', marginBottom:3 }}>{shop.name}</p>
+        <div style={{ display:'flex', alignItems:'center', gap:4, fontSize:11, color:'var(--text-muted)', fontWeight:600 }}>
+          <svg viewBox="0 0 24 24" fill="#f59e0b" width={10} height={10}><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+          <span style={{ color:'var(--text-primary)', fontWeight:800 }}>{(shop.rating ?? 0).toFixed(1)}</span>
+          {kmTxt && <><span>·</span><span>{kmTxt}</span></>}
+        </div>
+      </div>
+    </Link>
+  )
+}
+
+// ── PAST ORDER CARD — with 1-tap "Order again" button ─────────────
+function PastOrderCard({ shop, lastOrder, onReorder }: { shop: Shop & { km: number | null }; lastOrder: any; onReorder: (o: any) => void }) {
+  const catKey = Object.keys(CAT_SVG).find(k => k !== 'default' && shop.category_name?.toLowerCase().replace(/[^a-z]/g,'').includes(k)) || 'default'
+  const color  = CAT_COLOR[catKey]
+  const isOpen = computeIsOpen(shop)
+
+  return (
+    <div style={{ flexShrink:0, width:172, borderRadius:20, overflow:'hidden', background:'var(--card-white)', boxShadow:'0 3px 14px rgba(0,0,0,.1)', border:'1px solid var(--divider)', display:'flex', flexDirection:'column' }}>
+      {/* Top: clickable shop area */}
+      <Link href={`/stores/${shop.id}`} style={{ textDecoration:'none', display:'block' }}>
+        <div style={{ height:100, position:'relative', background:`${color}18`, overflow:'hidden', display:'flex', alignItems:'center', justifyContent:'center' }}>
+          {shop.image_url
+            ? <Image src={shop.image_url} alt={shop.name} fill sizes="172px" className="object-cover" style={isOpen ? undefined : { filter:'grayscale(55%)' }} />
+            : <span style={{ color, opacity:.25, display:'flex', transform:'scale(1.4)' }}>{getCatIcon(catKey)}</span>
+          }
+          {!isOpen && (
+            <div style={{ position:'absolute', top:7, right:7, background:'rgba(0,0,0,.65)', color:'#fff', fontSize:9, fontWeight:800, padding:'2px 7px', borderRadius:5 }}>CLOSED</div>
+          )}
+        </div>
+        <div style={{ padding:'9px 11px 6px' }}>
+          <p style={{ fontWeight:900, fontSize:13, color:'var(--text-primary)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', letterSpacing:'-0.01em' }}>{shop.name}</p>
+          <p style={{ fontSize:10, color:'var(--text-muted)', marginTop:2, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+            {shop.category_name?.split(' ')[0]} · {shop.avg_delivery_time}min
+          </p>
+        </div>
+      </Link>
+      {/* Bottom: 1-tap reorder button */}
+      <button onClick={() => lastOrder && onReorder(lastOrder)}
+        style={{ margin:'0 10px 10px', padding:'8px 0', borderRadius:10, border:'1.5px solid #FF3008', background:'transparent', color:'#FF3008', fontSize:12, fontWeight:800, cursor:'pointer', fontFamily:'inherit', display:'flex', alignItems:'center', justifyContent:'center', gap:5, marginTop:'auto' }}>
+        Order again
+        <svg viewBox="0 0 24 24" fill="none" width={12} height={12}><path d="M9 18l6-6-6-6" stroke="#FF3008" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+      </button>
+    </div>
+  )
+}
+
+// ── DEAL CARD — 2-column grid product card ────────────────────────
+function DealCard({ product }: { product: Product }) {
+  const disc = product.original_price && product.original_price > product.price
+    ? Math.round(((product.original_price - product.price) / product.original_price) * 100) : null
+  return (
+    <Link href={`/stores/${product.shop_id}`}
+      style={{ background:'var(--card-white)', borderRadius:16, overflow:'hidden', textDecoration:'none', boxShadow:'0 2px 8px rgba(0,0,0,.06)', display:'block', border:'1px solid var(--divider)' }}>
+      <div style={{ height:130, background:'var(--chip-bg)', position:'relative', overflow:'hidden' }}>
+        {product.image_url
+          ? <Image src={product.image_url} alt={product.name} fill sizes="(max-width:480px) 50vw, 240px" className="object-cover" />
+          : <div style={{ width:'100%', height:'100%', display:'flex', alignItems:'center', justifyContent:'center' }}>
+              <svg viewBox="0 0 24 24" fill="none" width={32} height={32}><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4zM3 6h18M16 10a4 4 0 01-8 0" stroke="var(--text-faint)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            </div>
+        }
+        {disc && (
+          <div style={{ position:'absolute', top:8, left:8, background:'#FF3008', color:'#fff', fontSize:10, fontWeight:900, padding:'3px 8px', borderRadius:7 }}>-{disc}%</div>
+        )}
+      </div>
+      <div style={{ padding:'10px 10px 12px' }}>
+        <p style={{ fontSize:12, fontWeight:700, color:'var(--text-primary)', marginBottom:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', lineHeight:1.3 }}>{product.name}</p>
+        {product.shop_name && <p style={{ fontSize:10, color:'var(--text-muted)', marginBottom:6, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{product.shop_name}</p>}
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+          <div>
+            <span style={{ fontSize:14, fontWeight:900, color:'var(--text-primary)' }}>₹{product.price}</span>
+            {product.original_price && <span style={{ fontSize:10, color:'var(--text-faint)', textDecoration:'line-through', marginLeft:4 }}>₹{product.original_price}</span>}
+          </div>
+          <div style={{ width:28, height:28, borderRadius:8, border:'1.5px solid #FF3008', display:'flex', alignItems:'center', justifyContent:'center', color:'#FF3008', fontSize:18, fontWeight:900, lineHeight:1, flexShrink:0 }}>+</div>
+        </div>
       </div>
     </Link>
   )
