@@ -51,6 +51,9 @@ export interface Shop {
   is_open: boolean
   opens_at?: string
   closes_at?: string
+  opening_time?: string | null
+  closing_time?: string | null
+  manually_closed?: boolean | null
   delivery_enabled: boolean
   pickup_enabled: boolean
   min_order_amount?: number

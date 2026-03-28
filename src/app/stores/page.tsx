@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { createClient } from '@/lib/supabase/client'
+import { computeIsOpen } from '@/lib/shopHours'
 import type { Shop } from '@/types'
 import BottomNav from '@/components/BottomNav'
 
@@ -99,13 +100,13 @@ export default function StoresPage() {
     .sort((a, b) => {
       if (sortBy === 'rating')   return (b.rating||0) - (a.rating||0)
       if (sortBy === 'distance') return (a.distance??99) - (b.distance??99)
-      if (a.is_open !== b.is_open) return a.is_open ? -1 : 1
+      if (computeIsOpen(a) !== computeIsOpen(b)) return computeIsOpen(a) ? -1 : 1
       if (a.distance !== null && b.distance !== null) return a.distance - b.distance
       return (b.rating||0) - (a.rating||0)
     })
 
-  const openShops   = filtered.filter(s => s.is_open)
-  const closedShops = filtered.filter(s => !s.is_open)
+  const openShops   = filtered.filter(s => computeIsOpen(s))
+  const closedShops = filtered.filter(s => !computeIsOpen(s))
   const allCatNames = Array.from(new Set(shops.map(s => s.category_name).filter(Boolean))) as string[]
 
   return (
@@ -302,7 +303,7 @@ function ShopCard({ shop, index }: { shop: any; index: number }) {
           : <span style={{ color: cat.color, opacity:.7 }}>{cat.svg}</span>
         }
         <div style={{ position:'absolute', bottom:5, left:5 }}>
-          {shop.is_open
+          {computeIsOpen(shop)
             ? <span style={{ background:'rgba(22,163,74,.92)', color:'#fff', fontSize:8, fontWeight:800, padding:'2px 6px', borderRadius:5 }}>OPEN</span>
             : <span style={{ background:'rgba(0,0,0,.6)', color:'rgba(255,255,255,.7)', fontSize:8, fontWeight:800, padding:'2px 6px', borderRadius:5 }}>CLOSED</span>
           }
