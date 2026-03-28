@@ -45,12 +45,35 @@ export default function BusinessDashboard() {
     const { data: profile } = await supabase.from('users').select('*').eq('id', authUser.id).single()
     if (!profile?.phone) setShowPhoneGate(true)
     setUser(profile)
-    const { data: shopData } = await supabase
+    // Try owned shop first, then fall back to staff assignment
+    let shopData: any = null
+    const { data: ownedShop } = await supabase
       .from('shops')
       .select('*, active_boost:vendor_boosts(status, end_date, plan:boost_plans(name, badge_color, boost_weight))')
       .eq('owner_id', authUser.id)
       .eq('vendor_boosts.status', 'active')
-      .single()
+      .maybeSingle()
+
+    if (ownedShop) {
+      shopData = ownedShop
+    } else {
+      // Check if this user is a staff member for any shop
+      const { data: staffRow } = await supabase
+        .from('shop_staff')
+        .select('shop_id, role')
+        .eq('user_id', authUser.id)
+        .eq('is_active', true)
+        .maybeSingle()
+      if (staffRow) {
+        const { data: staffShop } = await supabase
+          .from('shops')
+          .select('*, active_boost:vendor_boosts(status, end_date, plan:boost_plans(name, badge_color, boost_weight))')
+          .eq('id', staffRow.shop_id)
+          .eq('vendor_boosts.status', 'active')
+          .maybeSingle()
+        if (staffShop) shopData = { ...staffShop, _staff_role: staffRow.role }
+      }
+    }
     if (!shopData) { setLoading(false); return }
     setShop(shopData)
     setVerStatus((shopData as any).verification_status ?? 'pending')

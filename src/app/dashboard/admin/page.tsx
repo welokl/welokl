@@ -61,6 +61,7 @@ export default function AdminDashboard() {
   const [loading, setLoading]     = useState(true)
   const [saving, setSaving]       = useState(false)
   const [adminManagingShop, setAdminManagingShop] = useState<Shop | null>(null)
+  const [operatorsShop, setOperatorsShop] = useState<Shop | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<{ shop: Shop } | null>(null)
   const [edits, setEdits]         = useState<Record<string, string>>({})
   const [search, setSearch]       = useState('')
@@ -586,6 +587,10 @@ export default function AdminDashboard() {
                     <button onClick={() => createClient().from('shops').update({ is_active: !shop.is_active }).eq('id', shop.id).then(load)}
                       style={{ fontSize: 12, fontWeight: 700, padding: '7px 14px', borderRadius: 10, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: shop.is_active ? 'rgba(239,68,68,0.12)' : 'rgba(34,197,94,0.12)', color: shop.is_active ? '#ef4444' : '#16a34a' }}>
                       {shop.is_active ? 'Deactivate' : 'Activate'}
+                    </button>
+                    <button onClick={() => setOperatorsShop(shop)}
+                      style={{ fontSize: 12, fontWeight: 700, padding: '7px 14px', borderRadius: 10, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: 'rgba(124,58,237,0.12)', color: '#7c3aed' }}>
+                      Operators
                     </button>
                     <button onClick={() => setAdminManagingShop(shop)}
                       style={{ fontSize: 12, fontWeight: 700, padding: '7px 14px', borderRadius: 10, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: 'rgba(59,130,246,0.12)', color: '#3b82f6' }}>
@@ -1144,6 +1149,13 @@ export default function AdminDashboard() {
         />
       )}
 
+      {operatorsShop && (
+        <ShopOperatorsModal
+          shop={operatorsShop}
+          onClose={() => setOperatorsShop(null)}
+        />
+      )}
+
       {deleteConfirm && (
         <DeleteShopConfirm
           confirm={deleteConfirm}
@@ -1467,6 +1479,163 @@ function DeleteShopConfirm({ confirm, onCancel, onDeleted }: {
             {deleting ? 'Removing files & deleting…' : 'Delete Forever'}
           </button>
         </div>
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────
+// Shop Operators Modal — add/remove staff access per shop
+// ─────────────────────────────────────────────────────────────
+function ShopOperatorsModal({ shop, onClose }: { shop: any; onClose: () => void }) {
+  const [operators, setOperators] = useState<any[]>([])
+  const [loading, setLoading]     = useState(true)
+  const [phone, setPhone]         = useState('')
+  const [role, setRole]           = useState<'manager' | 'staff'>('manager')
+  const [searching, setSearching] = useState(false)
+  const [err, setErr]             = useState('')
+  const [success, setSuccess]     = useState('')
+  const sb = createClient()
+
+  async function loadOperators() {
+    setLoading(true)
+    const { data } = await sb
+      .from('shop_staff')
+      .select('id, role, is_active, created_at, user:users(id, name, phone, email)')
+      .eq('shop_id', shop.id)
+      .order('created_at', { ascending: false })
+    setOperators(data ?? [])
+    setLoading(false)
+  }
+
+  useEffect(() => { loadOperators() }, [])
+
+  async function addOperator() {
+    setErr(''); setSuccess('')
+    const trimmed = phone.trim()
+    if (!trimmed) { setErr('Enter a phone number'); return }
+    setSearching(true)
+    // Find the user by phone
+    const { data: found } = await sb
+      .from('users')
+      .select('id, name, phone')
+      .eq('phone', trimmed)
+      .maybeSingle()
+    if (!found) { setErr('No Welokl account found with that phone number'); setSearching(false); return }
+    // Check not already added
+    if (operators.find(o => (o.user as any)?.id === found.id)) {
+      setErr('This user is already an operator for this shop'); setSearching(false); return
+    }
+    const { data: { user: admin } } = await sb.auth.getUser()
+    const { error } = await sb.from('shop_staff').insert({
+      shop_id: shop.id, user_id: found.id,
+      role, added_by: admin!.id, is_active: true,
+    })
+    if (error) { setErr(error.message); setSearching(false); return }
+    setSuccess(`${found.name} added as ${role}`)
+    setPhone('')
+    setSearching(false)
+    loadOperators()
+  }
+
+  async function toggleActive(op: any) {
+    await sb.from('shop_staff').update({ is_active: !op.is_active }).eq('id', op.id)
+    loadOperators()
+  }
+
+  async function removeOperator(opId: string) {
+    await sb.from('shop_staff').delete().eq('id', opId)
+    loadOperators()
+  }
+
+  const overlay: React.CSSProperties = { position:'fixed', inset:0, zIndex:999, background:'rgba(0,0,0,.55)', display:'flex', alignItems:'center', justifyContent:'center', padding:16 }
+  const modal: React.CSSProperties  = { background:'var(--card-bg)', borderRadius:24, padding:28, width:'100%', maxWidth:500, maxHeight:'88vh', overflowY:'auto', fontFamily:"'Plus Jakarta Sans',sans-serif", boxShadow:'0 24px 80px rgba(0,0,0,.35)' }
+
+  return (
+    <div style={overlay} onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div style={modal}>
+        {/* Header */}
+        <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:20 }}>
+          <div>
+            <h2 style={{ fontWeight:900, fontSize:18, color:'var(--text)', marginBottom:4 }}>Shop Operators</h2>
+            <p style={{ fontSize:13, color:'var(--text-3)' }}>{shop.name}</p>
+          </div>
+          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', fontSize:22, color:'var(--text-3)', lineHeight:1, padding:4 }}>×</button>
+        </div>
+
+        {/* Add operator */}
+        <div style={{ background:'var(--bg-2)', borderRadius:16, padding:16, marginBottom:20 }}>
+          <p style={{ fontSize:12, fontWeight:800, color:'var(--text-3)', textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:12 }}>Add operator by phone</p>
+          <div style={{ display:'flex', gap:8, marginBottom:10 }}>
+            <input
+              value={phone} onChange={e => { setPhone(e.target.value); setErr(''); setSuccess('') }}
+              placeholder="Operator's phone number"
+              onKeyDown={e => e.key === 'Enter' && addOperator()}
+              style={{ flex:1, padding:'10px 13px', borderRadius:12, border:'1.5px solid var(--border-2)', background:'var(--input-bg)', color:'var(--text)', fontSize:14, fontFamily:'inherit', outline:'none' }}
+            />
+            <select value={role} onChange={e => setRole(e.target.value as any)}
+              style={{ padding:'10px 12px', borderRadius:12, border:'1.5px solid var(--border-2)', background:'var(--input-bg)', color:'var(--text)', fontSize:13, fontFamily:'inherit', outline:'none', fontWeight:700, cursor:'pointer' }}>
+              <option value="manager">Manager</option>
+              <option value="staff">Staff</option>
+            </select>
+          </div>
+          <button onClick={addOperator} disabled={searching || !phone.trim()}
+            style={{ width:'100%', padding:'11px', borderRadius:12, border:'none', background: phone.trim() ? '#7c3aed' : 'var(--bg-3)', color: phone.trim() ? '#fff' : 'var(--text-3)', fontWeight:800, fontSize:14, cursor: phone.trim() ? 'pointer' : 'not-allowed', fontFamily:'inherit', transition:'background .15s' }}>
+            {searching ? 'Adding…' : 'Add Operator'}
+          </button>
+          {err     && <p style={{ fontSize:12, color:'#ef4444', fontWeight:600, marginTop:8 }}>{err}</p>}
+          {success && <p style={{ fontSize:12, color:'#16a34a', fontWeight:700, marginTop:8 }}>✓ {success}</p>}
+        </div>
+
+        {/* Role legend */}
+        <div style={{ display:'flex', gap:12, marginBottom:16, fontSize:11, color:'var(--text-3)' }}>
+          <span><strong style={{ color:'#7c3aed' }}>Manager</strong> — full dashboard access</span>
+          <span><strong style={{ color:'#6b7280' }}>Staff</strong> — orders + products only</span>
+        </div>
+
+        {/* Current operators */}
+        <p style={{ fontSize:12, fontWeight:800, color:'var(--text-3)', textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:10 }}>
+          Current operators ({operators.length})
+        </p>
+
+        {loading && <p style={{ fontSize:13, color:'var(--text-3)', textAlign:'center', padding:'20px 0' }}>Loading…</p>}
+
+        {!loading && operators.length === 0 && (
+          <div style={{ textAlign:'center', padding:'24px 0', color:'var(--text-3)', fontSize:13 }}>
+            No operators yet. Add one above.
+          </div>
+        )}
+
+        {operators.map(op => {
+          const u = op.user as any
+          return (
+            <div key={op.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 14px', borderRadius:14, border:'1px solid var(--border)', background:'var(--card-bg)', marginBottom:8 }}>
+              {/* Avatar */}
+              <div style={{ width:38, height:38, borderRadius:'50%', background: op.role === 'manager' ? 'rgba(124,58,237,.15)' : 'rgba(107,114,128,.12)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                <svg viewBox="0 0 24 24" fill="none" width={18} height={18}><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" stroke={op.role === 'manager' ? '#7c3aed' : '#6b7280'} strokeWidth="2" strokeLinecap="round"/><circle cx="12" cy="7" r="4" stroke={op.role === 'manager' ? '#7c3aed' : '#6b7280'} strokeWidth="2"/></svg>
+              </div>
+              {/* Info */}
+              <div style={{ flex:1, minWidth:0 }}>
+                <p style={{ fontWeight:800, fontSize:14, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{u?.name || 'Unknown'}</p>
+                <p style={{ fontSize:12, color:'var(--text-3)' }}>{u?.phone || u?.email}</p>
+              </div>
+              {/* Role badge */}
+              <span style={{ fontSize:11, fontWeight:800, padding:'3px 10px', borderRadius:999, background: op.role === 'manager' ? 'rgba(124,58,237,.12)' : 'rgba(107,114,128,.12)', color: op.role === 'manager' ? '#7c3aed' : '#6b7280', flexShrink:0 }}>
+                {op.role}
+              </span>
+              {/* Active toggle */}
+              <button onClick={() => toggleActive(op)}
+                style={{ fontSize:11, fontWeight:700, padding:'4px 10px', borderRadius:8, border:'none', cursor:'pointer', fontFamily:'inherit', background: op.is_active ? 'rgba(22,163,74,.12)' : 'rgba(239,68,68,.1)', color: op.is_active ? '#16a34a' : '#ef4444' }}>
+                {op.is_active ? 'Active' : 'Paused'}
+              </button>
+              {/* Remove */}
+              <button onClick={() => removeOperator(op.id)}
+                style={{ width:30, height:30, borderRadius:8, border:'none', cursor:'pointer', background:'rgba(239,68,68,.1)', color:'#ef4444', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                <svg viewBox="0 0 24 24" fill="none" width={14} height={14}><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/></svg>
+              </button>
+            </div>
+          )
+        })}
       </div>
     </div>
   )

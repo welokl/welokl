@@ -5,7 +5,9 @@
       "Bash(grep -rn order_ratings /c/dev/welokl-cto-update/src --include=*.ts --include=*.tsx)",
       "Bash(grep -rn order_ratings /c/dev/welokl-cto-update --include=*.sql --include=*.ts --include=*.tsx)",
       "Bash(wc -l /c/dev/welokl-cto-update/src/app/stores/[id]/page.tsx)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(done)",
+      "Read(//c/dev/welokl-cto-update/**)"
     ]
   }
 }

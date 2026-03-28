@@ -558,27 +558,25 @@ export default function CustomerHome() {
                 </button>
               )}
 
-              {/* ── Category tiles ── */}
+              {/* ── Category tiles — compact Zomato-style ── */}
               {displayCats.map(cat => {
                 const cfg = CATS.find(c => c.q === cat.q) || { color:'#FF3008', bg:'var(--red-light)' }
                 const isActive = activeCategory === cat.q
                 return (
                   <button key={cat.q} onClick={() => setActiveCat(isActive ? null : cat.q)}
-                    style={{ flexShrink:0, background:'none', border:'none', padding:0, cursor:'pointer', textAlign:'center', fontFamily:'inherit' }}>
-                    {/* Tile — same height as reorder card */}
+                    style={{ flexShrink:0, background:'none', border:'none', padding:'0 2px', cursor:'pointer', textAlign:'center', fontFamily:'inherit', display:'flex', flexDirection:'column', alignItems:'center', gap:6 }}>
                     <div style={{
-                      width:90, height:88, borderRadius:20,
-                      background: isActive ? cfg.color : 'var(--card-white)',
-                      display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:6,
-                      boxShadow: isActive ? `0 4px 18px ${cfg.color}55` : '0 3px 14px rgba(0,0,0,.08)',
-                      border: isActive ? 'none' : '1px solid var(--divider)',
+                      width:58, height:58, borderRadius:'50%',
+                      background: isActive ? cfg.color : `${cfg.color}14`,
+                      display:'flex', alignItems:'center', justifyContent:'center',
+                      boxShadow: isActive ? `0 4px 14px ${cfg.color}50` : 'none',
                       transition:'all .15s',
                     }}>
-                      <span style={{ color: isActive ? '#fff' : cfg.color, display:'flex', transform:'scale(0.9)', lineHeight:0 }}>
+                      <span style={{ color: isActive ? '#fff' : cfg.color, display:'flex', transform:'scale(0.72)', lineHeight:0 }}>
                         {getCatIcon(cat.q)}
                       </span>
-                      <p style={{ fontSize:11, fontWeight:800, color: isActive ? '#fff' : 'var(--text-primary)', lineHeight:1, margin:0 }}>{cat.name}</p>
                     </div>
+                    <p style={{ fontSize:10, fontWeight:700, color: isActive ? cfg.color : 'var(--text-secondary)', lineHeight:1.2, margin:0, maxWidth:60, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{cat.name}</p>
                   </button>
                 )
               })}
@@ -642,21 +640,19 @@ export default function CustomerHome() {
           </div>
         )}
 
-        {/* Popular near you — horizontal scroll */}
+        {/* Popular near you — Zomato-style vertical list */}
         {shopsLoaded && openShops.length > 0 && (
           <div style={{ marginBottom:8 }}>
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 16px', marginBottom:12 }}>
               <p style={{ fontSize:17, fontWeight:900, color:'var(--text-primary)', letterSpacing:'-0.02em' }}>
                 {activeCategory ? `${activeCats.find(c => c.q === activeCategory)?.name || 'Nearby'} Shops` : 'Popular near you'}
               </p>
-              <Link href="/stores" style={{ fontSize:13, fontWeight:800, color:'#FF3008', textDecoration:'none' }}>
-                See all
-              </Link>
+              <Link href="/stores" style={{ fontSize:13, fontWeight:800, color:'#FF3008', textDecoration:'none' }}>See all</Link>
             </div>
-            <div style={{ display:'flex', gap:12, overflowX:'auto', paddingLeft:16, paddingRight:16, paddingBottom:4 }}>
+            <div style={{ padding:'0 12px', display:'flex', flexDirection:'column', gap:12 }}>
               {(fastDeliveryShops.length >= 2 && !activeCategory ? remainingShops : openShops)
                 .slice(0, 10)
-                .map(shop => <ShopCardH key={shop.id} shop={shop} />)
+                .map(shop => <ShopCardFull key={shop.id} shop={shop} />)
               }
             </div>
           </div>
@@ -684,12 +680,12 @@ export default function CustomerHome() {
             <Link href="/stores" style={{ fontSize:12, fontWeight:800, color:'#FF3008', textDecoration:'none' }}>See all</Link>
           </div>
           {products.length === 0 ? (
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, padding:'0 12px' }}>
-              {Array.from({length:4}).map((_,i) => <div key={i} className="sk" style={{ height:195, borderRadius:16 }} />)}
+            <div style={{ display:'flex', gap:10, overflowX:'auto', paddingLeft:16, paddingRight:16, paddingBottom:4, scrollbarWidth:'none' }}>
+              {Array.from({length:5}).map((_,i) => <div key={i} className="sk" style={{ width:148, flexShrink:0, height:195, borderRadius:16 }} />)}
             </div>
           ) : (
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, padding:'0 12px' }}>
-              {featuredProds.slice(0, 6).map(p => <ProductGridCard key={p.id} product={p} />)}
+            <div style={{ display:'flex', gap:10, overflowX:'auto', paddingLeft:16, paddingRight:16, paddingBottom:4, scrollbarWidth:'none' }}>
+              {featuredProds.map(p => <ProductGridCard key={p.id} product={p} />)}
             </div>
           )}
         </div>
@@ -913,13 +909,100 @@ function ShopCardH({ shop }: { shop: Shop & { km: number | null } }) {
   )
 }
 
+// ── SHOP CARD FULL (Zomato-style vertical card) ───────────────────
+function ShopCardFull({ shop }: { shop: Shop & { km: number | null } }) {
+  const catKey   = Object.keys(CAT_SVG).find(k => k !== 'default' && shop.category_name?.toLowerCase().replace(/[^a-z]/g,'').includes(k)) || 'default'
+  const color    = CAT_COLOR[catKey]
+  const discMatch = shop.offer_text?.match(/(\d+)\s*%/)
+  const discPct   = discMatch ? discMatch[1] : null
+  const kmTxt    = shop.km === null ? null : shop.km < 1 ? `${Math.round(shop.km * 1000)}m` : `${shop.km.toFixed(1)}km`
+  const isOpen   = computeIsOpen(shop)
+  const isBoosted = (shop.boost_weight ?? 0) > 0
+  const rating   = shop.rating ?? 0
+  // rating color: 4+ green, 3+ amber, below red
+  const ratingBg = rating >= 4 ? '#16a34a' : rating >= 3 ? '#d97706' : rating > 0 ? '#ef4444' : '#6b7280'
+
+  function handleClick() {
+    if (!isBoosted) return
+    createClient().rpc('increment_boost_click', { p_shop_id: shop.id, p_date: new Date().toISOString().slice(0, 10) })
+  }
+
+  return (
+    <Link href={`/stores/${shop.id}`} onClick={handleClick}
+      style={{ display:'block', textDecoration:'none', background:'var(--card-white)', borderRadius:20, overflow:'hidden', boxShadow:'0 2px 10px rgba(0,0,0,.07)', border:'1px solid var(--divider)' }}>
+
+      {/* Banner image */}
+      <div style={{ height:168, position:'relative', background:`${color}18`, overflow:'hidden', display:'flex', alignItems:'center', justifyContent:'center' }}>
+        {shop.image_url
+          ? <Image src={shop.image_url} alt={shop.name} fill sizes="(max-width:640px) 100vw, 600px" className="object-cover"
+              style={isOpen ? undefined : { filter:'grayscale(60%) brightness(.8)' }} />
+          : <span style={{ color, opacity:.22, display:'flex', transform:'scale(2.2)' }}>{getCatIcon(catKey)}</span>
+        }
+        {/* Top-left: discount badge */}
+        {discPct && (
+          <div style={{ position:'absolute', top:10, left:10, background:'#FF3008', color:'#fff', fontSize:11, fontWeight:900, padding:'4px 10px', borderRadius:9 }}>
+            {discPct}% OFF
+          </div>
+        )}
+        {/* Top-right: boost badge OR closed */}
+        {isBoosted && shop.boost_badge ? (
+          <div style={{ position:'absolute', top:10, right:10, background: shop.boost_badge_color ?? '#6b7280', color:'#fff', fontSize:9, fontWeight:900, padding:'3px 9px', borderRadius:7, letterSpacing:'0.06em', textTransform:'uppercase' }}>
+            {shop.boost_badge}
+          </div>
+        ) : !isOpen ? (
+          <div style={{ position:'absolute', inset:0, background:'rgba(0,0,0,.38)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+            <span style={{ background:'rgba(0,0,0,.72)', color:'#fff', fontSize:12, fontWeight:800, padding:'5px 14px', borderRadius:10, letterSpacing:'0.06em' }}>CLOSED</span>
+          </div>
+        ) : null}
+      </div>
+
+      {/* Info */}
+      <div style={{ padding:'12px 14px 14px' }}>
+        <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:10, marginBottom:5 }}>
+          <p style={{ fontWeight:900, fontSize:16, color:'var(--text-primary)', flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', letterSpacing:'-0.01em' }}>{shop.name}</p>
+          {/* Rating pill */}
+          {rating > 0 && (
+            <div style={{ display:'flex', alignItems:'center', gap:4, background:ratingBg, borderRadius:8, padding:'4px 8px', flexShrink:0 }}>
+              <svg viewBox="0 0 24 24" fill="#fff" width={10} height={10}><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              <span style={{ color:'#fff', fontWeight:800, fontSize:12, lineHeight:1 }}>{rating.toFixed(1)}</span>
+            </div>
+          )}
+        </div>
+        <p style={{ fontSize:12, color:'var(--text-muted)', marginBottom:8, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+          {shop.category_name}
+        </p>
+        {/* Meta row */}
+        <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:12, color:'var(--text-muted)', flexWrap:'wrap' }}>
+          <svg viewBox="0 0 24 24" fill="none" width={13} height={13}><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/><path d="M12 6v6l4 2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+          <span>{shop.avg_delivery_time} min</span>
+          {kmTxt && <>
+            <span style={{ width:3, height:3, borderRadius:'50%', background:'var(--text-faint)', display:'inline-block' }} />
+            <span>{kmTxt} away</span>
+          </>}
+          {shop.free_delivery_above != null && shop.free_delivery_above === 0 && <>
+            <span style={{ width:3, height:3, borderRadius:'50%', background:'var(--text-faint)', display:'inline-block' }} />
+            <span style={{ color:'#16a34a', fontWeight:700 }}>Free delivery</span>
+          </>}
+        </div>
+        {/* Offer text */}
+        {shop.offer_text && !discPct && (
+          <div style={{ marginTop:9, display:'flex', alignItems:'center', gap:6, background:'rgba(255,48,8,.06)', borderRadius:10, padding:'6px 10px' }}>
+            <svg viewBox="0 0 24 24" fill="none" width={13} height={13}><path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z" stroke="#FF3008" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><line x1="7" y1="7" x2="7.01" y2="7" stroke="#FF3008" strokeWidth="2.5" strokeLinecap="round"/></svg>
+            <span style={{ fontSize:11, fontWeight:700, color:'#FF3008' }}>{shop.offer_text}</span>
+          </div>
+        )}
+      </div>
+    </Link>
+  )
+}
+
 // ── PRODUCT GRID CARD (2-column grid variant) ─────────────────────
 function ProductGridCard({ product }: { product: Product }) {
   const disc = product.original_price && product.original_price > product.price
     ? Math.round(((product.original_price - product.price) / product.original_price) * 100) : null
   return (
     <Link href={`/stores/${product.shop_id}`}
-      style={{ background:'var(--card-white)', borderRadius:16, overflow:'hidden', textDecoration:'none', boxShadow:'0 2px 8px rgba(0,0,0,.05)' }}>
+      style={{ background:'var(--card-white)', borderRadius:16, overflow:'hidden', textDecoration:'none', boxShadow:'0 2px 8px rgba(0,0,0,.05)', width:148, flexShrink:0, display:'block' }}>
       <div style={{ height:118, background:'var(--chip-bg)', position:'relative', overflow:'hidden' }}>
         {product.image_url
           ? <Image src={product.image_url} alt={product.name} fill sizes="(max-width:480px) 50vw, 240px" className="object-cover" />
