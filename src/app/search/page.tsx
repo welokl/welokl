@@ -3,6 +3,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { computeIsOpen } from '@/lib/shopHours'
 import { useCart } from '@/store/cart'
 
 interface Product {
@@ -75,7 +76,7 @@ export default function SearchPage() {
 
       const { data: shops, error: shopErr } = await sb
         .from('shops')
-        .select('id, name, is_open, area, is_active')
+        .select('id, name, is_open, area, is_active, opening_time, closing_time, manually_closed')
         .in('id', shopIds)
 
       if (shopErr) {
@@ -87,7 +88,7 @@ export default function SearchPage() {
       // Build shop lookup
       const shopMap: Record<string, { name: string; is_open: boolean; area: string | null; is_active: boolean }> = {}
       ;(shops || []).forEach((s: any) => {
-        shopMap[s.id] = { name: s.name, is_open: s.is_open ?? false, area: s.area, is_active: s.is_active !== false }
+        shopMap[s.id] = { name: s.name, is_open: computeIsOpen(s), area: s.area, is_active: s.is_active !== false }
       })
 
       // ── STEP 3: merge ────────────────────────────────────────────

@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
+import { computeIsOpen } from '@/lib/shopHours'
 import BottomNav from '@/components/BottomNav'
 import type { Shop } from '@/types'
 
@@ -101,8 +102,8 @@ export default function FavouritesPage() {
                         : <span style={{ fontSize:36 }}>{icon}</span>
                       }
                       <div style={{ position:'absolute', bottom:5, left:5 }}>
-                        <span style={{ fontSize:8, fontWeight:800, padding:'2px 5px', borderRadius:4, background: shop.is_open ? '#16a34a' : 'rgba(0,0,0,.55)', color:'#fff' }}>
-                          {shop.is_open ? 'OPEN' : 'CLOSED'}
+                        <span style={{ fontSize:8, fontWeight:800, padding:'2px 5px', borderRadius:4, background: computeIsOpen(shop) ? '#16a34a' : 'rgba(0,0,0,.55)', color:'#fff' }}>
+                          {computeIsOpen(shop) ? 'OPEN' : 'CLOSED'}
                         </span>
                       </div>
                     </div>

@@ -5,6 +5,7 @@ import { useCart } from '@/store/cart'
 import Link from 'next/link'
 import Image from 'next/image'
 import { createClient } from '@/lib/supabase/client'
+import { computeIsOpen } from '@/lib/shopHours'
 import type { Order, User } from '@/types'
 import { ORDER_STATUS_LABELS, ORDER_STATUS_ICONS } from '@/types'
 import { useCustomerOrderAlerts } from '@/hooks/useOrderAlerts'
@@ -150,7 +151,7 @@ export default function CustomerHome() {
     const today = new Date().toISOString().slice(0, 10)
     const [{ data: shops }, { data: cats }, { data: boosts }, { data: metrics }] = await Promise.all([
       sb.from('shops')
-        .select('id,name,category_name,area,is_open,is_active,rating,avg_delivery_time,image_url,offer_text,delivery_enabled,pickup_enabled,latitude,longitude,verification_status')
+        .select('id,name,category_name,area,is_open,is_active,rating,avg_delivery_time,image_url,offer_text,delivery_enabled,pickup_enabled,latitude,longitude,verification_status,opening_time,closing_time,manually_closed')
         .eq('is_active', true).eq('verification_status', 'approved').order('rating', { ascending: false }),
       sb.from('categories').select('*').eq('is_active', true),
       // Active boosts only — join plan for badge label + weight
@@ -333,7 +334,7 @@ export default function CustomerHome() {
       // Distance: -6 per km, cap at -30
       if (s.km !== null) pts -= Math.min(s.km * 6, 30)
       // Meal-time speed bonus
-      if (isMealTime && s.is_open && s.avg_delivery_time <= 30) pts += 12
+      if (isMealTime && computeIsOpen(s) && s.avg_delivery_time <= 30) pts += 12
       return pts
     }
 
@@ -353,7 +354,7 @@ export default function CustomerHome() {
 
     setDisplayShops(shops)
     if (locStatus === 'granted' || locStatus === 'denied') {
-      const ids = shops.filter(s => s.is_open).map(s => s.id)
+      const ids = shops.filter(s => computeIsOpen(s)).map(s => s.id)
       loadProducts(ids.length ? ids : shops.map(s => s.id))
     }
   }, [allShops, userLat, userLng, radius, activeCategory, locStatus, loadProducts, orders])
@@ -376,8 +377,8 @@ export default function CustomerHome() {
     window.location.href = '/cart'
   }
 
-  const openShops      = displayShops.filter(s => s.is_open)
-  const closedShops    = displayShops.filter(s => !s.is_open)
+  const openShops      = displayShops.filter(s => computeIsOpen(s))
+  const closedShops    = displayShops.filter(s => !computeIsOpen(s))
   const dealProducts   = products.filter(p => p.original_price && p.original_price > p.price)
   const featuredProds  = dealProducts.length > 0 ? dealProducts : products
   const greeting       = (() => { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening' })()
@@ -753,7 +754,7 @@ function ShopCard({ shop, index }: { shop: Shop & { km: number | null }; index: 
           : <span style={{ color: color, opacity:.6 }}>{CAT_ICON_SVG[catKey] || CAT_ICON_SVG['default']}</span>
         }
         <div style={{ position:'absolute', bottom:5, left:5 }}>
-          {shop.is_open
+          {computeIsOpen(shop)
             ? <span style={{ background:'#16a34a', color:'#fff', fontSize:8, fontWeight:800, padding:'2px 5px', borderRadius:5 }}>OPEN</span>
             : <span style={{ background:'rgba(0,0,0,.55)', color:'rgba(255,255,255,.7)', fontSize:8, fontWeight:800, padding:'2px 5px', borderRadius:5 }}>CLOSED</span>
           }
@@ -861,7 +862,7 @@ function ShopCardH({ shop }: { shop: Shop & { km: number | null } }) {
       <div style={{ height:116, background:`${color}18`, position:'relative', overflow:'hidden', display:'flex', alignItems:'center', justifyContent:'center' }}>
         {shop.image_url
           ? <Image src={shop.image_url} alt={shop.name} fill sizes="172px" className="object-cover"
-              style={shop.is_open ? undefined : { filter:'grayscale(55%) brightness(.85)' }} />
+              style={computeIsOpen(shop) ? undefined : { filter:'grayscale(55%) brightness(.85)' }} />
           : <span style={{ color, opacity:.28, transform:'scale(1.2)', display:'flex' }}>{CAT_ICON_SVG[catKey] || CAT_ICON_SVG['default']}</span>
         }
         {/* Boost badge — top-right, replaces open status when boosted */}
@@ -869,7 +870,7 @@ function ShopCardH({ shop }: { shop: Shop & { km: number | null } }) {
           <div style={{ position:'absolute', top:8, right:8, background: shop.boost_badge_color ?? '#6b7280', color:'#fff', fontSize:9, fontWeight:900, padding:'3px 8px', borderRadius:6, letterSpacing:'0.06em', textTransform:'uppercase' }}>
             {shop.boost_badge}
           </div>
-        ) : !shop.is_open ? (
+        ) : !computeIsOpen(shop) ? (
           <div style={{ position:'absolute', top:9, right:9, background:'rgba(0,0,0,.72)', color:'rgba(255,255,255,.85)', fontSize:9, fontWeight:800, padding:'3px 8px', borderRadius:6, letterSpacing:'0.06em' }}>
             CLOSED
           </div>
