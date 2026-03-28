@@ -34,17 +34,35 @@ function dist(lat1: number, lng1: number, lat2: number, lng2: number) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
 }
 
-// Category SVG icons
+// Category SVG icons — keys are substrings to match against the computed `q`
 const CAT_SVG: Record<string, JSX.Element> = {
   food:        <svg viewBox="0 0 24 24" fill="none" width={28} height={28}><path d="M18 8h1a4 4 0 010 8h-1M2 8h16v9a4 4 0 01-4 4H6a4 4 0 01-4-4V8zM6 1v3M10 1v3M14 1v3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+  restaurant:  <svg viewBox="0 0 24 24" fill="none" width={28} height={28}><path d="M18 8h1a4 4 0 010 8h-1M2 8h16v9a4 4 0 01-4 4H6a4 4 0 01-4-4V8zM6 1v3M10 1v3M14 1v3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>,
   grocery:     <svg viewBox="0 0 24 24" fill="none" width={28} height={28}><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4zM3 6h18M16 10a4 4 0 01-8 0" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>,
   pharmacy:    <svg viewBox="0 0 24 24" fill="none" width={28} height={28}><rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" strokeWidth="2"/><path d="M12 8v8M8 12h8" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/></svg>,
+  health:      <svg viewBox="0 0 24 24" fill="none" width={28} height={28}><path d="M22 12h-4l-3 9L9 3l-3 9H2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+  medical:     <svg viewBox="0 0 24 24" fill="none" width={28} height={28}><rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" strokeWidth="2"/><path d="M12 8v8M8 12h8" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/></svg>,
   electronics: <svg viewBox="0 0 24 24" fill="none" width={28} height={28}><rect x="2" y="3" width="20" height="14" rx="2" stroke="currentColor" strokeWidth="2"/><path d="M8 21h8M12 17v4" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>,
+  mobile:      <svg viewBox="0 0 24 24" fill="none" width={28} height={28}><rect x="5" y="2" width="14" height="20" rx="2" stroke="currentColor" strokeWidth="2"/><circle cx="12" cy="17" r="1" fill="currentColor"/></svg>,
   salon:       <svg viewBox="0 0 24 24" fill="none" width={28} height={28}><circle cx="6" cy="6" r="3" stroke="currentColor" strokeWidth="2"/><circle cx="18" cy="18" r="3" stroke="currentColor" strokeWidth="2"/><path d="M20 4L8.12 15.88M14.47 14.48L20 20M3.51 8.51L10 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>,
+  beauty:      <svg viewBox="0 0 24 24" fill="none" width={28} height={28}><circle cx="6" cy="6" r="3" stroke="currentColor" strokeWidth="2"/><circle cx="18" cy="18" r="3" stroke="currentColor" strokeWidth="2"/><path d="M20 4L8.12 15.88M14.47 14.48L20 20M3.51 8.51L10 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>,
   hardware:    <svg viewBox="0 0 24 24" fill="none" width={28} height={28}><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>,
-  gifts:       <svg viewBox="0 0 24 24" fill="none" width={28} height={28}><path d="M20 12v10H4V12M22 7H2v5h20V7zM12 22V7M12 7H7.5a2.5 2.5 0 010-5C11 2 12 7 12 7zM12 7h4.5a2.5 2.5 0 000-5C13 2 12 7 12 7z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+  stationery:  <svg viewBox="0 0 24 24" fill="none" width={28} height={28}><path d="M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+  office:      <svg viewBox="0 0 24 24" fill="none" width={28} height={28}><path d="M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+  flower:      <svg viewBox="0 0 24 24" fill="none" width={28} height={28}><path d="M12 22V12M12 12C12 12 7 11 7 7a5 5 0 0110 0c0 4-5 5-5 5zM12 12C12 12 7 13.5 5 17a5 5 0 009.33 2.5M12 12c0 0 5 1.5 7 5a5 5 0 01-9.33 2.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>,
+  gift:        <svg viewBox="0 0 24 24" fill="none" width={28} height={28}><path d="M20 12v10H4V12M22 7H2v5h20V7zM12 22V7M12 7H7.5a2.5 2.5 0 010-5C11 2 12 7 12 7zM12 7h4.5a2.5 2.5 0 000-5C13 2 12 7 12 7z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>,
   pet:         <svg viewBox="0 0 24 24" fill="none" width={28} height={28}><path d="M10 5.172C10 3.782 8.423 2.679 6.5 3c-2 .336-3.5 2.057-3.5 4 0 .75.562 1.931 1 2.5M14 5.172C14 3.782 15.577 2.679 17.5 3c2 .336 3.5 2.057 3.5 4 0 .75-.562 1.931-1 2.5M12 19c-4 0-7-1.5-7-5 0-2 1-3.5 3.5-4.5M12 19c4 0 7-1.5 7-5 0-2-1-3.5-3.5-4.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>,
+  cloth:       <svg viewBox="0 0 24 24" fill="none" width={28} height={28}><path d="M20.38 3.46L16 2a4 4 0 01-8 0L3.62 3.46a2 2 0 00-1.34 2.23l.58 3.57a1 1 0 00.99.84H6v10a2 2 0 002 2h8a2 2 0 002-2V10h2.15a1 1 0 00.99-.84l.58-3.57a2 2 0 00-1.34-2.23z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+  fashion:     <svg viewBox="0 0 24 24" fill="none" width={28} height={28}><path d="M20.38 3.46L16 2a4 4 0 01-8 0L3.62 3.46a2 2 0 00-1.34 2.23l.58 3.57a1 1 0 00.99.84H6v10a2 2 0 002 2h8a2 2 0 002-2V10h2.15a1 1 0 00.99-.84l.58-3.57a2 2 0 00-1.34-2.23z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+  book:        <svg viewBox="0 0 24 24" fill="none" width={28} height={28}><path d="M4 19.5A2.5 2.5 0 016.5 17H20M4 19.5A2.5 2.5 0 004 22h16V2H6.5A2.5 2.5 0 004 4.5v15z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+  sport:       <svg viewBox="0 0 24 24" fill="none" width={28} height={28}><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/><path d="M4.93 4.93l4.24 4.24M14.83 14.83l4.24 4.24M19.07 4.93l-4.24 4.24M9.17 14.83l-4.24 4.24" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>,
   default:     <svg viewBox="0 0 24 24" fill="none" width={28} height={28}><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><polyline points="9 22 9 12 15 12 15 22" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>,
+}
+// Fuzzy match: find the first key that appears inside the category's q string
+function getCatIcon(q: string): JSX.Element {
+  if (CAT_SVG[q]) return CAT_SVG[q]
+  const match = Object.keys(CAT_SVG).find(k => k !== 'default' && q.includes(k))
+  return match ? CAT_SVG[match] : CAT_SVG['default']
 }
 
 const CATS = [
@@ -556,7 +574,7 @@ export default function CustomerHome() {
                       transition:'all .15s',
                     }}>
                       <span style={{ color: isActive ? '#fff' : cfg.color, display:'flex', transform:'scale(0.9)', lineHeight:0 }}>
-                        {CAT_SVG[cat.q] || CAT_SVG['default']}
+                        {getCatIcon(cat.q)}
                       </span>
                       <p style={{ fontSize:11, fontWeight:800, color: isActive ? '#fff' : 'var(--text-primary)', lineHeight:1, margin:0 }}>{cat.name}</p>
                     </div>
@@ -742,7 +760,7 @@ export default function CustomerHome() {
 
 // ── SHOP CARD ─────────────────────────────────────────────────────
 function ShopCard({ shop, index }: { shop: Shop & { km: number | null }; index: number }) {
-  const catKey  = Object.keys(CAT_COLOR).find(k => k !== 'default' && shop.category_name?.toLowerCase().includes(k)) || 'default'
+  const catKey  = Object.keys(CAT_SVG).find(k => k !== 'default' && shop.category_name?.toLowerCase().replace(/[^a-z]/g,'').includes(k)) || 'default'
   const color   = CAT_COLOR[catKey]
 
   return (
@@ -751,7 +769,7 @@ function ShopCard({ shop, index }: { shop: Shop & { km: number | null }; index: 
       <div style={{ width:90, height:90, flexShrink:0, background:`${color}15`, display:'flex', alignItems:'center', justifyContent:'center', position:'relative', overflow:'hidden' }}>
         {shop.image_url
           ? <Image src={shop.image_url} alt={shop.name} fill sizes="90px" className="object-cover" />
-          : <span style={{ color: color, opacity:.6 }}>{CAT_ICON_SVG[catKey] || CAT_ICON_SVG['default']}</span>
+          : <span style={{ color: color, opacity:.6, transform:'scale(1.3)', display:'flex' }}>{getCatIcon(catKey)}</span>
         }
         <div style={{ position:'absolute', bottom:5, left:5 }}>
           {computeIsOpen(shop)
@@ -840,7 +858,7 @@ function ProductCard({ product }: { product: Product }) {
 
 // ── SHOP CARD H (horizontal scroll variant) ───────────────────────
 function ShopCardH({ shop }: { shop: Shop & { km: number | null } }) {
-  const catKey  = Object.keys(CAT_COLOR).find(k => k !== 'default' && shop.category_name?.toLowerCase().includes(k)) || 'default'
+  const catKey  = Object.keys(CAT_SVG).find(k => k !== 'default' && shop.category_name?.toLowerCase().replace(/[^a-z]/g,'').includes(k)) || 'default'
   const color   = CAT_COLOR[catKey]
   const discMatch = shop.offer_text?.match(/(\d+)\s*%/)
   const discPct   = discMatch ? discMatch[1] : null
@@ -863,7 +881,7 @@ function ShopCardH({ shop }: { shop: Shop & { km: number | null } }) {
         {shop.image_url
           ? <Image src={shop.image_url} alt={shop.name} fill sizes="172px" className="object-cover"
               style={computeIsOpen(shop) ? undefined : { filter:'grayscale(55%) brightness(.85)' }} />
-          : <span style={{ color, opacity:.28, transform:'scale(1.2)', display:'flex' }}>{CAT_ICON_SVG[catKey] || CAT_ICON_SVG['default']}</span>
+          : <span style={{ color, opacity:.28, transform:'scale(1.2)', display:'flex' }}>{getCatIcon(catKey)}</span>
         }
         {/* Boost badge — top-right, replaces open status when boosted */}
         {isBoosted && shop.boost_badge ? (
