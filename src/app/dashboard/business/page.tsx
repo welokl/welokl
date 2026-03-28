@@ -41,58 +41,46 @@ export default function BusinessDashboard() {
     const { data: profile } = await supabase.from('users').select('*').eq('id', authUser.id).single()
     const role = profile?.role || authUser.user_metadata?.role || ''
 
-    // Delivery and admin always redirect — no exceptions
+    // Delivery and admin always redirect
     if (role === 'delivery') { window.location.replace('/dashboard/delivery'); return }
     if (role === 'admin')    { window.location.replace('/dashboard/admin');    return }
-
-    // For customer role: check shop_staff BEFORE redirecting
-    // They may be an operator for a Welokl-owned shop
-    if (role === 'customer') {
-      const { data: staffRow } = await supabase
-        .from('shop_staff')
-        .select('shop_id, role')
-        .eq('user_id', authUser.id)
-        .eq('is_active', true)
-        .maybeSingle()
-      if (!staffRow) { window.location.replace('/dashboard/customer'); return }
-      // They are staff — fall through to load their assigned shop below
-    }
 
     if (!profile?.phone) setShowPhoneGate(true)
     setUser(profile)
 
-    // Try owned shop first, then fall back to staff assignment
     let shopData: any = null
-    const { data: ownedShop } = await supabase
-      .from('shops')
-      .select('*, active_boost:vendor_boosts(status, end_date, plan:boost_plans(name, badge_color, boost_weight))')
-      .eq('owner_id', authUser.id)
-      .eq('vendor_boosts.status', 'active')
-      .maybeSingle()
 
-    if (ownedShop) {
-      shopData = ownedShop
-    } else {
-      // Check shop_staff assignment
+    if (role === 'customer') {
+      // Customer — only way in is via shop_staff assignment
+      // Fetch staff row + shop in one query (join)
       const { data: staffRow } = await supabase
         .from('shop_staff')
-        .select('shop_id, role')
+        .select('role, shop:shops(*)')
         .eq('user_id', authUser.id)
         .eq('is_active', true)
         .maybeSingle()
-      if (staffRow) {
-        const { data: staffShop } = await supabase
-          .from('shops')
-          .select('*, active_boost:vendor_boosts(status, end_date, plan:boost_plans(name, badge_color, boost_weight))')
-          .eq('id', staffRow.shop_id)
-          .eq('vendor_boosts.status', 'active')
-          .maybeSingle()
-        if (staffShop) shopData = { ...staffShop, _staff_role: staffRow.role }
+
+      if (!staffRow || !(staffRow as any).shop) {
+        window.location.replace('/dashboard/customer')
+        return
       }
+      shopData = { ...(staffRow as any).shop, _staff_role: staffRow.role }
+    } else {
+      // Business / shopkeeper owner
+      const { data: ownedShop } = await supabase
+        .from('shops')
+        .select('*, active_boost:vendor_boosts(status, end_date, plan:boost_plans(name, badge_color, boost_weight))')
+        .eq('owner_id', authUser.id)
+        .eq('vendor_boosts.status', 'active')
+        .maybeSingle()
+      shopData = ownedShop ?? null
     }
+
     if (!shopData) { setLoading(false); return }
     setShop(shopData)
-    setVerStatus((shopData as any).verification_status ?? 'pending')
+    // Staff accessing admin shops: default to 'approved' so they reach the dashboard
+    const vStatus = (shopData as any).verification_status ?? (shopData._staff_role ? 'approved' : 'pending')
+    setVerStatus(vStatus)
     setVerNote((shopData as any).verification_note ?? null)
     const [{ data: orderData }, { data: productData }] = await Promise.all([
       supabase.from('orders').select('*, delivery_partner_id, pickup_code, items:order_items(*), customer:users!customer_id(name, phone)').eq('shop_id', shopData.id).order('created_at', { ascending: false }).limit(50),
