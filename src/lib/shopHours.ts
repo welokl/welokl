@@ -16,5 +16,7 @@ export function computeIsOpen(shop: {
   const cur = now.getHours() * 60 + now.getMinutes()
   const [oh, om] = shop.opening_time.split(':').map(Number)
   const [ch, cm] = shop.closing_time.split(':').map(Number)
-  return cur >= oh * 60 + om && cur < ch * 60 + cm
+  const open = oh * 60 + om, close = ch * 60 + cm
+  // Overnight schedule (e.g. 20:00–03:00): close < open
+  return close <= open ? (cur >= open || cur < close) : (cur >= open && cur < close)
 }
