@@ -17,16 +17,22 @@ export async function DELETE(req: NextRequest) {
   const { data: profile } = await admin.from('users').select('role').eq('id', user.id).single()
   if (profile?.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const { shopId } = await req.json()
+  const body = await req.json()
+  const shopId: string = body.shopId
   if (!shopId) return NextResponse.json({ error: 'Missing shopId' }, { status: 400 })
 
-  // Get owner_id for storage cleanup
+  // Get owner_id + all order IDs for this shop
   const { data: shop } = await admin.from('shops').select('owner_id').eq('id', shopId).single()
   const ownerId = shop?.owner_id as string | undefined
 
-  // Clean up storage files
+  const { data: orders } = await admin.from('orders').select('id').eq('shop_id', shopId)
+  const orderIds = (orders ?? []).map((o: { id: string }) => o.id)
+
+  // Get product IDs before deleting (needed for storage cleanup)
+  const { data: prods } = await admin.from('products').select('id').eq('shop_id', shopId)
+
+  // Clean up storage files first
   if (ownerId) {
-    const { data: prods } = await admin.from('products').select('id').eq('shop_id', shopId)
     if (prods?.length) {
       const productPaths = prods.flatMap((p: { id: string }) => [
         `${ownerId}/${p.id}/1.webp`,
@@ -37,10 +43,20 @@ export async function DELETE(req: NextRequest) {
     await admin.storage.from('shop-images').remove([`${ownerId}/logo.webp`, `${ownerId}/banner.webp`])
   }
 
-  // Delete products then shop (service role bypasses RLS + triggers)
+  // Delete in dependency order
+  if (orderIds.length) {
+    await admin.from('shop_activity_log').delete().in('order_id', orderIds)
+    await admin.from('order_status_log').delete().in('order_id', orderIds)
+    await admin.from('order_items').delete().in('order_id', orderIds)
+    await admin.from('order_ratings').delete().in('order_id', orderIds)
+    await admin.from('orders').delete().in('id', orderIds)
+  }
+  await admin.from('shop_activity_log').delete().eq('shop_id', shopId)
   await admin.from('products').delete().eq('shop_id', shopId)
-  const { error } = await admin.from('shops').delete().eq('id', shopId)
 
+  // Finally delete the shop
+  const { error } = await admin.from('shops').delete().eq('id', shopId)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
   return NextResponse.json({ success: true })
 }
