@@ -1392,13 +1392,35 @@ function DeleteShopConfirm({ confirm, onCancel, onDeleted }: {
     setDeleting(true)
     setDeleteErr('')
     const sb = createClient()
-    // Delete child records first to avoid FK constraint failures
+    const ownerId = (confirm.shop as any).owner_id as string | undefined
+
+    // 1. Delete storage files via Storage API (not SQL — triggers are blocked)
+    if (ownerId) {
+      // Get all product IDs for this shop to clean up their images
+      const { data: prods } = await sb.from('products').select('id').eq('shop_id', confirm.shop.id)
+      if (prods?.length) {
+        const productPaths = prods.flatMap(p => [
+          `${ownerId}/${p.id}/1.webp`,
+          `${ownerId}/${p.id}/2.webp`,
+        ])
+        await sb.storage.from('product-images').remove(productPaths)
+      }
+      // Delete shop logo + banner
+      await sb.storage.from('shop-images').remove([
+        `${ownerId}/logo.webp`,
+        `${ownerId}/banner.webp`,
+      ])
+    }
+
+    // 2. Delete products from DB (storage is already cleaned above)
     await sb.from('products').delete().eq('shop_id', confirm.shop.id)
+
+    // 3. Delete the shop
     const { error } = await sb.from('shops').delete().eq('id', confirm.shop.id)
     setDeleting(false)
     if (error) {
-      setDeleteErr(error.message.includes('violates foreign key') || error.code === '23503'
-        ? 'Cannot delete — this shop has order history. Deactivate it instead.'
+      setDeleteErr(error.code === '23503' || error.message.includes('foreign key')
+        ? 'Cannot delete — shop has order history. Deactivate it instead to hide it from customers.'
         : `Delete failed: ${error.message}`)
       return
     }
@@ -1454,7 +1476,7 @@ function DeleteShopConfirm({ confirm, onCancel, onDeleted }: {
               cursor: match ? 'pointer' : 'not-allowed',
               boxShadow: match ? '0 4px 14px rgba(239,68,68,.3)' : 'none',
             }}>
-            {deleting ? 'Deleting…' : 'Delete Forever'}
+            {deleting ? 'Removing files & deleting…' : 'Delete Forever'}
           </button>
         </div>
       </div>
