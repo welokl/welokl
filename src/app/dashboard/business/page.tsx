@@ -24,6 +24,7 @@ export default function BusinessDashboard() {
   const [tab, setTab] = useState<Tab>('orders')
   const [loading, setLoading] = useState(true)
   const lastAppliedRef = useRef<boolean | null>(null) // last is_open state we wrote to DB
+  const shopRef = useRef<any>(null)                   // always-fresh shop snapshot for tick()
   const [showAddProduct, setShowAddProduct] = useState(false)
   const [editingProduct, setEditingProduct] = useState<any>(null)
   const [verStatus, setVerStatus] = useState<'pending' | 'approved' | 'rejected' | null>(null)
@@ -104,60 +105,61 @@ export default function BusinessDashboard() {
     unlockAudio()
   }, [])
 
+  // Keep shopRef in sync so tick() never reads a stale closure
+  useEffect(() => { shopRef.current = shop }, [shop])
+
   // ── Auto open/close — Swiggy/Zomato style ───────────────────
   // Schedule is always the authority. On every tick:
   //   • Within hours + not manually_closed → open
   //   • Within hours + manually_closed     → stay closed (owner override)
   //   • Outside hours                      → closed, reset manually_closed for next day
-  // No localStorage gate — we always compare current DB state and fix if wrong.
+  // tick() reads from shopRef so it always sees the latest manually_closed value,
+  // avoiding the stale-closure bug where a delayed tick overrides a manual toggle.
   useEffect(() => {
-    const s = shop as any
-    if (!s?.id || !s?.opening_time || !s?.closing_time) return
+    const shopId       = (shop as any)?.id
+    const openingTime  = (shop as any)?.opening_time
+    const closingTime  = (shop as any)?.closing_time
+    if (!shopId || !openingTime || !closingTime) return
 
     function shouldBeOpenNow(): boolean {
       const now = new Date()
       const cur = now.getHours() * 60 + now.getMinutes()
-      const [oh, om] = (s.opening_time as string).split(':').map(Number)
-      const [ch, cm] = (s.closing_time  as string).split(':').map(Number)
+      const [oh, om] = (openingTime as string).split(':').map(Number)
+      const [ch, cm] = (closingTime  as string).split(':').map(Number)
       return cur >= oh * 60 + om && cur < ch * 60 + cm
     }
 
     async function tick() {
-      const withinHours = shouldBeOpenNow()
+      const s = shopRef.current as any   // always fresh — no stale closure
+      if (!s) return
+      const withinHours   = shouldBeOpenNow()
       const manuallyClosed = !!(s.manually_closed)
+      const targetOpen    = withinHours && !manuallyClosed
 
-      let targetOpen: boolean
-      if (!withinHours) {
-        targetOpen = false          // outside hours → always closed
-      } else if (manuallyClosed) {
-        targetOpen = false          // within hours but owner manually closed
-      } else {
-        targetOpen = true           // within hours, no override → open
-      }
-
-      // Skip DB write if already in the correct state
-      if (lastAppliedRef.current === targetOpen) return
+      // Skip DB write if shop is already in the correct state
+      if (s.is_open === targetOpen && lastAppliedRef.current === targetOpen) return
       lastAppliedRef.current = targetOpen
 
       const update: Record<string, any> = { is_open: targetOpen }
       if (!withinHours) update.manually_closed = false // reset override at end of day
 
       const sb = createClient()
-      await sb.from('shops').update(update).eq('id', s.id)
+      await sb.from('shops').update(update).eq('id', shopId)
       setShop(prev => prev ? { ...prev, ...update } : prev)
       sb.from('shop_activity_log').insert({
-        shop_id: s.id,
+        shop_id: shopId,
         type: targetOpen ? 'shop_opened' : 'shop_closed',
         source: 'auto_schedule',
       }).then(() => {})
     }
 
-    // Reset tracking when shop data changes so we always re-evaluate
     lastAppliedRef.current = null
     tick()
     const t = setInterval(tick, 30_000) // check every 30s
     return () => clearInterval(t)
-  }, [(shop as any)?.id, (shop as any)?.opening_time, (shop as any)?.closing_time, (shop as any)?.manually_closed])
+  // Only restart when shop identity or schedule changes — NOT on every state update.
+  // manually_closed is read live from shopRef, so it doesn't need to be a dep here.
+  }, [(shop as any)?.id, (shop as any)?.opening_time, (shop as any)?.closing_time])
 
   useEffect(() => {
     loadData()
