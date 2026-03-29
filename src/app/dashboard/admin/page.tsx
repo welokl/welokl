@@ -788,11 +788,19 @@ export default function AdminDashboard() {
                         <p style={{ ...mono, marginTop: 3 }}>{c.key}</p>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <input type="number" defaultValue={c.value} onChange={e => setEdits(p => ({ ...p, [c.key]: e.target.value }))}
-                          style={{ width: 90, textAlign: 'right', border: '2px solid var(--border-2)', borderRadius: 10, padding: '8px 12px', fontSize: 14, fontWeight: 800, background: 'var(--input-bg)', color: 'var(--text)', fontFamily: 'inherit', outline: 'none' }} />
-                        <span style={{ fontSize: 12, color: 'var(--text-3)', width: 20 }}>
-                          {c.key.includes('commission') || c.key.includes('percent') ? '%' : c.key.includes('km') ? 'km' : c.key.includes('min') ? 'min' : 'Rs.'}
-                        </span>
+                        {c.key === 'customer_care_phone' ? (
+                          <input type="tel" defaultValue={c.value} onChange={e => setEdits(p => ({ ...p, [c.key]: e.target.value }))}
+                            placeholder="e.g. 9999999999"
+                            style={{ width: 150, textAlign: 'right', border: '2px solid var(--border-2)', borderRadius: 10, padding: '8px 12px', fontSize: 14, fontWeight: 800, background: 'var(--input-bg)', color: 'var(--text)', fontFamily: 'inherit', outline: 'none' }} />
+                        ) : (
+                          <>
+                            <input type="number" defaultValue={c.value} onChange={e => setEdits(p => ({ ...p, [c.key]: e.target.value }))}
+                              style={{ width: 90, textAlign: 'right', border: '2px solid var(--border-2)', borderRadius: 10, padding: '8px 12px', fontSize: 14, fontWeight: 800, background: 'var(--input-bg)', color: 'var(--text)', fontFamily: 'inherit', outline: 'none' }} />
+                            <span style={{ fontSize: 12, color: 'var(--text-3)', width: 20 }}>
+                              {c.key.includes('commission') || c.key.includes('percent') ? '%' : c.key.includes('km') ? 'km' : c.key.includes('min') ? 'min' : 'Rs.'}
+                            </span>
+                          </>
+                        )}
                       </div>
                     </div>
                   ))}
