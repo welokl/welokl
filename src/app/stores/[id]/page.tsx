@@ -444,7 +444,7 @@ export default function StorePage() {
 
       {/* Floating cart */}
       {showCartBar && (
-        <div style={{ position:'fixed', bottom:20, left:12, right:12, zIndex:50 }}>
+        <div style={{ position:'fixed', bottom:'calc(72px + env(safe-area-inset-bottom, 0px))', left:12, right:12, zIndex:50 }}>
           <div style={{ maxWidth:760, margin:'0 auto' }}>
             <Link href="/cart" style={{ display:'flex', alignItems:'center', justifyContent:'space-between', background:'#FF3008', color:'#fff', borderRadius:18, padding:'16px 22px', textDecoration:'none', boxShadow:'0 8px 32px rgba(255,48,8,.4)' }}>
               <div style={{ display:'flex', alignItems:'center', gap:10 }}>
