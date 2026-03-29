@@ -4,7 +4,6 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useCart } from '@/store/cart'
 import { createClient } from '@/lib/supabase/client'
-import BottomNav from '@/components/BottomNav'
 
 export default function CartPage() {
   const router  = useRouter()
@@ -53,7 +52,7 @@ export default function CartPage() {
   )
 
   return (
-    <div style={{ minHeight:'100vh', background:'var(--page-bg)', fontFamily:"'Plus Jakarta Sans',sans-serif", paddingBottom:100 }}>
+    <div style={{ minHeight:'100vh', background:'var(--page-bg)', fontFamily:"'Plus Jakarta Sans',sans-serif", paddingBottom:'calc(90px + env(safe-area-inset-bottom, 0px))' }}>
 
       {/* Header */}
       <div style={{ position:'sticky', top:0, zIndex:40, background:'var(--card-white)', borderBottom:'1px solid var(--divider)', padding:'0 16px' }}>
@@ -153,7 +152,7 @@ export default function CartPage() {
       </div>
 
       {/* Checkout bar */}
-      <div style={{ position:'fixed', bottom:0, left:0, right:0, padding:'12px 12px 20px', background:'var(--card-white)', borderTop:'1px solid var(--divider)', zIndex:50 }}>
+      <div style={{ position:'fixed', bottom:0, left:0, right:0, padding:'12px 12px', paddingBottom:'calc(16px + env(safe-area-inset-bottom, 0px))', background:'var(--card-white)', borderTop:'1px solid var(--divider)', zIndex:50 }}>
         <div style={{ maxWidth:520, margin:'0 auto' }}>
           <Link href="/checkout" style={{ display:'flex', alignItems:'center', justifyContent:'space-between', background:'#FF3008', color:'#fff', borderRadius:18, padding:'16px 22px', textDecoration:'none', boxShadow:'0 8px 24px rgba(255,48,8,.3)' }}>
             <div style={{ display:'flex', alignItems:'center', gap:10 }}>
@@ -166,7 +165,6 @@ export default function CartPage() {
           </Link>
         </div>
       </div>
-      <BottomNav active="shops" />
     </div>
   )
 }
