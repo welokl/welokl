@@ -237,7 +237,7 @@ export default function CheckoutPage() {
   }
 
   return (
-    <div style={{ minHeight:'100vh', background:'var(--page-bg)', fontFamily:"'Plus Jakarta Sans',sans-serif", paddingBottom:100 }}>
+    <div style={{ minHeight:'100vh', background:'var(--page-bg)', fontFamily:"'Plus Jakarta Sans',sans-serif", paddingBottom:'calc(120px + env(safe-area-inset-bottom, 0px))' }}>
 
       {/* Header */}
       <div style={{ position:'sticky', top:0, zIndex:40, background:'var(--card-white)', borderBottom:'1px solid var(--divider)', padding:'0 16px' }}>
@@ -405,7 +405,7 @@ export default function CheckoutPage() {
       </div>
 
       {/* Place order bar */}
-      <div style={{ position:'fixed', bottom:0, left:0, right:0, padding:'12px 12px 20px', background:'var(--card-white)', borderTop:'1px solid var(--divider)', zIndex:50 }}>
+      <div style={{ position:'fixed', bottom:0, left:0, right:0, padding:'12px 12px', paddingBottom:'calc(16px + env(safe-area-inset-bottom, 0px))', background:'var(--card-white)', borderTop:'1px solid var(--divider)', zIndex:50 }}>
         <div style={{ maxWidth:560, margin:'0 auto' }}>
           <button onClick={handleCOD} disabled={loading || belowMin}
             style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'space-between', padding:'16px 22px', borderRadius:18, border:'none', background: loading || belowMin ? 'var(--chip-bg)' : '#FF3008', color: loading || belowMin ? 'var(--text-muted)' : '#fff', fontWeight:900, fontSize:16, cursor: loading || belowMin ? 'not-allowed' : 'pointer', fontFamily:'inherit', transition:'background .2s', boxShadow: loading || belowMin ? 'none' : '0 8px 24px rgba(255,48,8,.3)' }}>
