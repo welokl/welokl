@@ -115,6 +115,7 @@ export default function CustomerHome() {
   const [showPhoneGate, setShowPhoneGate] = useState(false)
   const [staffShop, setStaffShop]         = useState<{name:string; role:string} | null>(null)
   const [prodFreqMap, setProdFreqMap]     = useState<Record<string,number>>({})
+  const [userType, setUserType]           = useState<'student'|'staff'|'general'>('general')
 
   useCustomerOrderAlerts(user?.id)
 
@@ -339,6 +340,27 @@ export default function CustomerHome() {
 
     setProdFreqMap(prodFreq)
 
+    // ── User type classification ───────────────────────────────
+    const delivered = orders.filter(o => o.status === 'delivered')
+    if (delivered.length >= 2) {
+      const totalVal = delivered.reduce((s, o) => s + ((o as any).total_amount || 0), 0)
+      const avgVal   = totalVal / delivered.length
+      const lateCount = delivered.filter(o => {
+        const h = new Date((o as any).created_at || 0).getHours()
+        return h >= 21 || h < 4
+      }).length
+      const lateRatio = lateCount / delivered.length
+      // Repeat-vendor ratio (staff signal)
+      const vf: Record<string,number> = {}
+      delivered.forEach(o => { const s = (o as any).shop_id; if (s) vf[s] = (vf[s]||0)+1 })
+      const maxRepeat   = Math.max(...Object.values(vf), 0)
+      const repeatRatio = maxRepeat / delivered.length
+      if (avgVal < 150 && lateRatio > 0.2)       setUserType('student')
+      else if (repeatRatio > 0.4 && avgVal > 150) setUserType('staff')
+      else if (avgVal < 150)                       setUserType('student')
+      else                                         setUserType('general')
+    }
+
     // ── Personalized shop score ────────────────────────────────
     // Primary signal: order frequency (uncapped — most-ordered shops float to top)
     // Paid boost: additive overlay on top of organic rank
@@ -439,7 +461,35 @@ export default function CustomerHome() {
   // Remaining shops after fast-delivery (no duplication in vertical list)
   const remainingShops = openShops.filter(s => !fastDeliveryShops.find(f => f.id === s.id))
 
+  // ── Time slot ─────────────────────────────────────────────────
+  const timeSlot = (() => {
+    const h = new Date().getHours()
+    if (h >= 6  && h < 12) return 'morning'
+    if (h >= 12 && h < 17) return 'afternoon'
+    if (h >= 17 && h < 21) return 'evening'
+    return 'night'
+  })()
+
   const mealLabel = (() => { const h = new Date().getHours(); return h < 11 ? 'Breakfast' : h < 16 ? 'Lunch picks' : 'Dinner picks' })()
+
+  // ── Personalised product / shop slices ────────────────────────
+  // Under ₹100: cheap available products, freq-sorted
+  const under100   = sortByFreq(products.filter(p => p.price < 100)).slice(0, 12)
+
+  // Late night / evening snack shops (food/restaurant/snack category, open now)
+  const snackShops = openShops.filter(s => {
+    const c = (s.category_name || '').toLowerCase()
+    return c.includes('food') || c.includes('restaurant') || c.includes('snack') || c.includes('fast') || c.includes('bakery') || c.includes('sweet')
+  }).slice(0, 8)
+
+  // Staff: grocery / essentials refill products
+  const refillProds = sortByFreq(products.filter(p => {
+    const n = p.name.toLowerCase()
+    return n.includes('milk') || n.includes('bread') || n.includes('egg') || n.includes('butter') || n.includes('tea') || n.includes('chai') || n.includes('curd') || n.includes('paneer')
+  })).slice(0, 6)
+
+  // Staff: regular shops (high-repeat open shops)
+  const regularShops = pastOrderShopData.filter(s => computeIsOpen(s)).slice(0, 6)
 
   return (
     <>
@@ -723,7 +773,147 @@ export default function CustomerHome() {
       )}
 
       {/* ═══════════════════════════════════════════════
-          8. CATEGORY FILTERED — vertical full cards
+          8. DYNAMIC CONTEXTUAL SECTIONS
+          ═══════════════════════════════════════════════ */}
+
+      {/* ── STUDENT: Under ₹100 ── */}
+      {!activeCategory && userType === 'student' && under100.length >= 2 && (
+        <div style={{ marginTop:24 }}>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 16px', marginBottom:12 }}>
+            <div>
+              <p style={{ fontSize:16, fontWeight:900, color:'var(--text-primary)', letterSpacing:'-0.02em' }}>Under ₹100</p>
+              <p style={{ fontSize:12, color:'var(--text-muted)', marginTop:2 }}>Budget-friendly picks near you</p>
+            </div>
+            <Link href="/search" style={{ fontSize:13, fontWeight:800, color:'#FF3008', textDecoration:'none' }}>See all</Link>
+          </div>
+          <div style={{ display:'flex', gap:12, overflowX:'auto', paddingLeft:16, paddingRight:16, paddingBottom:4, scrollbarWidth:'none' }}>
+            {under100.map(p => <PriceHighlightCard key={p.id} product={p} />)}
+          </div>
+        </div>
+      )}
+
+      {/* ── STUDENT: Late Night Cravings (evening + night only) ── */}
+      {!activeCategory && userType === 'student' && (timeSlot === 'evening' || timeSlot === 'night') && snackShops.length >= 2 && (
+        <div style={{ marginTop:24 }}>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 16px', marginBottom:12 }}>
+            <div>
+              <p style={{ fontSize:16, fontWeight:900, color:'var(--text-primary)', letterSpacing:'-0.02em' }}>🌙 Late Night Cravings</p>
+              <p style={{ fontSize:12, color:'var(--text-muted)', marginTop:2 }}>Open now · fast delivery</p>
+            </div>
+            <Link href="/stores" style={{ fontSize:13, fontWeight:800, color:'#FF3008', textDecoration:'none' }}>See all</Link>
+          </div>
+          <div style={{ display:'flex', gap:12, overflowX:'auto', paddingLeft:16, paddingRight:16, paddingBottom:4, scrollbarWidth:'none' }}>
+            {snackShops.map(s => <ShopCardH key={s.id} shop={s} />)}
+          </div>
+        </div>
+      )}
+
+      {/* ── STUDENT: Quick Bites Add-ons (morning / afternoon) ── */}
+      {!activeCategory && userType === 'student' && (timeSlot === 'morning' || timeSlot === 'afternoon') && under100.length >= 2 && (
+        <div style={{ marginTop:24 }}>
+          <div style={{ padding:'0 16px', marginBottom:12 }}>
+            <p style={{ fontSize:16, fontWeight:900, color:'var(--text-primary)', letterSpacing:'-0.02em' }}>Quick Bites</p>
+            <p style={{ fontSize:12, color:'var(--text-muted)', marginTop:2 }}>Small treats, fast to door</p>
+          </div>
+          <div style={{ display:'flex', gap:10, overflowX:'auto', paddingLeft:16, paddingRight:16, paddingBottom:4, scrollbarWidth:'none' }}>
+            {under100.slice(0, 8).map(p => (
+              <Link key={p.id} href={`/stores/${p.shop_id}`}
+                style={{ flexShrink:0, width:120, borderRadius:16, overflow:'hidden', textDecoration:'none', background:'var(--card-white)', border:'1px solid var(--divider)', display:'block' }}>
+                <div style={{ height:80, background:'var(--chip-bg)', position:'relative', overflow:'hidden' }}>
+                  {p.image_url
+                    ? <Image src={p.image_url} alt={p.name} fill sizes="120px" className="object-cover" />
+                    : <div style={{ width:'100%', height:'100%', display:'flex', alignItems:'center', justifyContent:'center' }}><svg viewBox="0 0 24 24" fill="none" width={28} height={28}><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4zM3 6h18M16 10a4 4 0 01-8 0" stroke="var(--text-faint)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></div>
+                  }
+                </div>
+                <div style={{ padding:'7px 8px 9px' }}>
+                  <p style={{ fontSize:11, fontWeight:700, color:'var(--text-primary)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', marginBottom:3 }}>{p.name}</p>
+                  <p style={{ fontSize:13, fontWeight:900, color:'#FF3008' }}>₹{p.price}</p>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── STAFF: Daily Meals (morning/afternoon) ── */}
+      {!activeCategory && userType === 'staff' && (timeSlot === 'morning' || timeSlot === 'afternoon') && openShops.length >= 2 && (
+        <div style={{ marginTop:24 }}>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 16px', marginBottom:12 }}>
+            <div>
+              <p style={{ fontSize:16, fontWeight:900, color:'var(--text-primary)', letterSpacing:'-0.02em' }}>
+                {timeSlot === 'morning' ? '☀️ Morning Meals' : '🍱 Today\'s Meals'}
+              </p>
+              <p style={{ fontSize:12, color:'var(--text-muted)', marginTop:2 }}>Fresh · ready to order</p>
+            </div>
+            <Link href="/stores" style={{ fontSize:13, fontWeight:800, color:'#FF3008', textDecoration:'none' }}>See all</Link>
+          </div>
+          <div style={{ display:'flex', gap:12, overflowX:'auto', paddingLeft:16, paddingRight:16, paddingBottom:4, scrollbarWidth:'none' }}>
+            {openShops.slice(0, 6).map(s => <PopularShopCard key={s.id} shop={s} />)}
+          </div>
+        </div>
+      )}
+
+      {/* ── STAFF: Fast Refill — grocery essentials 2-col grid ── */}
+      {!activeCategory && userType === 'staff' && refillProds.length >= 2 && (
+        <div style={{ marginTop:24 }}>
+          <div style={{ padding:'0 16px', marginBottom:12 }}>
+            <p style={{ fontSize:16, fontWeight:900, color:'var(--text-primary)', letterSpacing:'-0.02em' }}>🧺 Fast Refill</p>
+            <p style={{ fontSize:12, color:'var(--text-muted)', marginTop:2 }}>Daily essentials, quick delivery</p>
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, padding:'0 16px' }}>
+            {refillProds.map(p => (
+              <Link key={p.id} href={`/stores/${p.shop_id}`}
+                style={{ borderRadius:14, overflow:'hidden', textDecoration:'none', background:'var(--card-white)', border:'1px solid var(--divider)', display:'flex', alignItems:'center', gap:10, padding:'10px 12px', minHeight:64 }}>
+                <div style={{ width:44, height:44, borderRadius:10, background:'var(--chip-bg)', position:'relative', overflow:'hidden', flexShrink:0 }}>
+                  {p.image_url
+                    ? <Image src={p.image_url} alt={p.name} fill sizes="44px" className="object-cover" />
+                    : <div style={{ width:'100%', height:'100%', display:'flex', alignItems:'center', justifyContent:'center' }}><svg viewBox="0 0 24 24" fill="none" width={22} height={22}><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4zM3 6h18M16 10a4 4 0 01-8 0" stroke="var(--text-faint)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></div>
+                  }
+                </div>
+                <div style={{ minWidth:0 }}>
+                  <p style={{ fontSize:12, fontWeight:700, color:'var(--text-primary)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.name}</p>
+                  <p style={{ fontSize:13, fontWeight:900, color:'#16a34a', marginTop:2 }}>₹{p.price}</p>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── STAFF: Your Regular Shops ── */}
+      {!activeCategory && userType === 'staff' && regularShops.length >= 2 && (
+        <div style={{ marginTop:24 }}>
+          <div style={{ padding:'0 16px', marginBottom:12 }}>
+            <p style={{ fontSize:16, fontWeight:900, color:'var(--text-primary)', letterSpacing:'-0.02em' }}>Your Regular Shops</p>
+            <p style={{ fontSize:12, color:'var(--text-muted)', marginTop:2 }}>Trusted vendors · repeat with 1 tap</p>
+          </div>
+          <div style={{ display:'flex', gap:12, overflowX:'auto', paddingLeft:16, paddingRight:16, paddingBottom:4, scrollbarWidth:'none' }}>
+            {regularShops.map(s => {
+              const lastOrder = orders.find(o => o.status === 'delivered' && (o as any).shop_id === s.id)
+              return <PastOrderCard key={s.id} shop={s} lastOrder={lastOrder} onReorder={reorder} />
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── STAFF: Night Essentials (evening + night) ── */}
+      {!activeCategory && userType === 'staff' && (timeSlot === 'evening' || timeSlot === 'night') && snackShops.length >= 2 && (
+        <div style={{ marginTop:24 }}>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 16px', marginBottom:12 }}>
+            <div>
+              <p style={{ fontSize:16, fontWeight:900, color:'var(--text-primary)', letterSpacing:'-0.02em' }}>Night Essentials</p>
+              <p style={{ fontSize:12, color:'var(--text-muted)', marginTop:2 }}>Open late · quick to deliver</p>
+            </div>
+            <Link href="/stores" style={{ fontSize:13, fontWeight:800, color:'#FF3008', textDecoration:'none' }}>See all</Link>
+          </div>
+          <div style={{ display:'flex', gap:12, overflowX:'auto', paddingLeft:16, paddingRight:16, paddingBottom:4, scrollbarWidth:'none' }}>
+            {snackShops.map(s => <ShopCardH key={s.id} shop={s} />)}
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════
+          9. CATEGORY FILTERED — vertical full cards
           ═══════════════════════════════════════════════ */}
       {shopsLoaded && activeCategory && openShops.length > 0 && (
         <div style={{ marginTop:8, padding:'0 12px', display:'flex', flexDirection:'column', gap:12 }}>
@@ -1048,6 +1238,40 @@ function ShopCardFull({ shop }: { shop: Shop & { km: number | null } }) {
             <span style={{ fontSize:11, fontWeight:700, color:'#FF3008' }}>{shop.offer_text}</span>
           </div>
         )}
+      </div>
+    </Link>
+  )
+}
+
+// ── PRICE HIGHLIGHT CARD — for "Under ₹100" student section ──────
+function PriceHighlightCard({ product }: { product: Product }) {
+  const disc = product.original_price && product.original_price > product.price
+    ? Math.round(((product.original_price - product.price) / product.original_price) * 100) : null
+  return (
+    <Link href={`/stores/${product.shop_id}`}
+      style={{ flexShrink:0, width:180, borderRadius:18, overflow:'hidden', textDecoration:'none', background:'var(--card-white)', border:'1px solid var(--divider)', display:'block', boxShadow:'0 2px 10px rgba(0,0,0,.07)' }}>
+      {/* Image — top 60% */}
+      <div style={{ height:108, background:'var(--chip-bg)', position:'relative', overflow:'hidden' }}>
+        {product.image_url
+          ? <Image src={product.image_url} alt={product.name} fill sizes="180px" className="object-cover" />
+          : <div style={{ width:'100%', height:'100%', display:'flex', alignItems:'center', justifyContent:'center' }}><svg viewBox="0 0 24 24" fill="none" width={36} height={36}><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4zM3 6h18M16 10a4 4 0 01-8 0" stroke="var(--text-faint)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></div>
+        }
+        {disc && (
+          <div style={{ position:'absolute', top:8, left:8, background:'#FF3008', color:'#fff', fontSize:10, fontWeight:900, padding:'3px 8px', borderRadius:7 }}>-{disc}%</div>
+        )}
+      </div>
+      {/* Info */}
+      <div style={{ padding:'9px 10px 11px' }}>
+        <p style={{ fontSize:12, fontWeight:700, color:'var(--text-primary)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', marginBottom:2 }}>{product.name}</p>
+        {product.shop_name && <p style={{ fontSize:10, color:'var(--text-muted)', marginBottom:6, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{product.shop_name}</p>}
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+          {/* Price badge — prominent green pill */}
+          <div style={{ background:'rgba(22,163,74,.1)', borderRadius:8, padding:'3px 10px' }}>
+            <span style={{ fontSize:15, fontWeight:900, color:'#16a34a' }}>₹{product.price}</span>
+            {product.original_price && <span style={{ fontSize:10, color:'var(--text-faint)', textDecoration:'line-through', marginLeft:4 }}>₹{product.original_price}</span>}
+          </div>
+          <div style={{ width:28, height:28, borderRadius:8, border:'1.5px solid #FF3008', display:'flex', alignItems:'center', justifyContent:'center', color:'#FF3008', fontSize:18, fontWeight:900, lineHeight:1 }}>+</div>
+        </div>
       </div>
     </Link>
   )
