@@ -110,7 +110,7 @@ export default function StoresPage() {
   const allCatNames = Array.from(new Set(shops.map(s => s.category_name).filter(Boolean))) as string[]
 
   return (
-    <div style={{ minHeight:'100vh', background:'var(--page-bg)', fontFamily:"'Plus Jakarta Sans',sans-serif", paddingBottom:80 }}>
+    <div style={{ minHeight:'100vh', background:'var(--page-bg)', fontFamily:"'Plus Jakarta Sans',sans-serif", paddingBottom:'calc(88px + env(safe-area-inset-bottom, 0px))' }}>
       <style>{`
         .st-card { display:flex; align-items:stretch; background:var(--card-white); border-radius:20px; overflow:hidden; text-decoration:none; transition:transform .15s; -webkit-tap-highlight-color:transparent; }
         .st-card:active { transform:scale(.98); }

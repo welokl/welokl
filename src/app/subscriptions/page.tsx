@@ -94,7 +94,7 @@ export default function CustomerSubscriptions() {
   )
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--page-bg)', fontFamily: "'Plus Jakarta Sans', sans-serif", paddingBottom: 80 }}>
+    <div style={{ minHeight: '100vh', background: 'var(--page-bg)', fontFamily: "'Plus Jakarta Sans', sans-serif", paddingBottom: 'calc(88px + env(safe-area-inset-bottom, 0px))' }}>
 
       {/* Header */}
       <div style={{ position: 'sticky', top: 0, zIndex: 40, background: 'var(--card-white)', borderBottom: '1px solid var(--divider)' }}>

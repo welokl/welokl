@@ -133,7 +133,7 @@ export default function SearchPage() {
   const cartCount = (cart as any).count?.() ?? 0
 
   return (
-    <div style={{ minHeight:'100vh', background:'var(--page-bg)', fontFamily:"'Plus Jakarta Sans',sans-serif", paddingBottom:100 }}>
+    <div style={{ minHeight:'100vh', background:'var(--page-bg)', fontFamily:"'Plus Jakarta Sans',sans-serif", paddingBottom:'calc(100px + env(safe-area-inset-bottom, 0px))' }}>
       <style>{`
         @keyframes fadeUp { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:none} }
         @keyframes sk { 0%{background-position:-400px 0} 100%{background-position:400px 0} }

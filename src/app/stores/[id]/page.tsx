@@ -148,7 +148,7 @@ export default function StorePage() {
   )
 
   return (
-    <div style={{ minHeight:'100vh', background:'#F5F5F5', fontFamily:"'Plus Jakarta Sans',sans-serif", paddingBottom:120 }}>
+    <div style={{ minHeight:'100vh', background:'#F5F5F5', fontFamily:"'Plus Jakarta Sans',sans-serif", paddingBottom:'calc(140px + env(safe-area-inset-bottom, 0px))' }}>
       <style>{`
         @keyframes sh{0%{background-position:-400px 0}100%{background-position:400px 0}}
         .sk{background:linear-gradient(90deg,#f0f0f0 25%,#e8e8e8 50%,#f0f0f0 75%);background-size:400px 100%;animation:sh 1.4s infinite;}

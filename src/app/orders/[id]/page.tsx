@@ -226,7 +226,7 @@ export default function OrderPage() {
   const showMap     = ['ready', 'picked_up'].includes(order.status) && !!order.delivery_partner_id && !!riderPos
 
   return (
-    <div style={{ minHeight:'100vh', background:'var(--page-bg)', fontFamily:"'Plus Jakarta Sans',sans-serif", paddingBottom:80 }}>
+    <div style={{ minHeight:'100vh', background:'var(--page-bg)', fontFamily:"'Plus Jakarta Sans',sans-serif", paddingBottom:'calc(88px + env(safe-area-inset-bottom, 0px))' }}>
       <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}`}</style>
 
       {/* Header */}
