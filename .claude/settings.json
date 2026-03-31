@@ -7,7 +7,8 @@
       "Bash(wc -l /c/dev/welokl-cto-update/src/app/stores/[id]/page.tsx)",
       "Bash(npx tsc:*)",
       "Bash(done)",
-      "Read(//c/dev/welokl-cto-update/**)"
+      "Read(//c/dev/welokl-cto-update/**)",
+      "Bash(find /c/dev/welokl-cto-update -type f -name *logo* -o -name *manifest* -o -name *favicon*)"
     ]
   }
 }

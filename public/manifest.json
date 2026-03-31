@@ -23,6 +23,18 @@
   "prefer_related_applications": false,
   "icons": [
     {
+      "src": "/icons/welokl-brand.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/welokl-brand.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    },
+    {
       "src": "/icons/icon-72.png",
       "sizes": "72x72",
       "type": "image/png",

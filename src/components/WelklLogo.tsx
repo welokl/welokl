@@ -1,8 +1,8 @@
 'use client'
 
 /**
- * Welokl wordmark SVG — "Wel" + location-pin "o" + "kl", all in orange.
- * dark=true swaps the pin hole to dark so it works on dark backgrounds.
+ * Welokl wordmark — "Wel" + location-pin "o" + "kl"
+ * Uses HTML spans (not SVG text) so the web font loads correctly.
  */
 export function WelklLogo({
   height = 32,
@@ -13,43 +13,50 @@ export function WelklLogo({
 }) {
   const c    = '#FF5500'
   const hole = dark ? '#111' : '#fff'
+  const fs   = Math.round(height * 1.28)   // font size relative to desired height
+  const pb   = Math.round(height * 0.05)   // nudge text baseline to meet pin tip
+
+  const textStyle: React.CSSProperties = {
+    fontFamily: "'Plus Jakarta Sans', 'Nunito', system-ui, sans-serif",
+    fontStyle:  'italic',
+    fontWeight: 800,
+    fontSize:   `${fs}px`,
+    letterSpacing: '-0.03em',
+    color: c,
+    lineHeight: 1,
+    paddingBottom: `${pb}px`,
+    display: 'block',
+  }
 
   return (
-    <svg
-      viewBox="0 0 152 44"
-      height={height}
-      width={height * (152 / 44)}
-      fill="none"
+    <span
       aria-label="Welokl"
-      xmlns="http://www.w3.org/2000/svg"
-      style={{ display: 'block' }}
+      style={{
+        display:    'inline-flex',
+        alignItems: 'flex-end',
+        userSelect: 'none',
+        lineHeight: 1,
+      }}
     >
-      {/* "Wel" */}
-      <text
-        x="0" y="38"
-        fontSize="40" fontWeight="900" fontStyle="italic"
-        fontFamily="'Plus Jakarta Sans', 'Nunito', system-ui, sans-serif"
-        fill={c}
-        letterSpacing="-1"
-      >Wel</text>
+      <span style={textStyle}>Wel</span>
 
       {/* Location-pin "o" */}
-      <g transform="translate(68, 0)">
+      <svg
+        viewBox="0 0 22 38"
+        height={height}
+        width={Math.round(height * (22 / 38))}
+        fill="none"
+        style={{ display: 'block', flexShrink: 0 }}
+        aria-hidden="true"
+      >
         <path
-          d="M12 1C5.9 1 1 5.9 1 12C1 20.5 12 38 12 38C12 38 23 20.5 23 12C23 5.9 18.1 1 12 1Z"
+          d="M11 1C5.4 1 1 5.4 1 11C1 19.2 11 37 11 37C11 37 21 19.2 21 11C21 5.4 16.6 1 11 1Z"
           fill={c}
         />
-        <circle cx="12" cy="12" r="5" fill={hole} />
-      </g>
+        <circle cx="11" cy="11" r="4.2" fill={hole} />
+      </svg>
 
-      {/* "kl" */}
-      <text
-        x="95" y="38"
-        fontSize="40" fontWeight="900" fontStyle="italic"
-        fontFamily="'Plus Jakarta Sans', 'Nunito', system-ui, sans-serif"
-        fill={c}
-        letterSpacing="-1"
-      >kl</text>
-    </svg>
+      <span style={textStyle}>kl</span>
+    </span>
   )
 }
