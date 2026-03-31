@@ -430,9 +430,11 @@ export default function StorePage() {
                       product={product}
                       shopClosed={!computeIsOpen(shop ?? { is_open: false })}
                       qty={cart.items?.find((i: any) => i.product.id === product.id)?.quantity ?? 0}
+                      note={cart.items?.find((i: any) => i.product.id === product.id)?.note ?? ''}
                       onAdd={() => handleAdd(product)}
                       onRemove={() => cart.removeItem(product.id)}
                       onUpdate={(q: number) => cart.updateQty(product.id, q)}
+                      onNote={(n: string) => cart.setNote(product.id, n)}
                     />
                   ))}
                 </div>
@@ -479,10 +481,12 @@ export default function StorePage() {
 }
 
 // ── Product Card ──────────────────────────────────────────────────
-function ProductCard({ product, qty, shopClosed, onAdd, onRemove, onUpdate }: {
+function ProductCard({ product, qty, shopClosed, onAdd, onRemove, onUpdate, note, onNote }: {
   product: Product; qty: number; shopClosed?: boolean
   onAdd: () => void; onRemove: () => void; onUpdate: (q: number) => void
+  note?: string; onNote?: (n: string) => void
 }) {
+  const [showNote, setShowNote] = useState(false)
   const disc = product.original_price && product.original_price > product.price
     ? Math.round((1 - product.price / product.original_price) * 100) : 0
   const unavailable = product.is_available === false || !!shopClosed
@@ -508,6 +512,26 @@ function ProductCard({ product, qty, shopClosed, onAdd, onRemove, onUpdate }: {
         </div>
         {product.is_available === false && !shopClosed && (
           <span style={{ fontSize:11, color:'#bbb', fontWeight:700, marginTop:4 }}>Unavailable</span>
+        )}
+        {/* Per-item note — visible when item is in cart */}
+        {qty > 0 && !unavailable && (
+          <div style={{ marginTop:8 }}>
+            {!showNote && !note ? (
+              <button onClick={() => setShowNote(true)}
+                style={{ fontSize:11, color:'#FF3008', fontWeight:700, background:'none', border:'none', cursor:'pointer', padding:0, fontFamily:'inherit' }}>
+                + Add cooking instructions
+              </button>
+            ) : (
+              <input
+                autoFocus={showNote && !note}
+                value={note || ''}
+                onChange={e => onNote?.(e.target.value)}
+                onBlur={() => { if (!note) setShowNote(false) }}
+                placeholder="e.g. No onions, extra spicy…"
+                style={{ fontSize:11, width:'100%', border:'1px solid #e0e0e0', borderRadius:8, padding:'5px 8px', outline:'none', fontFamily:'inherit', background:'var(--page-bg)', color:'var(--text-primary)', boxSizing:'border-box' }}
+              />
+            )}
+          </div>
         )}
       </div>
 

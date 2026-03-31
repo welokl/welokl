@@ -3,7 +3,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { WelklLogo } from '@/components/WelklLogo'
  
-type Tab = 'overview' | 'orders' | 'shops' | 'users' | 'verify' | 'pricing' | 'delivery' | 'categories' | 'wallets' | 'boosts'
+type Tab = 'overview' | 'orders' | 'shops' | 'users' | 'verify' | 'pricing' | 'delivery' | 'categories' | 'wallets' | 'boosts' | 'promos'
  
 interface Config  { key: string; value: string; label: string }
 interface Order   { id: string; order_number: string; status: string; total_amount: number; subtotal: number; payment_method: string; created_at: string; type: string; delivery_partner_id: string | null; shop: { name: string; commission_percent: number } | null; customer: { name: string; phone: string } | null; partner: { name: string; phone: string } | null }
@@ -43,7 +43,7 @@ export default function AdminDashboard() {
   const [tab, setTab] = useState<Tab>(() => {
   if (typeof window === 'undefined') return 'overview'
   const saved = localStorage.getItem('admin_tab')
-  const valid: Tab[] = ['overview','orders','shops','users','verify','pricing','delivery','categories','wallets','boosts']
+  const valid: Tab[] = ['overview','orders','shops','users','verify','pricing','delivery','categories','wallets','boosts','promos']
   return (valid.includes(saved as Tab) ? saved : 'overview') as Tab
 })
   const [orders, setOrders]       = useState<Order[]>([])
@@ -74,6 +74,9 @@ export default function AdminDashboard() {
   const [creditAmt,    setCreditAmt]    = useState('')
   const [creditDesc,   setCreditDesc]   = useState('')
   const [creditSaving, setCreditSaving] = useState(false)
+  const [promoCodes,   setPromoCodes]   = useState<any[]>([])
+  const [promoForm,    setPromoForm]    = useState({ code:'', description:'', discount_type:'flat', discount_value:'', min_order_amount:'', max_discount:'', usage_limit:'', expires_at:'' })
+  const [promoSaving,  setPromoSaving]  = useState(false)
  
   const load = useCallback(async () => {
     const sb = createClient()
@@ -87,7 +90,7 @@ export default function AdminDashboard() {
     }
  
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
-    const [{ data: od }, { data: sd }, { data: ud }, { data: cd }, { data: dd }, { data: cats }, { data: wds }, { data: bplans }, { data: vboosts }, { data: bmetrics }] = await Promise.all([
+    const [{ data: od }, { data: sd }, { data: ud }, { data: cd }, { data: dd }, { data: cats }, { data: wds }, { data: bplans }, { data: vboosts }, { data: bmetrics }, { data: promos }] = await Promise.all([
       sb.from('orders').select('*, shop:shops(name,commission_percent), customer:users!customer_id(name,phone), partner:users!delivery_partner_id(name,phone)').order('created_at', { ascending: false }).limit(200),
       sb.from('shops').select('*, owner:users!owner_id(name,email,phone)').order('created_at', { ascending: false }),
       sb.from('users').select('*').order('created_at', { ascending: false }).limit(300),
@@ -98,6 +101,7 @@ export default function AdminDashboard() {
       sb.from('boost_plans').select('*').order('boost_weight'),
       sb.from('vendor_boosts').select('*, shop:shops(name,area), plan:boost_plans(name,badge_label,boost_weight)').order('created_at', { ascending: false }),
       sb.from('vendor_boost_metrics').select('*').gte('date', sevenDaysAgo).order('date', { ascending: false }),
+      sb.from('promo_codes').select('*').order('created_at', { ascending: false }),
     ])
 
     setOrders((od as Order[]) || [])
@@ -109,6 +113,7 @@ export default function AdminDashboard() {
     setBoostPlans(bplans || [])
     setVendorBoosts(vboosts || [])
     setBoostMetrics(bmetrics || [])
+    setPromoCodes(promos || [])
  
     const flat: PendingDelivery[] = ((dd as any[]) || []).map((dp: any) => ({
       user_id: dp.user_id,
@@ -293,6 +298,7 @@ export default function AdminDashboard() {
     { id: 'categories',  icon: <IcoTag />,    label: 'Categories' },
     { id: 'wallets',     icon: <IcoWallet />, label: 'Wallets' },
     { id: 'boosts',      icon: <IcoBoost />,  label: 'Boosts', badge: vendorBoosts.filter((b: any) => b.status === 'active').length || undefined },
+    { id: 'promos',      icon: <IcoTag />,    label: 'Promos', badge: promoCodes.filter((p: any) => p.is_active).length || undefined },
   ]
  
   return (
@@ -1143,6 +1149,138 @@ export default function AdminDashboard() {
                 )}
               </div>
 
+            </div>
+          )}
+
+          {/* ── PROMO CODES ─────────────────────────────────────────── */}
+          {tab === 'promos' && (
+            <div style={{ maxWidth: 700, display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <h2 style={{ fontWeight: 900, fontSize: 18, color: 'var(--text)' }}>Promo Codes</h2>
+
+              {/* Create form */}
+              <div style={{ ...card }}>
+                <p style={{ ...lbl, marginBottom: 16 }}>Create New Code</p>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+                  <div>
+                    <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', marginBottom: 4 }}>CODE</p>
+                    <input value={promoForm.code} onChange={e => setPromoForm(p => ({ ...p, code: e.target.value.toUpperCase() }))}
+                      placeholder="e.g. WELCOME50"
+                      style={{ width: '100%', fontSize: 13, fontWeight: 800, border: '1px solid var(--border-2)', borderRadius: 10, padding: '9px 12px', background: 'var(--input-bg)', color: 'var(--text)', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }} />
+                  </div>
+                  <div>
+                    <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', marginBottom: 4 }}>DESCRIPTION</p>
+                    <input value={promoForm.description} onChange={e => setPromoForm(p => ({ ...p, description: e.target.value }))}
+                      placeholder="e.g. Welcome offer"
+                      style={{ width: '100%', fontSize: 13, border: '1px solid var(--border-2)', borderRadius: 10, padding: '9px 12px', background: 'var(--input-bg)', color: 'var(--text)', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }} />
+                  </div>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10, marginBottom: 10 }}>
+                  <div>
+                    <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', marginBottom: 4 }}>TYPE</p>
+                    <select value={promoForm.discount_type} onChange={e => setPromoForm(p => ({ ...p, discount_type: e.target.value }))}
+                      style={{ width: '100%', fontSize: 13, border: '1px solid var(--border-2)', borderRadius: 10, padding: '9px 12px', background: 'var(--input-bg)', color: 'var(--text)', fontFamily: 'inherit', outline: 'none' }}>
+                      <option value="flat">Flat ₹</option>
+                      <option value="percent">Percent %</option>
+                    </select>
+                  </div>
+                  <div>
+                    <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', marginBottom: 4 }}>VALUE</p>
+                    <input type="number" value={promoForm.discount_value} onChange={e => setPromoForm(p => ({ ...p, discount_value: e.target.value }))}
+                      placeholder={promoForm.discount_type === 'percent' ? '20' : '50'}
+                      style={{ width: '100%', fontSize: 13, border: '1px solid var(--border-2)', borderRadius: 10, padding: '9px 12px', background: 'var(--input-bg)', color: 'var(--text)', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }} />
+                  </div>
+                  <div>
+                    <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', marginBottom: 4 }}>MIN ORDER ₹</p>
+                    <input type="number" value={promoForm.min_order_amount} onChange={e => setPromoForm(p => ({ ...p, min_order_amount: e.target.value }))}
+                      placeholder="0"
+                      style={{ width: '100%', fontSize: 13, border: '1px solid var(--border-2)', borderRadius: 10, padding: '9px 12px', background: 'var(--input-bg)', color: 'var(--text)', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }} />
+                  </div>
+                  <div>
+                    <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', marginBottom: 4 }}>MAX DISCOUNT ₹</p>
+                    <input type="number" value={promoForm.max_discount} onChange={e => setPromoForm(p => ({ ...p, max_discount: e.target.value }))}
+                      placeholder="∞"
+                      style={{ width: '100%', fontSize: 13, border: '1px solid var(--border-2)', borderRadius: 10, padding: '9px 12px', background: 'var(--input-bg)', color: 'var(--text)', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }} />
+                  </div>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
+                  <div>
+                    <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', marginBottom: 4 }}>USAGE LIMIT (blank = unlimited)</p>
+                    <input type="number" value={promoForm.usage_limit} onChange={e => setPromoForm(p => ({ ...p, usage_limit: e.target.value }))}
+                      placeholder="Unlimited"
+                      style={{ width: '100%', fontSize: 13, border: '1px solid var(--border-2)', borderRadius: 10, padding: '9px 12px', background: 'var(--input-bg)', color: 'var(--text)', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }} />
+                  </div>
+                  <div>
+                    <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', marginBottom: 4 }}>EXPIRES AT (blank = never)</p>
+                    <input type="datetime-local" value={promoForm.expires_at} onChange={e => setPromoForm(p => ({ ...p, expires_at: e.target.value }))}
+                      style={{ width: '100%', fontSize: 13, border: '1px solid var(--border-2)', borderRadius: 10, padding: '9px 12px', background: 'var(--input-bg)', color: 'var(--text)', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }} />
+                  </div>
+                </div>
+                <button disabled={promoSaving || !promoForm.code || !promoForm.discount_value} onClick={async () => {
+                  if (!promoForm.code || !promoForm.discount_value) return
+                  setPromoSaving(true)
+                  const sb = createClient()
+                  await sb.from('promo_codes').insert({
+                    code:              promoForm.code.trim().toUpperCase(),
+                    description:       promoForm.description || null,
+                    discount_type:     promoForm.discount_type,
+                    discount_value:    Number(promoForm.discount_value),
+                    min_order_amount:  promoForm.min_order_amount ? Number(promoForm.min_order_amount) : 0,
+                    max_discount:      promoForm.max_discount ? Number(promoForm.max_discount) : null,
+                    usage_limit:       promoForm.usage_limit ? Number(promoForm.usage_limit) : null,
+                    expires_at:        promoForm.expires_at || null,
+                    is_active:         true,
+                  })
+                  setPromoForm({ code:'', description:'', discount_type:'flat', discount_value:'', min_order_amount:'', max_discount:'', usage_limit:'', expires_at:'' })
+                  setPromoSaving(false)
+                  load()
+                }}
+                  style={{ padding: '10px 28px', borderRadius: 12, border: 'none', background: 'var(--brand)', color: '#fff', fontWeight: 800, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit', opacity: promoSaving ? 0.6 : 1 }}>
+                  {promoSaving ? 'Creating…' : 'Create Code'}
+                </button>
+              </div>
+
+              {/* Existing codes */}
+              <div style={{ ...card2 }}>
+                {promoCodes.length === 0 ? (
+                  <p style={{ padding: 24, textAlign: 'center', color: 'var(--text-3)', fontSize: 14 }}>No promo codes yet</p>
+                ) : promoCodes.map((p: any, i: number) => (
+                  <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 18px', borderTop: i > 0 ? '1px solid var(--border)' : 'none', flexWrap: 'wrap' }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+                        <span style={{ fontWeight: 900, fontSize: 14, color: 'var(--text)', fontFamily: 'monospace' }}>{p.code}</span>
+                        <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700, background: p.is_active ? 'rgba(22,163,74,.12)' : 'rgba(100,100,100,.12)', color: p.is_active ? '#16a34a' : 'var(--text-3)' }}>
+                          {p.is_active ? 'Active' : 'Paused'}
+                        </span>
+                      </div>
+                      <p style={{ fontSize: 12, color: 'var(--text-3)' }}>
+                        {p.discount_type === 'percent' ? `${p.discount_value}% off` : `₹${p.discount_value} off`}
+                        {p.min_order_amount > 0 ? ` · Min ₹${p.min_order_amount}` : ''}
+                        {p.max_discount ? ` · Max ₹${p.max_discount}` : ''}
+                        {p.usage_limit ? ` · ${p.used_count}/${p.usage_limit} used` : ` · ${p.used_count} used`}
+                        {p.expires_at ? ` · Expires ${new Date(p.expires_at).toLocaleDateString('en-IN')}` : ''}
+                      </p>
+                      {p.description && <p style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>{p.description}</p>}
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                      <button onClick={async () => {
+                        const sb = createClient()
+                        await sb.from('promo_codes').update({ is_active: !p.is_active }).eq('id', p.id)
+                        load()
+                      }} style={{ padding: '5px 12px', borderRadius: 8, border: '1px solid var(--border-2)', background: 'var(--bg)', color: 'var(--text-3)', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                        {p.is_active ? 'Pause' : 'Activate'}
+                      </button>
+                      <button onClick={async () => {
+                        if (!confirm(`Delete code "${p.code}"?`)) return
+                        const sb = createClient()
+                        await sb.from('promo_codes').delete().eq('id', p.id)
+                        load()
+                      }} style={{ padding: '5px 12px', borderRadius: 8, border: '1px solid rgba(239,68,68,.3)', background: 'rgba(239,68,68,.06)', color: '#ef4444', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 

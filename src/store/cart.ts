@@ -12,7 +12,11 @@ export interface CartProduct {
   [key: string]: unknown
 }
 
-export interface CartItem { product: CartProduct; quantity: number }
+export interface CartItem {
+  product: CartProduct
+  quantity: number
+  note?: string          // per-item special instructions (DoorDash style)
+}
 
 interface CartStore {
   items: CartItem[]; shop_id: string | null; shop_name: string | null
@@ -22,6 +26,7 @@ interface CartStore {
   addItem:     (product: CartProduct, shopId: string, shopName: string) => void
   removeItem:  (productId: string) => void
   updateQty:   (productId: string, qty: number) => void
+  setNote:     (productId: string, note: string) => void
   clear:       () => void
   count:       () => number
   subtotal:    () => number
@@ -49,7 +54,6 @@ function write(userId: string | null, state: Pick<CartStore,'items'|'shop_id'|'s
 export const useCart = create<CartStore>((set, get) => ({
   items: [], shop_id: null, shop_name: null, _hydrated: false, _userId: null,
 
-  // Call this on mount, passing userId from supabase session
   _hydrate: (userId?: string) => {
     if (get()._hydrated && get()._userId === (userId ?? null)) return
     const uid = userId ?? null
@@ -59,13 +63,11 @@ export const useCart = create<CartStore>((set, get) => ({
 
   _setUserId: (userId: string) => {
     if (get()._userId === userId) return
-    // Migrate guest cart to user cart if guest had items
     const guestKey = storageKey(null)
     const userKey  = storageKey(userId)
     try {
       const guestRaw = localStorage.getItem(guestKey)
       const userRaw  = localStorage.getItem(userKey)
-      // Only migrate if user has no existing cart and guest has items
       if (guestRaw && !userRaw) {
         localStorage.setItem(userKey, guestRaw)
         localStorage.removeItem(guestKey)
@@ -102,6 +104,15 @@ export const useCart = create<CartStore>((set, get) => ({
     if (qty <= 0) { get().removeItem(productId); return }
     const { _userId } = get()
     const items = get().items.map(i => i.product.id === productId ? { ...i, quantity: qty } : i)
+    const state = { items, shop_id: get().shop_id, shop_name: get().shop_name }
+    set(state); write(_userId, state)
+  },
+
+  setNote: (productId, note) => {
+    const { _userId } = get()
+    const items = get().items.map(i =>
+      i.product.id === productId ? { ...i, note: note.trim() || undefined } : i
+    )
     const state = { items, shop_id: get().shop_id, shop_name: get().shop_name }
     set(state); write(_userId, state)
   },

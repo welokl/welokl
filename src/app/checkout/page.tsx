@@ -31,6 +31,11 @@ export default function CheckoutPage() {
   const [locStatus,     setLocStatus]     = useState<'idle'|'detecting'|'done'|'denied'>('idle')
   const [deliveryLat,   setDeliveryLat]   = useState<number|null>(null)
   const [deliveryLng,   setDeliveryLng]   = useState<number|null>(null)
+  const [tip,           setTip]           = useState(0)
+  const [promoInput,    setPromoInput]    = useState('')
+  const [promo,         setPromo]         = useState<{code:string;discount:number}|null>(null)
+  const [promoLoading,  setPromoLoading]  = useState(false)
+  const [promoError,    setPromoError]    = useState('')
   useEffect(() => {
     cart._hydrate?.()
     setMounted(true)
@@ -120,10 +125,33 @@ export default function CheckoutPage() {
     </div>
   )
 
-  const delivery_fee = type === 'pickup' ? 0 : subtotal >= platformCfg.free_delivery_threshold ? 0 : platformCfg.delivery_fee
-  const total        = subtotal + delivery_fee + platformCfg.platform_fee
-  const minOrder     = 0   // minimum order check disabled
-  const belowMin     = false
+  const delivery_fee   = type === 'pickup' ? 0 : subtotal >= platformCfg.free_delivery_threshold ? 0 : platformCfg.delivery_fee
+  const promoDiscount  = promo?.discount ?? 0
+  const total          = subtotal + delivery_fee + platformCfg.platform_fee + tip - promoDiscount
+  const minOrder       = 0
+  const belowMin       = false
+
+  async function applyPromo() {
+    if (!promoInput.trim()) return
+    setPromoLoading(true)
+    setPromoError('')
+    const sb = createClient()
+    const { data } = await sb.from('promo_codes')
+      .select('*')
+      .eq('code', promoInput.trim().toUpperCase())
+      .eq('is_active', true)
+      .maybeSingle()
+    setPromoLoading(false)
+    if (!data) { setPromoError('Invalid or expired code'); return }
+    if (data.expires_at && new Date(data.expires_at) < new Date()) { setPromoError('This code has expired'); return }
+    if (data.usage_limit && data.used_count >= data.usage_limit) { setPromoError('Code usage limit reached'); return }
+    if (data.min_order_amount && subtotal < data.min_order_amount) { setPromoError(`Min order ₹${data.min_order_amount} required`); return }
+    const raw = data.discount_type === 'percent'
+      ? (data.discount_value / 100) * subtotal
+      : data.discount_value
+    const discount = Math.min(raw, data.max_discount ?? raw, subtotal)
+    setPromo({ code: data.code, discount: Math.round(discount) })
+  }
 
   // ── Create the order in DB ──────────────────────────────────
   async function createOrder(paymentStatus: 'pending' | 'paid') {
@@ -148,7 +176,9 @@ export default function CheckoutPage() {
       subtotal:              subtotal,
       delivery_fee:          delivery_fee,
       platform_fee:          platformCfg.platform_fee,
-      discount:              0,
+      discount:              promoDiscount,
+      tip_amount:            tip,
+      promo_code:            promo?.code || null,
       total_amount:          total,
       payment_method:        'cod',
       payment_status:        paymentStatus,
@@ -177,6 +207,7 @@ export default function CheckoutPage() {
         product_name: item.product.name,
         quantity:     item.quantity,
         price:        item.product.price,
+        note:         item.note || null,
       }))
     )
 
@@ -369,6 +400,53 @@ export default function CheckoutPage() {
           />
         </div>
 
+        {/* Promo code */}
+        <div style={{ background:'var(--card-white)', borderRadius:20, padding:'18px 16px', marginBottom:12 }}>
+          <p style={{ fontWeight:800, fontSize:14, color:'var(--text-primary)', marginBottom:10 }}>Promo code</p>
+          {promo ? (
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 14px', background:'rgba(22,163,74,.08)', borderRadius:12, border:'1.5px solid rgba(22,163,74,.25)' }}>
+              <div>
+                <p style={{ fontWeight:800, fontSize:13, color:'#16a34a' }}>🎉 "{promo.code}" applied</p>
+                <p style={{ fontSize:12, color:'#16a34a', marginTop:2 }}>You save ₹{promo.discount}</p>
+              </div>
+              <button onClick={() => { setPromo(null); setPromoInput('') }}
+                style={{ fontSize:12, color:'#ef4444', fontWeight:700, background:'none', border:'none', cursor:'pointer', fontFamily:'inherit' }}>Remove</button>
+            </div>
+          ) : (
+            <div style={{ display:'flex', gap:8 }}>
+              <input value={promoInput} onChange={e => { setPromoInput(e.target.value.toUpperCase()); setPromoError('') }}
+                onKeyDown={e => e.key === 'Enter' && applyPromo()}
+                placeholder="Enter promo code" style={{ ...inp, flex:1, fontSize:13 }}
+                onFocus={e => e.currentTarget.style.borderColor='#FF3008'}
+                onBlur={e => e.currentTarget.style.borderColor='var(--divider)'}
+              />
+              <button onClick={applyPromo} disabled={promoLoading || !promoInput.trim()}
+                style={{ padding:'0 18px', borderRadius:14, border:'none', background: promoInput.trim() ? '#FF3008' : 'var(--chip-bg)', color: promoInput.trim() ? '#fff' : 'var(--text-muted)', fontWeight:800, fontSize:13, cursor: promoInput.trim() ? 'pointer' : 'default', fontFamily:'inherit', flexShrink:0 }}>
+                {promoLoading ? '…' : 'Apply'}
+              </button>
+            </div>
+          )}
+          {promoError && <p style={{ fontSize:12, color:'#ef4444', marginTop:8, fontWeight:600 }}>{promoError}</p>}
+        </div>
+
+        {/* Tip for rider */}
+        {type === 'delivery' && (
+          <div style={{ background:'var(--card-white)', borderRadius:20, padding:'18px 16px', marginBottom:12 }}>
+            <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
+              <p style={{ fontWeight:800, fontSize:14, color:'var(--text-primary)' }}>Tip your delivery partner</p>
+              <span style={{ fontSize:11, color:'var(--text-muted)', fontWeight:600 }}>100% goes to them</span>
+            </div>
+            <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+              {[0, 10, 20, 30, 50].map(amt => (
+                <button key={amt} onClick={() => setTip(amt)}
+                  style={{ padding:'8px 16px', borderRadius:999, border:`2px solid ${tip===amt ? '#FF3008' : 'var(--divider)'}`, background: tip===amt ? 'var(--red-light)' : 'transparent', color: tip===amt ? '#FF3008' : 'var(--text-secondary)', fontWeight:800, fontSize:13, cursor:'pointer', fontFamily:'inherit' }}>
+                  {amt === 0 ? 'No tip' : `₹${amt}`}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Payment */}
         <div style={{ background:'var(--card-white)', borderRadius:20, padding:'18px 16px', marginBottom:12, display:'flex', alignItems:'center', gap:12 }}>
           <svg viewBox="0 0 24 24" fill="none" width={20} height={20}><rect x="2" y="6" width="20" height="12" rx="2" stroke="#FF3008" strokeWidth="2"/><path d="M2 10h20M6 14h4" stroke="#FF3008" strokeWidth="2" strokeLinecap="round"/></svg>
@@ -386,6 +464,8 @@ export default function CheckoutPage() {
             { label:'Item total', val:`₹${subtotal}`, green:false },
             { label:`Delivery${delivery_fee===0&&type==='delivery'?' (Free!)':type==='pickup'?' (Pickup)':''}`, val:delivery_fee===0?'FREE':`₹${delivery_fee}`, green:delivery_fee===0 },
             { label:'Platform fee', val:`₹${platformCfg.platform_fee}`, green:false },
+            ...(tip > 0 ? [{ label:'Tip for rider', val:`₹${tip}`, green:false }] : []),
+            ...(promoDiscount > 0 ? [{ label:`Promo (${promo?.code})`, val:`-₹${promoDiscount}`, green:true }] : []),
           ].map(r => (
             <div key={r.label} style={{ display:'flex', justifyContent:'space-between', marginBottom:10, fontSize:14 }}>
               <span style={{ color:'var(--text-secondary)' }}>{r.label}</span>
@@ -409,8 +489,8 @@ export default function CheckoutPage() {
         <div style={{ maxWidth:560, margin:'0 auto' }}>
           <button onClick={handleCOD} disabled={loading || belowMin}
             style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'space-between', padding:'16px 22px', borderRadius:18, border:'none', background: loading || belowMin ? 'var(--chip-bg)' : '#FF3008', color: loading || belowMin ? 'var(--text-muted)' : '#fff', fontWeight:900, fontSize:16, cursor: loading || belowMin ? 'not-allowed' : 'pointer', fontFamily:'inherit', transition:'background .2s', boxShadow: loading || belowMin ? 'none' : '0 8px 24px rgba(255,48,8,.3)' }}>
-            <span>{loading ? 'Please wait…' : belowMin ? `Add ₹${minOrder - subtotal} more` : 'Place order'}</span>
-            {!loading && !belowMin && <span>₹{total}</span>}
+            <span>{loading ? 'Placing order…' : belowMin ? `Add ₹${minOrder - subtotal} more` : 'Place order'}</span>
+            {!loading && !belowMin && <span>₹{Math.max(0, total)}</span>}
           </button>
         </div>
       </div>
