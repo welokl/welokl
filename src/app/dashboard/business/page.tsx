@@ -136,16 +136,35 @@ export default function BusinessDashboard() {
     async function tick() {
       const s = shopRef.current as any   // always fresh — no stale closure
       if (!s) return
-      const withinHours   = shouldBeOpenNow()
+      const withinHours    = shouldBeOpenNow()
       const manuallyClosed = !!(s.manually_closed)
-      const targetOpen    = withinHours && !manuallyClosed
+      const manuallyOpened = !!(s.manually_opened)
 
-      // Skip DB write if shop is already in the correct state
-      if (s.is_open === targetOpen && lastAppliedRef.current === targetOpen) return
+      let targetOpen: boolean
+      const update: Record<string, any> = {}
+
+      if (withinHours) {
+        // During scheduled hours: respect manual close override
+        targetOpen = !manuallyClosed
+        // Entering a new open window — clear any stale manually_opened flag
+        if (manuallyOpened) update.manually_opened = false
+      } else {
+        // Outside scheduled hours: respect manual open override, otherwise closed
+        if (manuallyOpened) {
+          targetOpen = true
+        } else {
+          targetOpen = false
+          // Reset manually_closed so tomorrow's auto-open works correctly
+          if (manuallyClosed) update.manually_closed = false
+        }
+      }
+
+      update.is_open = targetOpen
+
+      // Skip DB write if shop is already in the correct state and no flag resets needed
+      const flagResets = Object.keys(update).length > 1 // more than just is_open
+      if (s.is_open === targetOpen && lastAppliedRef.current === targetOpen && !flagResets) return
       lastAppliedRef.current = targetOpen
-
-      const update: Record<string, any> = { is_open: targetOpen }
-      if (!withinHours) update.manually_closed = false // reset override at end of day
 
       const sb = createClient()
       await sb.from('shops').update(update).eq('id', shopId)
@@ -383,7 +402,8 @@ export default function BusinessDashboard() {
                 const newOpen = !shop?.is_open
                 const update: Record<string, any> = {
                   is_open: newOpen,
-                  manually_closed: !newOpen,
+                  manually_closed: !newOpen,  // true = owner closed, blocks auto-open
+                  manually_opened:  newOpen,  // true = owner opened, blocks auto-close outside hours
                 }
                 const sb = createClient()
                 await sb.from('shops').update(update).eq('id', shop?.id || '')
@@ -411,11 +431,13 @@ export default function BusinessDashboard() {
                   const ampm = h >= 12 ? 'PM' : 'AM'
                   return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${ampm}`
                 }
-                if (shop?.is_open) {
+                if (shop?.is_open && withinHours && !s.manually_opened) {
                   return <span style={{ fontSize: 10, color: '#16a34a', fontWeight: 700, whiteSpace: 'nowrap' }}>Auto-closes {fmt(ch, cm)}</span>
-                } else if (s.manually_closed) {
+                } else if (shop?.is_open && s.manually_opened) {
+                  return <span style={{ fontSize: 10, color: '#16a34a', fontWeight: 700, whiteSpace: 'nowrap' }}>Manually opened</span>
+                } else if (!shop?.is_open && s.manually_closed) {
                   return <span style={{ fontSize: 10, color: '#ef4444', fontWeight: 700, whiteSpace: 'nowrap' }}>Manually closed</span>
-                } else if (!withinHours) {
+                } else if (!shop?.is_open && !withinHours) {
                   return <span style={{ fontSize: 10, color: 'var(--text-3)', fontWeight: 700, whiteSpace: 'nowrap' }}>Opens {fmt(oh, om)}</span>
                 }
                 return null
