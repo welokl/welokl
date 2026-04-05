@@ -328,10 +328,16 @@ function ShopCard({ shop, index }: { shop: any; index: number }) {
         {/* Meta row */}
         <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
           <div style={{ display:'flex', alignItems:'center', gap:3, fontSize:12, fontWeight:700, color:'var(--text-primary)' }}>
-            <svg viewBox="0 0 24 24" fill="#f59e0b" width={12} height={12}>
-              <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-            </svg>
-            {(shop.rating ?? 0).toFixed(1)}
+            {shop.rating ? (
+              <>
+                <svg viewBox="0 0 24 24" fill="#f59e0b" width={12} height={12}>
+                  <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                </svg>
+                {shop.rating.toFixed(1)}
+              </>
+            ) : (
+              <span style={{ color:'#9ca3af', fontWeight:600, fontSize:11 }}>New</span>
+            )}
           </div>
           {shop.delivery_enabled && (
             <>

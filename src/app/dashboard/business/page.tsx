@@ -12,7 +12,7 @@ import { uploadShopImage, deleteProductImages, imgUrl } from '@/lib/imageService
 import BusinessAnalytics from '@/components/BusinessAnalytics'
 import { PhoneGate } from '@/components/PhoneGate'
 
-type Tab = 'orders' | 'products' | 'analytics' | 'subscriptions' | 'settings'
+type Tab = 'orders' | 'products' | 'analytics' | 'subscriptions' | 'reviews' | 'settings'
 
 export default function BusinessDashboard() {
   const [user, setUser] = useState<User | null>(null)
@@ -276,8 +276,10 @@ export default function BusinessDashboard() {
     }
   }
 
-  const newOrders = orders.filter(o => o.status === 'placed')
-  const activeOrders = orders.filter(o => ['accepted','preparing','ready'].includes(o.status))
+  // Priority orders always surface first
+  const sortPriority = (arr: Order[]) => [...arr].sort((a, b) => ((b as any).is_priority ? 1 : 0) - ((a as any).is_priority ? 1 : 0))
+  const newOrders    = sortPriority(orders.filter(o => o.status === 'placed'))
+  const activeOrders = sortPriority(orders.filter(o => ['accepted','preparing','ready'].includes(o.status)))
   const deliveredOrders = orders.filter(o => o.status === 'delivered')
   const totalRevenue = deliveredOrders.reduce((s, o) => s + o.subtotal, 0)
   const commission = Math.round(totalRevenue * ((shop?.commission_percent || 15) / 100))
@@ -478,10 +480,10 @@ export default function BusinessDashboard() {
 
       <div style={{background:"var(--card-bg)", borderBottom:"1px solid var(--border)", padding:"0 16px"}}>
         <div className="biz-tab-bar max-w-4xl mx-auto flex">
-          {(['orders','products','analytics','subscriptions','settings'] as Tab[]).map(t => (
+          {(['orders','products','analytics','reviews','subscriptions','settings'] as Tab[]).map(t => (
             <button key={t} onClick={() => setTab(t)}
               style={{padding:'12px 16px', fontSize:13, fontWeight:700, textTransform:'capitalize', borderBottom:`2px solid ${tab===t?'#FF3008':'transparent'}`, color:tab===t?'#FF3008':'var(--text-3)', background:'none', cursor:'pointer', fontFamily:'inherit', transition:'all .15s', whiteSpace:'nowrap', flexShrink:0}}>
-              {t === 'settings' ? '⚙ Settings' : t === 'subscriptions' ? 'Plans' : t}{t === 'orders' && newOrders.length > 0 && <span className="ml-1.5 bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5">{newOrders.length}</span>}
+              {t === 'settings' ? '⚙ Settings' : t === 'subscriptions' ? 'Plans' : t === 'reviews' ? '★ Reviews' : t}{t === 'orders' && newOrders.length > 0 && <span className="ml-1.5 bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5">{newOrders.length}</span>}
             </button>
           ))}
         </div>
@@ -496,9 +498,14 @@ export default function BusinessDashboard() {
                 <div className="flex items-center gap-2 mb-3"><span className="w-2 h-2 bg-red-500 rounded-full animate-pulse" /><h2 className="font-bold text-red-600">New Orders ({newOrders.length})</h2></div>
                 <div className="space-y-3">
                   {newOrders.map(order => (
-                    <div key={order.id} className="card p-4">
+                    <div key={order.id} className="card p-4" style={(order as any).is_priority ? { border:'2px solid #f97316', boxShadow:'0 0 0 3px rgba(249,115,22,.15)' } : undefined}>
                       <div className="flex justify-between mb-1">
-                        <span className="font-bold text-sm">#{order.order_number}</span>
+                        <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                          {(order as any).is_priority && (
+                            <span style={{ fontSize:11, fontWeight:900, padding:'2px 8px', borderRadius:999, background:'#fff3e0', color:'#c2410c', border:'1px solid #fed7aa' }}>🔥 PRIORITY</span>
+                          )}
+                          <span className="font-bold text-sm">#{order.order_number}</span>
+                        </div>
                         <span className="font-bold">₹{order.total_amount}</span>
                       </div>
                       {(order as any).customer?.name && (
@@ -545,9 +552,14 @@ export default function BusinessDashboard() {
                     const pickupCode   = (order as any).pickup_code as string | null
 
                     return (
-                      <div key={order.id} style={{ background: 'var(--card-bg)', border: `1px solid ${isReady ? 'var(--brand)' : 'var(--border)'}`, borderRadius: 16, padding: 16, boxShadow: isReady ? '0 0 0 2px var(--brand-glow)' : 'var(--card-shadow)' }}>
+                      <div key={order.id} style={{ background: 'var(--card-bg)', border: `2px solid ${(order as any).is_priority ? '#f97316' : isReady ? 'var(--brand)' : 'var(--border)'}`, borderRadius: 16, padding: 16, boxShadow: (order as any).is_priority ? '0 0 0 3px rgba(249,115,22,.15)' : isReady ? '0 0 0 2px var(--brand-glow)' : 'var(--card-shadow)' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                          <span style={{ fontWeight: 900, fontSize: 14, color: 'var(--text)' }}>#{order.order_number}</span>
+                          <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                            {(order as any).is_priority && (
+                              <span style={{ fontSize:11, fontWeight:900, padding:'2px 8px', borderRadius:999, background:'#fff3e0', color:'#c2410c', border:'1px solid #fed7aa' }}>🔥 PRIORITY</span>
+                            )}
+                            <span style={{ fontWeight: 900, fontSize: 14, color: 'var(--text)' }}>#{order.order_number}</span>
+                          </div>
                           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                             <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: isPickupType ? 'rgba(59,130,246,0.12)' : 'rgba(245,158,11,0.12)', color: isPickupType ? '#3b82f6' : '#d97706' }}>
                               {isPickupType ? '🏪 Pickup' : '🛵 Delivery'}
@@ -650,6 +662,7 @@ export default function BusinessDashboard() {
         )}
 
         {tab === 'analytics' && shop && <BusinessAnalytics shopId={shop.id} commissionPercent={(shop as any).commission_percent ?? 15} />}
+        {tab === 'reviews' && shop && <ShopReviews shopId={shop.id} />}
         {tab === 'subscriptions' && shop && <SubscriptionPlans shopId={shop.id} />}
         {tab === 'settings' && shop && <ShopSettings shop={shop} onSaved={loadData} />}
       </div>
@@ -670,6 +683,113 @@ const SHOP_CATEGORIES = [
   'Food & Restaurants','Grocery','Pharmacy & Health','Electronics',
   'Fashion','Stationery','Hardware','Salon & Beauty','Pet Supplies','Flowers & Gifts',
 ]
+
+// ── Shop Reviews ─────────────────────────────────────────────────────────────
+function ShopReviews({ shopId }: { shopId: string }) {
+  const [reviews, setReviews] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const sb = createClient()
+    sb.from('reviews')
+      .select('id, shop_rating, delivery_rating, comment, created_at, customer:users!customer_id(name)')
+      .eq('shop_id', shopId)
+      .order('created_at', { ascending: false })
+      .then(({ data }) => { setReviews(data || []); setLoading(false) })
+  }, [shopId])
+
+  const avg = reviews.length ? reviews.reduce((s, r) => s + r.shop_rating, 0) / reviews.length : null
+
+  function Stars({ n, size = 14 }: { n: number; size?: number }) {
+    return (
+      <span style={{ display:'inline-flex', gap:1 }}>
+        {[1,2,3,4,5].map(i => (
+          <svg key={i} viewBox="0 0 24 24" width={size} height={size} fill={i <= n ? '#f59e0b' : 'none'} stroke={i <= n ? '#f59e0b' : '#d1d5db'} strokeWidth="1.5">
+            <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+          </svg>
+        ))}
+      </span>
+    )
+  }
+
+  function anonName(name: string | null) {
+    if (!name) return 'Customer'
+    const parts = name.trim().split(' ')
+    return parts.length > 1 ? `${parts[0]} ${parts[1][0]}.` : parts[0]
+  }
+
+  function timeAgo(iso: string) {
+    const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
+    if (diff < 60) return 'just now'
+    if (diff < 3600) return `${Math.floor(diff/60)}m ago`
+    if (diff < 86400) return `${Math.floor(diff/3600)}h ago`
+    if (diff < 2592000) return `${Math.floor(diff/86400)}d ago`
+    return new Date(iso).toLocaleDateString('en-IN', { day:'numeric', month:'short' })
+  }
+
+  if (loading) return <div style={{ padding:40, textAlign:'center', color:'var(--text-3)', fontSize:14 }}>Loading reviews…</div>
+
+  return (
+    <div>
+      {/* Summary card */}
+      <div style={{ background:'var(--card-bg)', borderRadius:16, padding:'20px 18px', marginBottom:16, border:'1px solid var(--border)' }}>
+        {avg ? (
+          <div style={{ display:'flex', alignItems:'center', gap:16 }}>
+            <div style={{ textAlign:'center' }}>
+              <p style={{ fontSize:42, fontWeight:900, color:'var(--text)', margin:0, lineHeight:1 }}>{avg.toFixed(1)}</p>
+              <Stars n={Math.round(avg)} size={16} />
+              <p style={{ fontSize:11, color:'var(--text-3)', marginTop:4 }}>{reviews.length} review{reviews.length !== 1 ? 's' : ''}</p>
+            </div>
+            <div style={{ flex:1 }}>
+              {[5,4,3,2,1].map(star => {
+                const count = reviews.filter(r => r.shop_rating === star).length
+                const pct = reviews.length ? (count / reviews.length) * 100 : 0
+                return (
+                  <div key={star} style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
+                    <span style={{ fontSize:11, fontWeight:700, color:'var(--text-2)', width:8 }}>{star}</span>
+                    <svg viewBox="0 0 24 24" width={10} height={10} fill="#f59e0b"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                    <div style={{ flex:1, height:6, borderRadius:4, background:'var(--bg-3)', overflow:'hidden' }}>
+                      <div style={{ width:`${pct}%`, height:'100%', background:'#f59e0b', borderRadius:4, transition:'width .4s' }} />
+                    </div>
+                    <span style={{ fontSize:11, color:'var(--text-3)', width:20, textAlign:'right' }}>{count}</span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        ) : (
+          <div style={{ textAlign:'center', padding:'8px 0' }}>
+            <p style={{ fontSize:15, fontWeight:700, color:'var(--text-2)', margin:0 }}>No reviews yet</p>
+            <p style={{ fontSize:13, color:'var(--text-3)', marginTop:4 }}>Reviews will appear here after customers rate their orders.</p>
+          </div>
+        )}
+      </div>
+
+      {/* Individual reviews */}
+      <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+        {reviews.map(r => (
+          <div key={r.id} style={{ background:'var(--card-bg)', borderRadius:14, padding:'14px 16px', border:'1px solid var(--border)' }}>
+            <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:8, marginBottom:6 }}>
+              <div>
+                <p style={{ fontSize:13, fontWeight:800, color:'var(--text)', margin:0 }}>{anonName((r.customer as any)?.name)}</p>
+                <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:3 }}>
+                  <Stars n={r.shop_rating} size={13} />
+                  {r.delivery_rating && (
+                    <span style={{ fontSize:11, color:'var(--text-3)', fontWeight:600 }}>🛵 {r.delivery_rating}★</span>
+                  )}
+                </div>
+              </div>
+              <span style={{ fontSize:11, color:'var(--text-3)', whiteSpace:'nowrap', flexShrink:0 }}>{timeAgo(r.created_at)}</span>
+            </div>
+            {r.comment && (
+              <p style={{ fontSize:13, color:'var(--text-2)', margin:0, lineHeight:1.5 }}>"{r.comment}"</p>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
 
 // ── Subscription Plans manager ──────────────────────────────────────────────
 function SubscriptionPlans({ shopId }: { shopId: string }) {

@@ -114,7 +114,9 @@ export default function FavouritesPage() {
                       <p style={{ fontSize:11, color:'var(--text-muted)', marginBottom:6 }}>{shop.category_name?.split(' ')[0]} · {(shop as any).area}</p>
                       <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                         <span style={{ display:'flex', alignItems:'center', gap:3, fontSize:12, fontWeight:700, color:'var(--text-primary)' }}>
-                          <span style={{ color:'#f59e0b' }}>★</span>{(shop.rating ?? 0).toFixed(1)}
+                          {shop.rating
+                            ? <><span style={{ color:'#f59e0b' }}>★</span>{shop.rating.toFixed(1)}</>
+                            : <span style={{ color:'#9ca3af', fontWeight:600, fontSize:11 }}>New</span>}
                         </span>
                         <span style={{ width:3, height:3, borderRadius:'50%', background:'var(--text-faint)' }} />
                         <span style={{ fontSize:11, color:'var(--text-muted)' }}>⏱ {(shop as any).avg_delivery_time}min</span>

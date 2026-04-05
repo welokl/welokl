@@ -8,7 +8,9 @@
       "Bash(npx tsc:*)",
       "Bash(done)",
       "Read(//c/dev/welokl-cto-update/**)",
-      "Bash(find /c/dev/welokl-cto-update -type f -name *logo* -o -name *manifest* -o -name *favicon*)"
+      "Bash(find /c/dev/welokl-cto-update -type f -name *logo* -o -name *manifest* -o -name *favicon*)",
+      "Bash(find /c/dev/welokl-cto-update/supabase -type f -name \"*.sql\" -exec basename {} \\\\;)",
+      "Bash(grep -n \"pickup_code\\\\|partner_accepted_at\" /c/dev/welokl-cto-update/supabase/*.sql)"
     ]
   }
 }

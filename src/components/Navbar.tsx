@@ -60,7 +60,7 @@ export default function Navbar() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
 
           {/* Cart */}
-          {mounted && itemCount > 0 && (
+          {mounted && itemCount > 0 && (!user || user.role === 'customer') && (
             <Link href="/cart" style={{ position: 'relative', width: 38, height: 38, borderRadius: 12, background: '#FF3008', display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}>
               <svg viewBox="0 0 24 24" fill="none" width={20} height={20}>
                 <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>

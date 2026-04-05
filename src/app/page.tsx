@@ -520,9 +520,13 @@ function FeaturedShops({ shops }: { shops: Shop[] }) {
                 <div className="font-extrabold text-gray-900 text-sm mb-0.5 truncate">{shop.name}</div>
                 <div className="text-xs text-gray-400 mb-2.5 truncate">{shop.category_name} · {shop.area}</div>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="flex items-center gap-1 text-xs font-bold text-amber-500">
-                    <IcoStar size={11} /> {(shop.rating ?? 0).toFixed(1)}
-                  </span>
+                  {shop.rating ? (
+                    <span className="flex items-center gap-1 text-xs font-bold text-amber-500">
+                      <IcoStar size={11} /> {shop.rating.toFixed(1)}
+                    </span>
+                  ) : (
+                    <span className="text-xs font-semibold text-gray-400">New</span>
+                  )}
                   {shop.delivery_enabled && (
                     <span className="flex items-center gap-1 text-xs text-gray-400">
                       <IcoBike size={11} color="#aaa" /> {shop.avg_delivery_time} min

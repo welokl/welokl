@@ -1021,8 +1021,9 @@ function ShopCard({ shop, index }: { shop: Shop & { km: number | null }; index: 
         )}
         <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
           <span style={{ display:'flex', alignItems:'center', gap:3, fontSize:11, fontWeight:700, color:'var(--text-primary)' }}>
-            <svg viewBox="0 0 24 24" fill="#f59e0b" width={12} height={12}><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-            {(shop.rating ?? 0).toFixed(1)}
+            {shop.rating
+              ? <><svg viewBox="0 0 24 24" fill="#f59e0b" width={12} height={12}><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>{shop.rating.toFixed(1)}</>
+              : <span style={{ color:'#9ca3af', fontWeight:600 }}>New</span>}
           </span>
           <span style={{ width:3, height:3, borderRadius:'50%', background:'var(--text-faint)' }} />
           <span style={{ display:'flex', alignItems:'center', gap:3, fontSize:11, color:'var(--text-muted)' }}>
@@ -1053,8 +1054,23 @@ function ShopCard({ shop, index }: { shop: Shop & { km: number | null }; index: 
 
 // ── PRODUCT CARD ──────────────────────────────────────────────────
 function ProductCard({ product }: { product: Product }) {
+  const cart = useCart() as any
   const disc = product.original_price && product.original_price > product.price
     ? Math.round(((product.original_price - product.price) / product.original_price) * 100) : null
+
+  function handleAdd(e: React.MouseEvent) {
+    e.preventDefault()
+    e.stopPropagation()
+    if (cart.shop_id && cart.shop_id !== product.shop_id && cart.items?.length > 0) {
+      window.location.href = `/stores/${product.shop_id}`
+      return
+    }
+    cart.addItem(
+      { id: product.id, name: product.name, price: product.price, image_url: product.image_url, shop_id: product.shop_id },
+      product.shop_id,
+      product.shop_name || ''
+    )
+  }
 
   return (
     <Link href={`/stores/${product.shop_id}`} className="prod-card" style={{ width:140, flexShrink:0 }}>
@@ -1077,7 +1093,7 @@ function ProductCard({ product }: { product: Product }) {
             <span style={{ fontSize:14, fontWeight:900, color:'var(--text-primary)' }}>₹{product.price}</span>
             {product.original_price && <span style={{ fontSize:11, color:'var(--text-faint)', textDecoration:'line-through', marginLeft:4 }}>₹{product.original_price}</span>}
           </div>
-          <div style={{ width:28, height:28, borderRadius:8, border:'1.5px solid #FF3008', display:'flex', alignItems:'center', justifyContent:'center', color:'#FF3008', fontSize:18, fontWeight:900, lineHeight:1 }}>+</div>
+          <button onClick={handleAdd} style={{ width:28, height:28, borderRadius:8, border:'1.5px solid #FF3008', display:'flex', alignItems:'center', justifyContent:'center', color:'#FF3008', fontSize:18, fontWeight:900, lineHeight:1, background:'transparent', cursor:'pointer', flexShrink:0, padding:0 }}>+</button>
         </div>
       </div>
     </Link>
@@ -1138,8 +1154,14 @@ function ShopCardH({ shop }: { shop: Shop & { km: number | null } }) {
         {/* Bottom row: rating · time · km — arrow */}
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
           <div style={{ display:'flex', alignItems:'center', gap:4, fontSize:11, color:'var(--text-muted)', fontWeight:600 }}>
-            <svg viewBox="0 0 24 24" fill="#f59e0b" width={10} height={10}><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-            <span style={{ color:'var(--text-primary)', fontWeight:800 }}>{(shop.rating ?? 0).toFixed(1)}</span>
+            {shop.rating ? (
+              <>
+                <svg viewBox="0 0 24 24" fill="#f59e0b" width={10} height={10}><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                <span style={{ color:'var(--text-primary)', fontWeight:800 }}>{shop.rating.toFixed(1)}</span>
+              </>
+            ) : (
+              <span style={{ color:'#9ca3af', fontWeight:600, fontSize:10 }}>New</span>
+            )}
             <span>·</span>
             <span>{shop.avg_delivery_time}m</span>
             {kmTxt && <><span>·</span><span>{kmTxt}</span></>}
@@ -1245,12 +1267,27 @@ function ShopCardFull({ shop }: { shop: Shop & { km: number | null } }) {
 
 // ── PRICE HIGHLIGHT CARD — for "Under ₹100" student section ──────
 function PriceHighlightCard({ product }: { product: Product }) {
+  const cart = useCart() as any
   const disc = product.original_price && product.original_price > product.price
     ? Math.round(((product.original_price - product.price) / product.original_price) * 100) : null
+
+  function handleAdd(e: React.MouseEvent) {
+    e.preventDefault()
+    e.stopPropagation()
+    if (cart.shop_id && cart.shop_id !== product.shop_id && cart.items?.length > 0) {
+      window.location.href = `/stores/${product.shop_id}`
+      return
+    }
+    cart.addItem(
+      { id: product.id, name: product.name, price: product.price, image_url: product.image_url, shop_id: product.shop_id },
+      product.shop_id,
+      product.shop_name || ''
+    )
+  }
+
   return (
     <Link href={`/stores/${product.shop_id}`}
       style={{ flexShrink:0, width:180, borderRadius:18, overflow:'hidden', textDecoration:'none', background:'var(--card-white)', border:'1px solid var(--divider)', display:'block', boxShadow:'0 2px 10px rgba(0,0,0,.07)' }}>
-      {/* Image — top 60% */}
       <div style={{ height:108, background:'var(--chip-bg)', position:'relative', overflow:'hidden' }}>
         {product.image_url
           ? <Image src={product.image_url} alt={product.name} fill sizes="180px" className="object-cover" />
@@ -1260,17 +1297,15 @@ function PriceHighlightCard({ product }: { product: Product }) {
           <div style={{ position:'absolute', top:8, left:8, background:'#FF3008', color:'#fff', fontSize:10, fontWeight:900, padding:'3px 8px', borderRadius:7 }}>-{disc}%</div>
         )}
       </div>
-      {/* Info */}
       <div style={{ padding:'9px 10px 11px' }}>
         <p style={{ fontSize:12, fontWeight:700, color:'var(--text-primary)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', marginBottom:2 }}>{product.name}</p>
         {product.shop_name && <p style={{ fontSize:10, color:'var(--text-muted)', marginBottom:6, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{product.shop_name}</p>}
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-          {/* Price badge — prominent green pill */}
           <div style={{ background:'rgba(22,163,74,.1)', borderRadius:8, padding:'3px 10px' }}>
             <span style={{ fontSize:15, fontWeight:900, color:'#16a34a' }}>₹{product.price}</span>
             {product.original_price && <span style={{ fontSize:10, color:'var(--text-faint)', textDecoration:'line-through', marginLeft:4 }}>₹{product.original_price}</span>}
           </div>
-          <div style={{ width:28, height:28, borderRadius:8, border:'1.5px solid #FF3008', display:'flex', alignItems:'center', justifyContent:'center', color:'#FF3008', fontSize:18, fontWeight:900, lineHeight:1 }}>+</div>
+          <button onClick={handleAdd} style={{ width:28, height:28, borderRadius:8, border:'1.5px solid #FF3008', display:'flex', alignItems:'center', justifyContent:'center', color:'#FF3008', fontSize:18, fontWeight:900, lineHeight:1, background:'transparent', cursor:'pointer', flexShrink:0, padding:0 }}>+</button>
         </div>
       </div>
     </Link>
@@ -1406,8 +1441,24 @@ function PastOrderCard({ shop, lastOrder, onReorder }: { shop: Shop & { km: numb
 
 // ── DEAL CARD — 2-column grid product card ────────────────────────
 function DealCard({ product }: { product: Product }) {
+  const cart = useCart() as any
   const disc = product.original_price && product.original_price > product.price
     ? Math.round(((product.original_price - product.price) / product.original_price) * 100) : null
+
+  function handleAdd(e: React.MouseEvent) {
+    e.preventDefault()
+    e.stopPropagation()
+    if (cart.shop_id && cart.shop_id !== product.shop_id && cart.items?.length > 0) {
+      window.location.href = `/stores/${product.shop_id}`
+      return
+    }
+    cart.addItem(
+      { id: product.id, name: product.name, price: product.price, image_url: product.image_url, shop_id: product.shop_id },
+      product.shop_id,
+      product.shop_name || ''
+    )
+  }
+
   return (
     <Link href={`/stores/${product.shop_id}`}
       style={{ background:'var(--card-white)', borderRadius:16, overflow:'hidden', textDecoration:'none', boxShadow:'0 2px 8px rgba(0,0,0,.06)', display:'block', border:'1px solid var(--divider)' }}>
@@ -1430,7 +1481,7 @@ function DealCard({ product }: { product: Product }) {
             <span style={{ fontSize:14, fontWeight:900, color:'var(--text-primary)' }}>₹{product.price}</span>
             {product.original_price && <span style={{ fontSize:10, color:'var(--text-faint)', textDecoration:'line-through', marginLeft:4 }}>₹{product.original_price}</span>}
           </div>
-          <div style={{ width:28, height:28, borderRadius:8, border:'1.5px solid #FF3008', display:'flex', alignItems:'center', justifyContent:'center', color:'#FF3008', fontSize:18, fontWeight:900, lineHeight:1, flexShrink:0 }}>+</div>
+          <button onClick={handleAdd} style={{ width:28, height:28, borderRadius:8, border:'1.5px solid #FF3008', display:'flex', alignItems:'center', justifyContent:'center', color:'#FF3008', fontSize:18, fontWeight:900, lineHeight:1, background:'transparent', cursor:'pointer', flexShrink:0, padding:0 }}>+</button>
         </div>
       </div>
     </Link>

@@ -286,7 +286,10 @@ export default function DeliveryDashboard() {
           current_long: pos.coords.longitude,
         }).eq('id', partnerId)
       },
-      (err) => console.warn('[GPS]', err.message),
+      (err) => {
+        const msg = err.code === 1 ? 'Location permission denied. Please allow location access.' : 'GPS unavailable. Check your location settings.'
+        notify(msg, 'error')
+      },
       { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
     )
   }, [])

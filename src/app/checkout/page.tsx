@@ -32,10 +32,40 @@ export default function CheckoutPage() {
   const [deliveryLat,   setDeliveryLat]   = useState<number|null>(null)
   const [deliveryLng,   setDeliveryLng]   = useState<number|null>(null)
   const [tip,           setTip]           = useState(0)
+  const [isPriority,    setIsPriority]    = useState(false)
+  const PRIORITY_FEE = 25
   const [promoInput,    setPromoInput]    = useState('')
-  const [promo,         setPromo]         = useState<{code:string;discount:number}|null>(null)
+  const [promo,         setPromo]         = useState<{code:string;discount:number;id:string;min_order:number}|null>(null)
   const [promoLoading,  setPromoLoading]  = useState(false)
   const [promoError,    setPromoError]    = useState('')
+  const [orderError,    setOrderError]    = useState('')
+  const [userPhone,     setUserPhone]     = useState('')
+  const [deviceId,      setDeviceId]      = useState('')
+
+  // Generate/restore a stable device fingerprint stored in localStorage
+  function getOrCreateDeviceId(): string {
+    try {
+      const stored = localStorage.getItem('welokl_device_id')
+      if (stored) return stored
+      const components = [
+        navigator.userAgent,
+        navigator.language,
+        `${screen.width}x${screen.height}`,
+        screen.colorDepth,
+        new Date().getTimezoneOffset(),
+        navigator.hardwareConcurrency ?? 0,
+        (navigator as any).deviceMemory ?? 0,
+      ].join('|')
+      let hash = 0
+      for (let i = 0; i < components.length; i++) {
+        hash = Math.imul(31, hash) + components.charCodeAt(i) | 0
+      }
+      const id = Math.abs(hash).toString(36) + '-' + Date.now().toString(36)
+      localStorage.setItem('welokl_device_id', id)
+      return id
+    } catch { return '' }
+  }
+
   useEffect(() => {
     cart._hydrate?.()
     setMounted(true)
@@ -53,17 +83,22 @@ export default function CheckoutPage() {
       })
     })
 
+    setDeviceId(getOrCreateDeviceId())
+
     sb.auth.getUser().then(({ data }) => {
       if (!data.user) { router.push('/auth/login'); return }
       setUserId(data.user.id)
-      // ── Load saved addresses from DB ─────────────────────────
-      sb.from('user_addresses').select('id,label,address').eq('user_id', data.user.id).order('created_at', { ascending: false })
-        .then(({ data: rows }) => {
-          if (rows?.length) {
-            setSavedAddrs(rows as any)
-            setAddress(prev => prev || rows[0].address)
-          }
-        })
+      // ── Load saved addresses + phone from DB ─────────────────
+      Promise.all([
+        sb.from('user_addresses').select('id,label,address').eq('user_id', data.user.id).order('created_at', { ascending: false }),
+        sb.from('users').select('phone').eq('id', data.user.id).maybeSingle(),
+      ]).then(([addrRes, userRes]) => {
+        if (addrRes.data?.length) {
+          setSavedAddrs(addrRes.data as any)
+          setAddress(prev => prev || addrRes.data![0].address)
+        }
+        if (userRes.data?.phone) setUserPhone(userRes.data.phone)
+      })
     })
 
     // ── Try to get readable address from saved GPS coords ──────
@@ -107,7 +142,6 @@ export default function CheckoutPage() {
       .then(({ data }) => { if (data) setShopInfo(data) })
   }, [mounted, cart.shop_id])
 
-
   if (!mounted) return null
 
   const items    = cart.items || []
@@ -127,35 +161,72 @@ export default function CheckoutPage() {
 
   const delivery_fee   = type === 'pickup' ? 0 : subtotal >= platformCfg.free_delivery_threshold ? 0 : platformCfg.delivery_fee
   const promoDiscount  = promo?.discount ?? 0
-  const total          = subtotal + delivery_fee + platformCfg.platform_fee + tip - promoDiscount
+  const priorityFee    = isPriority ? PRIORITY_FEE : 0
+  const total          = subtotal + delivery_fee + platformCfg.platform_fee + tip + priorityFee - promoDiscount
   const minOrder       = 0
   const belowMin       = false
+
+  // Auto-invalidate promo if subtotal drops below its minimum
+  if (promo && promo.min_order > 0 && subtotal < promo.min_order) {
+    setPromo(null)
+    setPromoInput('')
+    setPromoError(`Promo removed — min order ₹${promo.min_order} not met`)
+  }
 
   async function applyPromo() {
     if (!promoInput.trim()) return
     setPromoLoading(true)
     setPromoError('')
     const sb = createClient()
+
+    // Get current user
+    const { data: { user: authUser } } = await sb.auth.getUser()
+    if (!authUser) { setPromoError('Please sign in to use a promo code'); setPromoLoading(false); return }
+
+    // Fetch promo code
     const { data } = await sb.from('promo_codes')
       .select('*')
       .eq('code', promoInput.trim().toUpperCase())
       .eq('is_active', true)
       .maybeSingle()
-    setPromoLoading(false)
-    if (!data) { setPromoError('Invalid or expired code'); return }
-    if (data.expires_at && new Date(data.expires_at) < new Date()) { setPromoError('This code has expired'); return }
-    if (data.usage_limit && data.used_count >= data.usage_limit) { setPromoError('Code usage limit reached'); return }
-    if (data.min_order_amount && subtotal < data.min_order_amount) { setPromoError(`Min order ₹${data.min_order_amount} required`); return }
+
+    if (!data) { setPromoError('Invalid or expired code'); setPromoLoading(false); return }
+    if (data.expires_at && new Date(data.expires_at) < new Date()) { setPromoError('This code has expired'); setPromoLoading(false); return }
+    if (data.usage_limit && data.used_count >= data.usage_limit) { setPromoError('Code usage limit reached'); setPromoLoading(false); return }
+    if (data.min_order_amount && subtotal < data.min_order_amount) { setPromoError(`Min order ₹${data.min_order_amount} required`); setPromoLoading(false); return }
+
+    // ── Multi-signal abuse check ──────────────────────────────
+    // Block if: same user_id OR same device OR same phone number already used this code
+    const checks = [
+      sb.from('promo_code_usages').select('id').eq('promo_code_id', data.id).eq('user_id', authUser.id).maybeSingle(),
+      deviceId ? sb.from('promo_code_usages').select('id').eq('promo_code_id', data.id).eq('device_fingerprint', deviceId).maybeSingle() : Promise.resolve({ data: null }),
+      userPhone ? sb.from('promo_code_usages').select('id').eq('promo_code_id', data.id).eq('phone', userPhone).maybeSingle() : Promise.resolve({ data: null }),
+    ]
+    const [byUser, byDevice, byPhone] = await Promise.all(checks)
+    if (byUser.data || byDevice.data || byPhone.data) {
+      setPromoError('You have already used this code')
+      setPromoLoading(false)
+      return
+    }
+
     const raw = data.discount_type === 'percent'
       ? (data.discount_value / 100) * subtotal
       : data.discount_value
     const discount = Math.min(raw, data.max_discount ?? raw, subtotal)
-    setPromo({ code: data.code, discount: Math.round(discount) })
+    setPromo({ code: data.code, discount: Math.round(discount), id: data.id, min_order: data.min_order_amount || 0 })
+    setPromoLoading(false)
   }
 
   // ── Create the order in DB ──────────────────────────────────
   async function createOrder(paymentStatus: 'pending' | 'paid') {
     const sb = createClient()
+
+    // Re-validate promo minimum before writing to DB
+    if (promo && promo.min_order > 0 && subtotal < promo.min_order) {
+      setPromo(null)
+      setPromoInput('')
+      throw new Error(`Promo code requires a minimum order of ₹${promo.min_order}. Please add more items.`)
+    }
 
     // Fresh auth — never rely on stale state
     const { data: { user: authUser } } = await sb.auth.getUser()
@@ -179,12 +250,12 @@ export default function CheckoutPage() {
       discount:              promoDiscount,
       tip_amount:            tip,
       promo_code:            promo?.code || null,
+      is_priority:           isPriority,
+      priority_fee:          priorityFee,
       total_amount:          total,
       payment_method:        'cod',
       payment_status:        paymentStatus,
     }
-
-    console.log('[welokl] inserting order:', JSON.stringify(orderPayload, null, 2))
 
     const { data: order, error: orderErr } = await sb
       .from('orders')
@@ -193,14 +264,11 @@ export default function CheckoutPage() {
       .single()
 
     if (orderErr) {
-      const errDetail = `code:${orderErr.code} msg:${orderErr.message} detail:${orderErr.details} hint:${orderErr.hint}`
-      console.error('[welokl] order insert FAILED:', errDetail, orderErr)
-      throw new Error(errDetail)
+      throw new Error(orderErr.message || 'Failed to place order. Please try again.')
     }
-    console.log('[welokl] order created:', order.id)
 
-    // Insert order items
-    const { error: itemsErr } = await sb.from('order_items').insert(
+    // Insert order items (non-fatal if fails — order is already created)
+    await sb.from('order_items').insert(
       items.map((item: any) => ({
         order_id:     order.id,
         product_id:   item.product.id,
@@ -211,9 +279,15 @@ export default function CheckoutPage() {
       }))
     )
 
-    if (itemsErr) {
-      console.error('[checkout] order_items error:', itemsErr)
-      // Don't throw — order was placed, items error is non-fatal
+    // Record promo usage — blocks same user, device, or phone from reusing
+    if (promo?.id) {
+      sb.from('promo_code_usages').insert({
+        promo_code_id:      promo.id,
+        user_id:            uid,
+        order_id:           order.id,
+        device_fingerprint: deviceId || null,
+        phone:              userPhone || null,
+      }).then(() => {})
     }
 
     // Save address to DB if it's new
@@ -247,16 +321,15 @@ export default function CheckoutPage() {
 
   // ── COD flow ────────────────────────────────────────────────
   async function handleCOD() {
-    if (type === 'delivery' && !address.trim()) { alert('Please enter a delivery address'); return }
+    if (type === 'delivery' && !address.trim()) { setOrderError('Please enter a delivery address'); return }
     setLoading(true)
+    setOrderError('')
     try {
       const id = await createOrder('pending')
       cart.clear?.()
       router.push(`/orders/${id}`)
     } catch (e: any) {
-      const msg = e?.message || e?.details || e?.hint || JSON.stringify(e)
-      console.error('[welokl] order error:', e)
-      alert('Error: ' + msg)
+      setOrderError(e?.message || 'Something went wrong. Please try again.')
     } finally { setLoading(false) }
   }
 
@@ -375,19 +448,48 @@ export default function CheckoutPage() {
             {cart.shop_name} · {items.length} item{items.length!==1?'s':''}
           </p>
           {items.map((item: any, i: number) => (
-            <div key={item.product.id} style={{ display:'flex', alignItems:'center', gap:12, paddingBottom:i<items.length-1?10:0, marginBottom:i<items.length-1?10:0, borderBottom:i<items.length-1?'1px solid var(--divider)':'none' }}>
+            <div key={item.product.id} style={{ display:'flex', alignItems:'center', gap:12, paddingBottom:i<items.length-1?12:0, marginBottom:i<items.length-1?12:0, borderBottom:i<items.length-1?'1px solid var(--divider)':'none' }}>
               {item.product.image_url && (
-                <div style={{ width:40, height:40, borderRadius:10, overflow:'hidden', flexShrink:0, background:'var(--chip-bg)' }}>
+                <div style={{ width:44, height:44, borderRadius:10, overflow:'hidden', flexShrink:0, background:'var(--chip-bg)' }}>
                   <img src={item.product.image_url} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} onError={e=>{(e.currentTarget as HTMLImageElement).style.display='none'}} />
                 </div>
               )}
               <div style={{ flex:1, minWidth:0 }}>
                 <p style={{ fontWeight:700, fontSize:14, color:'var(--text-primary)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{item.product.name}</p>
-                <p style={{ fontSize:12, color:'var(--text-muted)' }}>₹{item.product.price} × {item.quantity}</p>
+                <p style={{ fontSize:12, color:'var(--text-muted)', marginTop:2 }}>₹{item.product.price} each</p>
               </div>
-              <span style={{ fontWeight:800, fontSize:14, color:'var(--text-primary)', flexShrink:0 }}>₹{item.product.price*item.quantity}</span>
+              {/* Blinkit-style stepper */}
+              <div style={{ display:'flex', alignItems:'center', gap:0, background:'var(--page-bg)', borderRadius:12, border:'1.5px solid var(--divider)', overflow:'hidden', flexShrink:0 }}>
+                <button
+                  onClick={() => cart.updateQty?.(item.product.id, item.quantity - 1)}
+                  style={{ width:34, height:34, display:'flex', alignItems:'center', justifyContent:'center', border:'none', background:'transparent', color:'#FF3008', fontSize:20, fontWeight:900, cursor:'pointer', lineHeight:1 }}>
+                  −
+                </button>
+                <span style={{ minWidth:22, textAlign:'center', fontSize:14, fontWeight:900, color:'var(--text-primary)', padding:'0 2px' }}>
+                  {item.quantity}
+                </span>
+                <button
+                  onClick={() => cart.addItem?.(item.product, cart.shop_id, cart.shop_name)}
+                  style={{ width:34, height:34, display:'flex', alignItems:'center', justifyContent:'center', border:'none', background:'#FF3008', color:'#fff', fontSize:20, fontWeight:900, cursor:'pointer', lineHeight:1, borderRadius:'0 9px 9px 0' }}>
+                  +
+                </button>
+              </div>
+              <span style={{ fontWeight:800, fontSize:14, color:'var(--text-primary)', flexShrink:0, minWidth:44, textAlign:'right' }}>₹{item.product.price*item.quantity}</span>
             </div>
           ))}
+
+          {/* Add more items */}
+          {cart.shop_id && (
+            <div style={{ borderTop:'1px dashed var(--divider)', marginTop:14, paddingTop:14 }}>
+              <Link href={`/stores/${cart.shop_id}`}
+                style={{ display:'flex', alignItems:'center', gap:8, textDecoration:'none' }}>
+                <div style={{ width:32, height:32, borderRadius:10, border:'1.5px dashed #FF3008', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                  <svg viewBox="0 0 24 24" fill="none" width={16} height={16}><path d="M12 5v14M5 12h14" stroke="#FF3008" strokeWidth="2.5" strokeLinecap="round"/></svg>
+                </div>
+                <span style={{ fontSize:14, fontWeight:800, color:'#FF3008' }}>Add more items</span>
+              </Link>
+            </div>
+          )}
         </div>
 
         {/* Special note */}
@@ -429,6 +531,36 @@ export default function CheckoutPage() {
           {promoError && <p style={{ fontSize:12, color:'#ef4444', marginTop:8, fontWeight:600 }}>{promoError}</p>}
         </div>
 
+        {/* Priority order */}
+        {type === 'delivery' && (
+          <div
+            onClick={() => setIsPriority(p => !p)}
+            style={{ background: isPriority ? 'linear-gradient(135deg,#fff3e0,#ffe8cc)' : 'var(--card-white)', borderRadius:20, padding:'16px 18px', marginBottom:12, cursor:'pointer', border:`2px solid ${isPriority ? '#f97316' : 'var(--divider)'}`, transition:'all .2s' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+              <div style={{ width:44, height:44, borderRadius:14, background: isPriority ? '#f97316' : 'var(--chip-bg)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, transition:'background .2s' }}>
+                <svg viewBox="0 0 24 24" fill="none" width={22} height={22}>
+                  <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" stroke={isPriority ? '#fff' : '#f97316'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </div>
+              <div style={{ flex:1 }}>
+                <p style={{ fontWeight:900, fontSize:14, color: isPriority ? '#c2410c' : 'var(--text-primary)', marginBottom:2 }}>
+                  Priority Order {isPriority ? '🔥' : ''}
+                </p>
+                <p style={{ fontSize:12, color: isPriority ? '#ea580c' : 'var(--text-muted)' }}>
+                  Jump to top of queue · faster prep & pickup
+                </p>
+              </div>
+              <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:4, flexShrink:0 }}>
+                <span style={{ fontWeight:900, fontSize:15, color: isPriority ? '#c2410c' : '#f97316' }}>+₹{PRIORITY_FEE}</span>
+                {/* Toggle pill */}
+                <div style={{ width:44, height:24, borderRadius:999, background: isPriority ? '#f97316' : 'var(--chip-bg)', position:'relative', transition:'background .2s', border:`1.5px solid ${isPriority ? '#f97316' : 'var(--divider)'}` }}>
+                  <div style={{ position:'absolute', top:2, left: isPriority ? 22 : 2, width:18, height:18, borderRadius:'50%', background:'#fff', boxShadow:'0 1px 4px rgba(0,0,0,.2)', transition:'left .2s' }} />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Tip for rider */}
         {type === 'delivery' && (
           <div style={{ background:'var(--card-white)', borderRadius:20, padding:'18px 16px', marginBottom:12 }}>
@@ -465,6 +597,7 @@ export default function CheckoutPage() {
             { label:`Delivery${delivery_fee===0&&type==='delivery'?' (Free!)':type==='pickup'?' (Pickup)':''}`, val:delivery_fee===0?'FREE':`₹${delivery_fee}`, green:delivery_fee===0 },
             { label:'Platform fee', val:`₹${platformCfg.platform_fee}`, green:false },
             ...(tip > 0 ? [{ label:'Tip for rider', val:`₹${tip}`, green:false }] : []),
+            ...(priorityFee > 0 ? [{ label:'🔥 Priority fee', val:`₹${priorityFee}`, green:false }] : []),
             ...(promoDiscount > 0 ? [{ label:`Promo (${promo?.code})`, val:`-₹${promoDiscount}`, green:true }] : []),
           ].map(r => (
             <div key={r.label} style={{ display:'flex', justifyContent:'space-between', marginBottom:10, fontSize:14 }}>
@@ -487,6 +620,11 @@ export default function CheckoutPage() {
       {/* Place order bar */}
       <div style={{ position:'fixed', bottom:0, left:0, right:0, padding:'12px 12px', paddingBottom:'calc(16px + env(safe-area-inset-bottom, 0px))', background:'var(--card-white)', borderTop:'1px solid var(--divider)', zIndex:50 }}>
         <div style={{ maxWidth:560, margin:'0 auto' }}>
+          {orderError && (
+            <div style={{ marginBottom:10, padding:'10px 14px', borderRadius:12, background:'rgba(239,68,68,.08)', border:'1px solid rgba(239,68,68,.2)' }}>
+              <p style={{ fontSize:13, color:'#ef4444', fontWeight:600, margin:0 }}>{orderError}</p>
+            </div>
+          )}
           <button onClick={handleCOD} disabled={loading || belowMin}
             style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'space-between', padding:'16px 22px', borderRadius:18, border:'none', background: loading || belowMin ? 'var(--chip-bg)' : '#FF3008', color: loading || belowMin ? 'var(--text-muted)' : '#fff', fontWeight:900, fontSize:16, cursor: loading || belowMin ? 'not-allowed' : 'pointer', fontFamily:'inherit', transition:'background .2s', boxShadow: loading || belowMin ? 'none' : '0 8px 24px rgba(255,48,8,.3)' }}>
             <span>{loading ? 'Placing order…' : belowMin ? `Add ₹${minOrder - subtotal} more` : 'Place order'}</span>

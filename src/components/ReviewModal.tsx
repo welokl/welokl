@@ -25,10 +25,19 @@ export default function ReviewModal({ orderId, shopId, shopName, deliveryPartner
       const { data: { user } } = await sb.auth.getUser()
       if (!user) return
 
+      // Verify the order is actually delivered and belongs to this user
+      const { data: ord } = await sb
+        .from('orders')
+        .select('id, status, customer_id')
+        .eq('id', orderId)
+        .single()
+      if (!ord || ord.status !== 'delivered' || ord.customer_id !== user.id) return
+
       await sb.from('reviews').upsert({
         order_id: orderId,
         shop_id: shopId,
         customer_id: user.id,
+        delivery_partner_id: deliveryPartnerId || null,
         shop_rating: shopRating,
         delivery_rating: deliveryRating || null,
         comment: comment.trim() || null,

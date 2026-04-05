@@ -33,6 +33,9 @@ interface OrderRow {
   total_amount: number
   type: string
   created_at: string
+  accepted_at: string | null
+  picked_up_at: string | null
+  delivered_at: string | null
   customer: Person | null
   shop: (Person & { id: string }) | null
   partner: Person | null
@@ -44,6 +47,17 @@ function formatTime(iso: string) {
   const time = d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
   if (d.toDateString() === now.toDateString()) return time
   return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) + ' · ' + time
+}
+
+function diffMins(start: string | null, end: string | null): number | null {
+  if (!start || !end) return null
+  return Math.round((new Date(end).getTime() - new Date(start).getTime()) / 60000)
+}
+
+function fmtMins(mins: number | null): string {
+  if (mins === null) return '—'
+  if (mins < 60) return `${mins}m`
+  return `${Math.floor(mins / 60)}h ${mins % 60}m`
 }
 
 function CallBtn({ phone, label }: { phone: string; label?: string }) {
@@ -78,6 +92,9 @@ function OrderCard({ o }: { o: OrderRow }) {
   const sc = STATUS_COLOR[o.status] || { bg: 'rgba(100,100,100,0.1)', text: '#888' }
   const isDelivery = o.type === 'delivery'
   const partnerPending = isDelivery && !o.partner && !['delivered', 'cancelled', 'rejected'].includes(o.status)
+  const responseTime = diffMins(o.created_at, o.accepted_at)
+  const deliveryTime = diffMins(o.picked_up_at, o.delivered_at)
+  const totalTime    = diffMins(o.created_at, o.delivered_at)
 
   return (
     <div style={{ background: '#fff', borderRadius: 16, padding: '12px 14px', boxShadow: '0 1px 4px rgba(0,0,0,.06)', border: '1px solid #eeece9' }}>
@@ -130,6 +147,30 @@ function OrderCard({ o }: { o: OrderRow }) {
             </div>
           )
       )}
+
+      {/* Timing row — only for delivered orders */}
+      {o.status === 'delivered' && (responseTime !== null || deliveryTime !== null || totalTime !== null) && (
+        <div style={{ display: 'flex', gap: 8, padding: '8px 0 2px', borderTop: '1px solid #f3f2f0', flexWrap: 'wrap' }}>
+          {responseTime !== null && (
+            <div style={{ background: 'rgba(59,130,246,0.07)', borderRadius: 8, padding: '4px 10px' }}>
+              <p style={{ fontSize: 9, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>Shop response</p>
+              <p style={{ fontSize: 13, fontWeight: 900, color: '#2563eb', margin: 0 }}>{fmtMins(responseTime)}</p>
+            </div>
+          )}
+          {deliveryTime !== null && (
+            <div style={{ background: 'rgba(234,88,12,0.07)', borderRadius: 8, padding: '4px 10px' }}>
+              <p style={{ fontSize: 9, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>Delivery run</p>
+              <p style={{ fontSize: 13, fontWeight: 900, color: '#c2410c', margin: 0 }}>{fmtMins(deliveryTime)}</p>
+            </div>
+          )}
+          {totalTime !== null && (
+            <div style={{ background: 'rgba(21,128,61,0.07)', borderRadius: 8, padding: '4px 10px' }}>
+              <p style={{ fontSize: 9, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>Total time</p>
+              <p style={{ fontSize: 13, fontWeight: 900, color: '#15803d', margin: 0 }}>{fmtMins(totalTime)}</p>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -166,6 +207,7 @@ export default function ManagementDashboard() {
       .from('orders')
       .select(`
         id, order_number, status, total_amount, type, created_at,
+        accepted_at, picked_up_at, delivered_at,
         customer:users!customer_id(name, phone),
         shop:shops!shop_id(id, name, phone),
         partner:users!delivery_partner_id(name, phone)
@@ -229,6 +271,19 @@ export default function ManagementDashboard() {
     o.type === 'delivery' && !o.partner && ['accepted', 'preparing', 'ready'].includes(o.status)
   )
 
+  // Efficiency metrics from delivered orders (today)
+  const deliveredToday = orders.filter(o =>
+    o.status === 'delivered' && new Date(o.created_at).toDateString() === new Date().toDateString()
+  )
+  function avgMins(arr: (number | null)[]): string {
+    const valid = arr.filter((v): v is number => v !== null)
+    if (!valid.length) return '—'
+    return fmtMins(Math.round(valid.reduce((s, v) => s + v, 0) / valid.length))
+  }
+  const avgResponseTime = avgMins(deliveredToday.map(o => diffMins(o.created_at, o.accepted_at)))
+  const avgDeliveryTime = avgMins(deliveredToday.map(o => diffMins(o.picked_up_at, o.delivered_at)))
+  const avgTotalTime    = avgMins(deliveredToday.map(o => diffMins(o.created_at, o.delivered_at)))
+
   const filtered = orders.filter(o => {
     if (tab === 'active')    return !['delivered', 'cancelled', 'rejected'].includes(o.status)
     if (tab === 'delivered') return o.status === 'delivered'
@@ -285,6 +340,27 @@ export default function ManagementDashboard() {
                 <p style={{ fontSize: 11, fontWeight: 700, color: s.col, margin: '2px 0 0', opacity: 0.8 }}>{s.label}</p>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* ── Efficiency metrics (today's delivered orders) ── */}
+        {!loading && deliveredToday.length > 0 && (
+          <div style={{ background: '#fff', border: '1px solid #eeece9', borderRadius: 14, padding: '12px 14px', marginBottom: 12 }}>
+            <p style={{ fontSize: 11, fontWeight: 700, color: '#999', textTransform: 'uppercase', letterSpacing: '0.07em', margin: '0 0 10px' }}>
+              ⚡ Today's efficiency · {deliveredToday.length} delivered
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+              {[
+                { label: 'Avg shop response', val: avgResponseTime, col: '#2563eb', bg: 'rgba(59,130,246,0.07)' },
+                { label: 'Avg delivery run', val: avgDeliveryTime, col: '#c2410c', bg: 'rgba(234,88,12,0.07)' },
+                { label: 'Avg total time', val: avgTotalTime, col: '#15803d', bg: 'rgba(21,128,61,0.07)' },
+              ].map(m => (
+                <div key={m.label} style={{ background: m.bg, borderRadius: 10, padding: '8px 10px' }}>
+                  <p style={{ fontSize: 16, fontWeight: 900, color: m.col, margin: 0 }}>{m.val}</p>
+                  <p style={{ fontSize: 9, fontWeight: 700, color: '#888', margin: '2px 0 0', textTransform: 'uppercase', letterSpacing: '0.05em', lineHeight: 1.3 }}>{m.label}</p>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 

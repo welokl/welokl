@@ -48,56 +48,53 @@ export default function OrderPage() {
     return () => { sb.removeChannel(orderCh) }
   }, [id])
 
-  // Realtime: rider position updates
+  // Rider position: realtime subscription + polling fallback every 5s
   useEffect(() => {
-    if (!order?.delivery_partner_id) return
+    const partnerId = order?.delivery_partner_id
+    const active    = order && ['ready','picked_up'].includes(order.status)
+    if (!partnerId || !active) return
+
     const sb = createClient()
-    const riderCh = sb.channel(`rider-pos:${order.delivery_partner_id}`)
+
+    async function fetchRiderPos() {
+      const { data } = await sb
+        .from('delivery_partners')
+        .select('current_lat,current_long')
+        .eq('user_id', partnerId)
+        .single()
+      if (data?.current_lat && data?.current_long) {
+        setRiderPos({ lat: data.current_lat, lng: data.current_long })
+      }
+    }
+
+    // Fetch immediately, then every 5 seconds
+    fetchRiderPos()
+    const poll = setInterval(fetchRiderPos, 5000)
+
+    // Realtime as bonus for instant updates
+    const riderCh = sb.channel(`rider-pos:${partnerId}`)
       .on('postgres_changes', {
         event: 'UPDATE', schema: 'public', table: 'delivery_partners',
-        filter: `user_id=eq.${order.delivery_partner_id}`
+        filter: `user_id=eq.${partnerId}`
       }, payload => {
         const { current_lat, current_long } = payload.new
         if (current_lat && current_long) setRiderPos({ lat: current_lat, lng: current_long })
       })
       .subscribe()
-    return () => { sb.removeChannel(riderCh) }
-  }, [order?.delivery_partner_id])
 
-  // Update rider marker when position changes
+    return () => { clearInterval(poll); sb.removeChannel(riderCh) }
+  }, [order?.delivery_partner_id, order?.status])
+
+  // Update or add rider marker when position changes
   useEffect(() => {
-    if (!riderPos || !leafletRef.current || !markerRef.current) return
-    markerRef.current.setLatLng([riderPos.lat, riderPos.lng])
-  }, [riderPos])
-
-  // Init Leaflet map when order loads and is in delivery phase
-  useEffect(() => {
-    if (!order || !mapRef.current) return
-    const showMap = ['ready', 'picked_up'].includes(order.status) && order.delivery_partner_id && riderPos
-    if (!showMap) return
-    if (leafletRef.current) return // already inited
-
-    // Dynamically load Leaflet
-    const link = document.createElement('link')
-    link.rel = 'stylesheet'
-    link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'
-    document.head.appendChild(link)
-
-    const script = document.createElement('script')
-    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
-    script.onload = () => {
-      const L = (window as any).L
-      if (!mapRef.current || !riderPos) return
-
-      const center: [number,number] = [riderPos.lat, riderPos.lng]
-      const map = L.map(mapRef.current, { zoomControl: false }).setView(center, 15)
-      leafletRef.current = map
-
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap'
-      }).addTo(map)
-
-      // Rider marker (red scooter)
+    if (!riderPos || !leafletRef.current) return
+    const L = (window as any).L
+    if (!L) return
+    if (markerRef.current) {
+      // Already exists — just move it
+      markerRef.current.setLatLng([riderPos.lat, riderPos.lng])
+    } else {
+      // GPS arrived after map was init'd — add the marker now
       const riderIcon = L.divIcon({
         html: `<div style="width:36px;height:36px;background:#FF3008;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 8px rgba(255,48,8,.5);display:flex;align-items:center;justify-content:center;">
           <svg viewBox="0 0 24 24" fill="none" width="18" height="18">
@@ -109,14 +106,63 @@ export default function OrderPage() {
         </div>`,
         className: '', iconSize: [36, 36], iconAnchor: [18, 18]
       })
-
       markerRef.current = L.marker([riderPos.lat, riderPos.lng], { icon: riderIcon })
-        .addTo(map)
+        .addTo(leafletRef.current)
         .bindPopup('Your rider')
+    }
+  }, [riderPos])
 
-      const points: [number, number][] = [[riderPos.lat, riderPos.lng]]
+  // Init Leaflet map when order reaches delivery phase
+  // Does NOT require riderPos — shows shop + customer pins immediately, rider dot added when GPS arrives
+  useEffect(() => {
+    if (!order || !mapRef.current) return
+    const canShow = ['ready', 'picked_up'].includes(order.status) && order.delivery_partner_id
+    if (!canShow) return
+    if (leafletRef.current) return // already inited
 
-      // Shop pin — orange (where rider is coming from)
+    // Pick a center: riderPos > shop > customer
+    const center: [number,number] = riderPos
+      ? [riderPos.lat, riderPos.lng]
+      : order.shop?.latitude && order.shop?.longitude
+        ? [order.shop.latitude, order.shop.longitude]
+        : order.delivery_lat && order.delivery_lng
+          ? [order.delivery_lat, order.delivery_lng]
+          : [26.9124, 75.7873] // fallback: Jaipur
+
+    // Dynamically load Leaflet (skip if already loaded)
+    function initMap() {
+      const L = (window as any).L
+      if (!mapRef.current) return
+
+      const map = L.map(mapRef.current, { zoomControl: false }).setView(center, 15)
+      leafletRef.current = map
+
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap'
+      }).addTo(map)
+
+      const points: [number, number][] = []
+
+      // Rider marker — only if GPS is already available
+      if (riderPos) {
+        const riderIcon = L.divIcon({
+          html: `<div style="width:36px;height:36px;background:#FF3008;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 8px rgba(255,48,8,.5);display:flex;align-items:center;justify-content:center;">
+            <svg viewBox="0 0 24 24" fill="none" width="18" height="18">
+              <circle cx="5" cy="17" r="2.5" stroke="white" strokeWidth="1.5"/>
+              <circle cx="19" cy="17" r="2.5" stroke="white" strokeWidth="1.5"/>
+              <path d="M7.5 17h9M5 11l2-4h5l3 4h4" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M17 11l1 3" stroke="white" strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+          </div>`,
+          className: '', iconSize: [36, 36], iconAnchor: [18, 18]
+        })
+        markerRef.current = L.marker([riderPos.lat, riderPos.lng], { icon: riderIcon })
+          .addTo(map)
+          .bindPopup('Your rider')
+        points.push([riderPos.lat, riderPos.lng])
+      }
+
+      // Shop pin — orange
       if (order.shop?.latitude && order.shop?.longitude) {
         const shopIcon = L.divIcon({
           html: `<div style="width:38px;height:38px;background:#FF3008;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:3px solid #fff;box-shadow:0 2px 8px rgba(255,48,8,.5);"></div>`,
@@ -144,8 +190,26 @@ export default function OrderPage() {
         map.fitBounds(L.latLngBounds(points), { padding: [40, 40] })
       }
     }
-    document.head.appendChild(script)
-  }, [order, riderPos])
+
+    if ((window as any).L) {
+      // Leaflet already loaded (e.g. user navigated back to this page)
+      initMap()
+    } else if (!document.getElementById('leaflet-script')) {
+      const link = document.createElement('link')
+      link.rel = 'stylesheet'
+      link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'
+      document.head.appendChild(link)
+
+      const script = document.createElement('script')
+      script.id  = 'leaflet-script'
+      script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
+      script.onload = initMap
+      document.head.appendChild(script)
+    } else {
+      // Script tag exists but still loading — wait for it
+      document.getElementById('leaflet-script')!.addEventListener('load', initMap, { once: true })
+    }
+  }, [order])
 
   async function loadOrder() {
     const sb = createClient()
@@ -223,7 +287,7 @@ export default function OrderPage() {
   const stepIdx  = STATUS_STEPS.findIndex(s => s.key === order.status)
   const isCancelled = ['cancelled','rejected'].includes(order.status)
   const isActive    = !isCancelled && order.status !== 'delivered'
-  const showMap     = ['ready', 'picked_up'].includes(order.status) && !!order.delivery_partner_id && !!riderPos
+  const showMap     = ['ready', 'picked_up'].includes(order.status) && !!order.delivery_partner_id
 
   return (
     <div style={{ minHeight:'100vh', background:'var(--page-bg)', fontFamily:"'Plus Jakarta Sans',sans-serif", paddingBottom:'calc(88px + env(safe-area-inset-bottom, 0px))' }}>
@@ -253,16 +317,18 @@ export default function OrderPage() {
         {showMap && (
           <div style={{ background:'var(--card-white)', borderRadius:20, overflow:'hidden' }}>
             <div style={{ padding:'14px 16px 10px', display:'flex', alignItems:'center', gap:8 }}>
-              <div style={{ width:8, height:8, borderRadius:'50%', background:'#FF3008', animation:'pulse 1.5s infinite' }} />
+              <div style={{ width:8, height:8, borderRadius:'50%', background: riderPos ? '#FF3008' : '#f59e0b', animation:'pulse 1.5s infinite' }} />
               <p style={{ fontWeight:800, fontSize:14, color:'var(--text-primary)' }}>
-                {order.status === 'ready' ? 'Rider heading to shop' : 'Rider is on the way'}
+                {riderPos
+                  ? (order.status === 'ready' ? 'Rider heading to shop' : 'Rider is on the way')
+                  : 'Waiting for rider location…'}
               </p>
               {partner?.name && <span style={{ fontSize:12, color:'var(--text-muted)', marginLeft:'auto' }}>{partner.name}</span>}
             </div>
             {/* Leaflet map container */}
             <div ref={mapRef} style={{ height:240, width:'100%', background:'var(--chip-bg)' }} />
             <div style={{ padding:'10px 16px', fontSize:12, color:'var(--text-muted)', textAlign:'center' }}>
-              Map updates automatically · {riderPos ? `${riderPos.lat.toFixed(4)}, ${riderPos.lng.toFixed(4)}` : ''}
+              {riderPos ? 'Map updates automatically as rider moves' : 'Rider dot will appear once GPS is active'}
             </div>
           </div>
         )}

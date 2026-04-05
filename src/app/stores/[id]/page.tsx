@@ -238,7 +238,10 @@ export default function StorePage() {
           {/* Stats row */}
           <div style={{ display:'flex', alignItems:'center', gap:16, marginBottom:14, flexWrap:'wrap' }}>
             <div style={{ display:'flex', alignItems:'center', gap:5 }}>
-              <span style={{ fontSize:13, fontWeight:900, color:'#d97706' }}>★ {(shop.rating ?? 0).toFixed(1)}</span>
+              {shop.rating
+                ? <span style={{ fontSize:13, fontWeight:900, color:'#d97706' }}>★ {shop.rating.toFixed(1)}</span>
+                : <span style={{ fontSize:12, fontWeight:600, color:'#9ca3af' }}>No reviews yet</span>
+              }
             </div>
             {shop.delivery_enabled && (
               <>
