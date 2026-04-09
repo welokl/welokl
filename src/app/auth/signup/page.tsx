@@ -129,6 +129,14 @@ function SignupPageInner() {
   const [googleLoad, setGoogleLoad] = useState(false)
   const [err,        setErr]        = useState('')
   const [googleReady,setGoogleReady]= useState(false)
+  const [isMobile,   setIsMobile]   = useState(false)
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth <= 900)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
 
   useEffect(() => {
     if (!fromGoogle) return
@@ -221,8 +229,8 @@ function SignupPageInner() {
   return (
     <div className="auth-split" style={{ fontFamily:"'Plus Jakarta Sans', sans-serif", alignItems: 'stretch' }}>
 
-      {/* Left panel — updates dynamically with role */}
-      <AuthPanel role={role} />
+      {/* Left panel — hidden on mobile */}
+      {!isMobile && <AuthPanel role={role} />}
 
       {/* Right panel */}
       <div className="auth-panel-right" style={{ alignItems: 'flex-start', paddingTop: 40, paddingBottom: 40 }}>

@@ -67,7 +67,6 @@ export default function CheckoutPage() {
   }
 
   useEffect(() => {
-    cart._hydrate?.()
     setMounted(true)
 
     const sb = createClient()
@@ -87,6 +86,8 @@ export default function CheckoutPage() {
 
     sb.auth.getUser().then(({ data }) => {
       if (!data.user) { router.push('/auth/login'); return }
+      // Hydrate cart with the correct user-keyed localStorage entry
+      cart._setUserId?.(data.user.id)
       setUserId(data.user.id)
       // ── Load saved addresses + phone from DB ─────────────────
       Promise.all([

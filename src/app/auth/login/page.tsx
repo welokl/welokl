@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { WelklLogo } from '@/components/WelklLogo'
@@ -84,6 +84,15 @@ export default function LoginPage() {
   const [googleLoad, setGoogleLoad] = useState(false)
   const [msg,        setMsg]        = useState<{text:string; type:'error'|'success'}|null>(null)
   const [notFound,   setNotFound]   = useState(false)
+  const [isMobile,   setIsMobile]   = useState(false)
+
+  // Hide left panel on mobile via JS (CSS !important unreliable on some browsers)
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth <= 900)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
 
   // ── Google OAuth ─────────────────────────────────────────────────────────
   async function handleGoogle() {
@@ -182,8 +191,8 @@ export default function LoginPage() {
   return (
     <div className="auth-split" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
 
-      {/* Left panel — hidden on mobile via CSS class */}
-      <AuthPanel />
+      {/* Left panel — hidden on mobile */}
+      {!isMobile && <AuthPanel />}
 
       {/* Right panel — form */}
       <div className="auth-panel-right">

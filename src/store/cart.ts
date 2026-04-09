@@ -55,8 +55,10 @@ export const useCart = create<CartStore>((set, get) => ({
   items: [], shop_id: null, shop_name: null, _hydrated: false, _userId: null,
 
   _hydrate: (userId?: string) => {
-    if (get()._hydrated && get()._userId === (userId ?? null)) return
     const uid = userId ?? null
+    // If already hydrated with a real user, a bare _hydrate() call (no userId)
+    // must not downgrade to the guest key and wipe the cart.
+    if (get()._hydrated && (get()._userId === uid || (uid === null && get()._userId !== null))) return
     const saved = read(uid)
     set({ ...saved, _hydrated: true, _userId: uid })
   },
