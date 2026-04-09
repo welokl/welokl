@@ -3,7 +3,6 @@ import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import { WelklLogo } from '@/components/WelklLogo'
 type UserRole = 'customer' | 'business' | 'delivery_partner' | 'admin'
 
 const ROLES: { id: UserRole; label: string; sub: string; icon: string }[] = [
@@ -54,7 +53,7 @@ const ROLE_COPY: Record<string, { headline: string; sub: string; benefits: strin
 function AuthPanel({ role }: { role: UserRole }) {
   const copy = ROLE_COPY[role] || ROLE_COPY.customer
   return (
-    <div style={{
+    <div className="auth-panel-left" style={{
       width: 420, flexShrink: 0, background: '#FF3008',
       display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
       padding: '48px 40px',
@@ -227,16 +226,25 @@ function SignupPageInner() {
 
       {/* Right panel */}
       <div className="auth-panel-right" style={{ alignItems: 'flex-start', paddingTop: 40, paddingBottom: 40 }}>
+
+        {/* Mobile red header — hidden on desktop, shown on mobile via CSS */}
+        <div className="auth-mobile-logo" style={{ display: 'none', padding: '40px 24px 28px', width: '100%', boxSizing: 'border-box' }}>
+          <Link href="/" style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+            <div style={{ width: 36, height: 36, background: 'rgba(255,255,255,0.2)', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <svg viewBox="0 0 22 16" fill="none" width={20} height={14}>
+                <polyline points="1,15 5,2 11,10 17,2 21,15" stroke="#fff" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </div>
+            <span style={{ color: '#fff', fontWeight: 800, fontSize: 22, letterSpacing: '-0.5px' }}>welokl</span>
+          </Link>
+          <p style={{ color: 'rgba(255,255,255,0.85)', fontSize: 14, margin: 0, lineHeight: 1.5 }}>
+            Join your neighbourhood,<br />on demand.
+          </p>
+        </div>
+
+        {/* Form card — desktop: centered card, mobile: white bottom-sheet via .auth-inner-card CSS */}
         <div style={{ width:'100%', maxWidth:400 }} className="ui-fadein">
-
-          {/* Mobile logo */}
-          <div className="auth-mobile-logo" style={{ textAlign:'center', marginBottom:28, display:'none' }}>
-            <Link href="/" style={{ textDecoration:'none', display:'inline-flex', alignItems:'center', justifyContent:'center' }}>
-              <WelklLogo height={32} />
-            </Link>
-          </div>
-
-          <div style={{ background:'var(--card-white,#fff)', borderRadius:20, padding:'28px 24px', boxShadow:'0 4px 24px rgba(0,0,0,0.07)', border:'1px solid var(--divider,#eee)' }}>
+          <div className="auth-inner-card" style={{ background:'var(--card-white,#fff)', borderRadius:20, padding:'28px 24px', boxShadow:'0 4px 24px rgba(0,0,0,0.07)', border:'1px solid var(--divider,#eee)' }}>
 
             <h1 style={{ fontWeight:900, fontSize:20, color:'var(--text-primary,#111)', marginBottom:4 }}>Create your account</h1>
             <p style={{ fontSize:13, color:'var(--text-muted,#888)', marginBottom:20 }}>Free forever. No credit card needed.</p>
@@ -344,12 +352,6 @@ function SignupPageInner() {
           </div>
         </div>
       </div>
-
-      <style>{`
-        @media (max-width: 900px) {
-          .auth-mobile-logo { display: block !important; }
-        }
-      `}</style>
     </div>
   )
 }

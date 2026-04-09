@@ -12,9 +12,13 @@ export default function CartPage() {
   const [platformCfg, setPlatformCfg] = useState({ delivery_fee: 30, free_delivery_threshold: 299, platform_fee: 5 })
 
   useEffect(() => {
-    cart._hydrate?.()
-    setMounted(true)
-    createClient().from('platform_config').select('key,value').then(({ data: cfg }: any) => {
+    const client = createClient()
+    client.auth.getUser().then(({ data: { user } }) => {
+      if (user) cart._setUserId?.(user.id)
+      else cart._hydrate?.()
+      setMounted(true)
+    })
+    client.from('platform_config').select('key,value').then(({ data: cfg }: any) => {
       if (!cfg?.length) return
       const get = (key: string, fb: number) => Number(cfg.find((c: any) => c.key === key)?.value ?? fb)
       setPlatformCfg({
@@ -23,7 +27,7 @@ export default function CartPage() {
         platform_fee:            get('platform_fee_flat', 5),
       })
     })
-  }, [])
+  }, [])  // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!mounted) return (
     <div style={{ minHeight:'100vh', background:'var(--page-bg)', display:'flex', alignItems:'center', justifyContent:'center' }}>
