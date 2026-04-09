@@ -9,7 +9,7 @@ export default function CartPage() {
   const router  = useRouter()
   const cart    = useCart()
   const [mounted, setMounted] = useState(false)
-  const [platformCfg, setPlatformCfg] = useState({ delivery_fee: 30, free_delivery_threshold: 299, platform_fee: 5 })
+  const [platformCfg, setPlatformCfg] = useState({ delivery_fee: 30, free_delivery_threshold: 299 })
 
   useEffect(() => {
     const client = createClient()
@@ -24,7 +24,6 @@ export default function CartPage() {
       setPlatformCfg({
         delivery_fee:            get('delivery_fee_base', 30),
         free_delivery_threshold: get('free_delivery_above', 299),
-        platform_fee:            get('platform_fee_flat', 5),
       })
     })
   }, [])  // eslint-disable-line react-hooks/exhaustive-deps
@@ -38,8 +37,7 @@ export default function CartPage() {
 
   const subtotal     = cart.subtotal()
   const delivery_fee = subtotal >= platformCfg.free_delivery_threshold ? 0 : platformCfg.delivery_fee
-  const platform_fee = platformCfg.platform_fee
-  const total        = subtotal + delivery_fee + platform_fee
+  const total        = subtotal + delivery_fee
   const toFreeDelivery = platformCfg.free_delivery_threshold - subtotal
 
   if (cart.items.length === 0) return (
@@ -133,7 +131,6 @@ export default function CartPage() {
           {[
             { label:'Item total',    value: subtotal,     color:'var(--text-secondary)' },
             { label:'Delivery fee',  value: delivery_fee, color: delivery_fee === 0 ? '#16a34a' : '#333', display: delivery_fee === 0 ? 'FREE 🎉' : `₹${delivery_fee}` },
-            { label:'Platform fee',  value: platform_fee, color:'var(--text-secondary)' },
           ].map(r => (
             <div key={r.label} style={{ display:'flex', justifyContent:'space-between', marginBottom:12, fontSize:14 }}>
               <span style={{ color:'var(--text-secondary)' }}>{r.label}</span>

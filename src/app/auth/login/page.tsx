@@ -194,7 +194,7 @@ export default function LoginPage() {
       {/* Left panel — hidden on mobile */}
       {!isMobile && <AuthPanel />}
 
-      {/* Right panel — form */}
+      {/* Right panel */}
       <div className="auth-panel-right">
         <div style={{ width: '100%', maxWidth: 380 }} className="ui-fadein">
 

@@ -233,7 +233,7 @@ function SignupPageInner() {
       {!isMobile && <AuthPanel role={role} />}
 
       {/* Right panel */}
-      <div className="auth-panel-right" style={{ alignItems: 'flex-start', paddingTop: 40, paddingBottom: 40 }}>
+      <div className="auth-panel-right">
 
         {/* Mobile red header — hidden on desktop, shown on mobile via CSS */}
         <div className="auth-mobile-logo" style={{ display: 'none', padding: '40px 24px 28px', width: '100%', boxSizing: 'border-box' }}>

@@ -439,7 +439,6 @@ export default function OrderPage() {
           <div style={{ borderTop:'1px dashed var(--divider)', paddingTop:10, marginTop:6 }}>
             {[
               { label:'Delivery', val: order.delivery_fee > 0 ? `₹${order.delivery_fee}` : 'FREE', green: !order.delivery_fee },
-              { label:'Platform fee', val:`₹${order.platform_fee || 5}` },
             ].map(r => (
               <div key={r.label} style={{ display:'flex', justifyContent:'space-between', marginBottom:6, fontSize:13 }}>
                 <span style={{ color:'var(--text-muted)' }}>{r.label}</span>

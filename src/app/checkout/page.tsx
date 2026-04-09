@@ -8,7 +8,6 @@ import Link from 'next/link'
 // Fallback constants — overridden at runtime by platform_config table values
 const DEFAULT_DELIVERY_FEE  = 30
 const DEFAULT_FREE_DELIVERY = 299
-const DEFAULT_PLATFORM_FEE  = 5
 
 export default function CheckoutPage() {
   const router = useRouter()
@@ -17,7 +16,6 @@ export default function CheckoutPage() {
   const [platformCfg, setPlatformCfg] = useState({
     delivery_fee: DEFAULT_DELIVERY_FEE,
     free_delivery_threshold: DEFAULT_FREE_DELIVERY,
-    platform_fee: DEFAULT_PLATFORM_FEE,
   })
   const [address,       setAddress]       = useState('')
   const [savedAddrs,    setSavedAddrs]    = useState<{id:string;label:string;address:string}[]>([])
@@ -78,7 +76,6 @@ export default function CheckoutPage() {
       setPlatformCfg({
         delivery_fee:            get('delivery_fee_base', DEFAULT_DELIVERY_FEE),
         free_delivery_threshold: get('free_delivery_above', DEFAULT_FREE_DELIVERY),
-        platform_fee:            get('platform_fee_flat', DEFAULT_PLATFORM_FEE),
       })
     })
 
@@ -163,7 +160,7 @@ export default function CheckoutPage() {
   const delivery_fee   = type === 'pickup' ? 0 : subtotal >= platformCfg.free_delivery_threshold ? 0 : platformCfg.delivery_fee
   const promoDiscount  = promo?.discount ?? 0
   const priorityFee    = isPriority ? PRIORITY_FEE : 0
-  const total          = subtotal + delivery_fee + platformCfg.platform_fee + tip + priorityFee - promoDiscount
+  const total          = subtotal + delivery_fee + tip + priorityFee - promoDiscount
   const minOrder       = 0
   const belowMin       = false
 
@@ -247,7 +244,7 @@ export default function CheckoutPage() {
       delivery_instructions: note?.trim() || null,
       subtotal:              subtotal,
       delivery_fee:          delivery_fee,
-      platform_fee:          platformCfg.platform_fee,
+      platform_fee:          0,
       discount:              promoDiscount,
       tip_amount:            tip,
       promo_code:            promo?.code || null,
@@ -596,7 +593,6 @@ export default function CheckoutPage() {
           {[
             { label:'Item total', val:`₹${subtotal}`, green:false },
             { label:`Delivery${delivery_fee===0&&type==='delivery'?' (Free!)':type==='pickup'?' (Pickup)':''}`, val:delivery_fee===0?'FREE':`₹${delivery_fee}`, green:delivery_fee===0 },
-            { label:'Platform fee', val:`₹${platformCfg.platform_fee}`, green:false },
             ...(tip > 0 ? [{ label:'Tip for rider', val:`₹${tip}`, green:false }] : []),
             ...(priorityFee > 0 ? [{ label:'🔥 Priority fee', val:`₹${priorityFee}`, green:false }] : []),
             ...(promoDiscount > 0 ? [{ label:`Promo (${promo?.code})`, val:`-₹${promoDiscount}`, green:true }] : []),

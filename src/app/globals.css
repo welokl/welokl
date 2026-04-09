@@ -985,10 +985,12 @@ html.dark {
   .auth-panel-left { display: none !important; }
   .auth-split { flex-direction: column; }
   .auth-panel-right {
-    background: #FF3008;
-    min-height: 100vh;
-    align-items: flex-start;
-    padding: 0;
+    background: #FF3008 !important;
+    min-height: 100vh !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    justify-content: flex-start !important;
+    padding: 0 !important;
   }
   .auth-mobile-logo { display: block !important; }
   .auth-inner-card {
