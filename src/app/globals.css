@@ -982,8 +982,23 @@ html.dark {
   overflow-y: auto;
 }
 @media (max-width: 900px) {
-  .auth-panel-left { display: none; }
-  .auth-panel-right { background: var(--page-bg, #f5f5f5); }
+  .auth-panel-left { display: none !important; }
+  .auth-split { flex-direction: column; }
+  .auth-panel-right {
+    background: #FF3008;
+    min-height: 100vh;
+    align-items: flex-start;
+    padding: 0;
+  }
+  .auth-mobile-logo { display: block !important; }
+  .auth-inner-card {
+    background: var(--card-white, #fff);
+    border-radius: 24px 24px 0 0;
+    min-height: calc(100vh - 180px);
+    padding: 28px 20px 40px;
+    width: 100%;
+    box-sizing: border-box;
+  }
 }
 
 /* Navbar scroll shadow */

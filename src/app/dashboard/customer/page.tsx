@@ -761,7 +761,7 @@ function PriceBandCard({ product: p }: { product: Product }) {
   const qty: number = cart.items?.find((i: any) => i.product.id === p.id)?.quantity ?? 0
 
   function handleAdd(e: React.MouseEvent) {
-    e.preventDefault(); e.stopPropagation()
+    e.preventDefault()
     if (cart.shop_id && cart.shop_id !== p.shop_id && cart.items?.length > 0) {
       window.location.href = `/stores/${p.shop_id}`; return
     }
@@ -769,43 +769,48 @@ function PriceBandCard({ product: p }: { product: Product }) {
   }
 
   function handleRemove(e: React.MouseEvent) {
-    e.preventDefault(); e.stopPropagation()
+    e.preventDefault()
     cart.updateQty(p.id, qty - 1)
   }
 
+  // outer wrapper: position:relative so action button can be absolutely placed
   return (
-    <div style={{ flexShrink:0, width:160, display:'block', background:'var(--card-white)', borderRadius:16, overflow:'hidden', border:'1px solid var(--divider)', boxShadow:'0 1px 6px rgba(0,0,0,.06)', cursor:'pointer' }}
-      onClick={() => { window.location.href = `/stores/${p.shop_id}` }}>
-      <div style={{ height:140, position:'relative', background:'var(--chip-bg)', overflow:'hidden' }}>
-        {p.image_url
-          ? <Image src={p.image_url} alt={p.name} fill sizes="160px" className="object-cover" />
-          : <div style={{ width:'100%', height:'100%', display:'flex', alignItems:'center', justifyContent:'center' }}>
-              <svg viewBox="0 0 24 24" fill="none" width={36} height={36}><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4zM3 6h18M16 10a4 4 0 01-8 0" stroke="var(--text-faint)" strokeWidth="1.5" strokeLinecap="round"/></svg>
-            </div>}
-        {disc && (
-          <div style={{ position:'absolute', top:8, left:8, background:'#FF3008', color:'#fff', fontSize:10, fontWeight:900, padding:'3px 8px', borderRadius:6 }}>-{disc}%</div>
-        )}
-        {qty > 0 ? (
-          <div style={{ position:'absolute', bottom:8, right:8, display:'flex', alignItems:'center', background:'#FF3008', borderRadius:20, boxShadow:'0 3px 10px rgba(255,48,8,.4)', zIndex:2, overflow:'hidden' }}>
-            <button onClick={handleRemove} style={{ width:26, height:26, border:'none', background:'transparent', color:'#fff', fontSize:18, fontWeight:300, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', padding:0 }}>−</button>
-            <span style={{ fontSize:12, fontWeight:900, color:'#fff', minWidth:16, textAlign:'center' }}>{qty}</span>
-            <button onClick={handleAdd} style={{ width:26, height:26, border:'none', background:'transparent', color:'#fff', fontSize:18, fontWeight:300, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', padding:0 }}>+</button>
-          </div>
-        ) : (
-          <button onClick={handleAdd}
-            style={{ position:'absolute', bottom:8, right:8, width:32, height:32, borderRadius:'50%', border:'none', background:'#FF3008', color:'#fff', fontSize:22, fontWeight:300, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', padding:0, lineHeight:1, boxShadow:'0 3px 10px rgba(255,48,8,.4)', zIndex:2 }}>+</button>
-        )}
-      </div>
-      <div style={{ padding:'9px 11px 11px' }}>
-        <p style={{ fontSize:12, fontWeight:700, color:'var(--text-primary)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', marginBottom:2 }}>{p.name}</p>
-        {p.shop_name && <p style={{ fontSize:10, color:'var(--text-muted)', marginBottom:5, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.shop_name}</p>}
-        <div style={{ display:'flex', alignItems:'baseline', gap:4 }}>
-          <span style={{ fontSize:14, fontWeight:900, color:'#FF3008' }}>₹{p.price}</span>
-          {p.original_price && p.original_price > p.price && (
-            <span style={{ fontSize:10, color:'var(--text-faint)', textDecoration:'line-through' }}>₹{p.original_price}</span>
+    <div style={{ flexShrink:0, width:160, position:'relative' }}>
+      {/* ── Card body: Link handles navigation ── */}
+      <Link href={`/stores/${p.shop_id}`}
+        style={{ display:'block', textDecoration:'none', background:'var(--card-white)', borderRadius:16, overflow:'hidden', border:'1px solid var(--divider)', boxShadow:'0 1px 6px rgba(0,0,0,.06)' }}>
+        <div style={{ height:140, position:'relative', background:'var(--chip-bg)', overflow:'hidden' }}>
+          {p.image_url
+            ? <Image src={p.image_url} alt={p.name} fill sizes="160px" className="object-cover" />
+            : <div style={{ width:'100%', height:'100%', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                <svg viewBox="0 0 24 24" fill="none" width={36} height={36}><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4zM3 6h18M16 10a4 4 0 01-8 0" stroke="var(--text-faint)" strokeWidth="1.5" strokeLinecap="round"/></svg>
+              </div>}
+          {disc && (
+            <div style={{ position:'absolute', top:8, left:8, background:'#FF3008', color:'#fff', fontSize:10, fontWeight:900, padding:'3px 8px', borderRadius:6 }}>-{disc}%</div>
           )}
         </div>
-      </div>
+        <div style={{ padding:'9px 11px 11px' }}>
+          <p style={{ fontSize:12, fontWeight:700, color:'var(--text-primary)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', marginBottom:2 }}>{p.name}</p>
+          {p.shop_name && <p style={{ fontSize:10, color:'var(--text-muted)', marginBottom:5, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.shop_name}</p>}
+          <div style={{ display:'flex', alignItems:'baseline', gap:4 }}>
+            <span style={{ fontSize:14, fontWeight:900, color:'#FF3008' }}>₹{p.price}</span>
+            {p.original_price && p.original_price > p.price && (
+              <span style={{ fontSize:10, color:'var(--text-faint)', textDecoration:'line-through' }}>₹{p.original_price}</span>
+            )}
+          </div>
+        </div>
+      </Link>
+      {/* ── Action button: outside Link, absolutely positioned over image ── */}
+      {qty > 0 ? (
+        <div style={{ position:'absolute', top:100, right:8, display:'flex', alignItems:'center', background:'#FF3008', borderRadius:20, boxShadow:'0 3px 10px rgba(255,48,8,.4)', overflow:'hidden', zIndex:3 }}>
+          <button onClick={handleRemove} style={{ width:26, height:26, border:'none', background:'transparent', color:'#fff', fontSize:18, fontWeight:300, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', padding:0 }}>−</button>
+          <span style={{ fontSize:12, fontWeight:900, color:'#fff', minWidth:16, textAlign:'center' }}>{qty}</span>
+          <button onClick={handleAdd} style={{ width:26, height:26, border:'none', background:'transparent', color:'#fff', fontSize:18, fontWeight:300, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', padding:0 }}>+</button>
+        </div>
+      ) : (
+        <button onClick={handleAdd}
+          style={{ position:'absolute', top:100, right:8, width:32, height:32, borderRadius:'50%', border:'none', background:'#FF3008', color:'#fff', fontSize:22, fontWeight:300, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', padding:0, lineHeight:1, boxShadow:'0 3px 10px rgba(255,48,8,.4)', zIndex:3 }}>+</button>
+      )}
     </div>
   )
 }
@@ -858,7 +863,7 @@ function ShopProductRow({ shop, products }: { shop: Shop & { km: number | null }
   const ratingBg  = rating >= 4 ? '#16a34a' : rating >= 3 ? '#d97706' : rating > 0 ? '#ef4444' : null
 
   function addToCart(p: Product, e: React.MouseEvent) {
-    e.preventDefault(); e.stopPropagation()
+    e.preventDefault()
     if (cart.shop_id && cart.shop_id !== p.shop_id && cart.items?.length > 0) {
       window.location.href = `/stores/${p.shop_id}`; return
     }
@@ -924,43 +929,43 @@ function ShopProductRow({ shop, products }: { shop: Shop & { km: number | null }
               const disc = p.original_price && p.original_price > p.price
                 ? Math.round(((p.original_price - p.price) / p.original_price) * 100) : null
               const qty: number = cart.items?.find((i: any) => i.product.id === p.id)?.quantity ?? 0
+              // top offset: CARD_W - button_h(28) - 6px gap = CARD_W - 34
+              const btnTop = CARD_W - 34
               return (
-                <div key={p.id} style={{ flexShrink:0, width:CARD_W, cursor:'pointer' }}
-                  onClick={() => { window.location.href = `/stores/${p.shop_id}` }}>
-                  {/* Square image with + overlaid */}
-                  <div style={{ width:CARD_W, height:CARD_W, borderRadius:14, overflow:'hidden', position:'relative', background:'var(--chip-bg)', marginBottom:7 }}>
-                    {p.image_url
-                      ? <Image src={p.image_url} alt={p.name} fill sizes={`${CARD_W}px`} className="object-cover" />
-                      : <div style={{ width:'100%', height:'100%', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                          <svg viewBox="0 0 24 24" fill="none" width={30} height={30}><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4zM3 6h18M16 10a4 4 0 01-8 0" stroke="var(--text-faint)" strokeWidth="1.5" strokeLinecap="round"/></svg>
-                        </div>}
-                    {/* Discount badge — top left */}
-                    {disc && (
-                      <div style={{ position:'absolute', top:6, left:6, background:'#FF3008', color:'#fff', fontSize:9, fontWeight:900, padding:'2px 6px', borderRadius:5 }}>-{disc}%</div>
-                    )}
-                    {/* Stepper or + button */}
-                    {qty > 0 ? (
-                      <div style={{ position:'absolute', bottom:6, right:6, display:'flex', alignItems:'center', background:'#FF3008', borderRadius:16, boxShadow:'0 2px 8px rgba(255,48,8,.4)', zIndex:2, overflow:'hidden' }}>
-                        <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); cart.updateQty(p.id, qty - 1) }}
-                          style={{ width:22, height:22, border:'none', background:'transparent', color:'#fff', fontSize:16, fontWeight:300, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', padding:0 }}>−</button>
-                        <span style={{ fontSize:11, fontWeight:900, color:'#fff', minWidth:14, textAlign:'center' }}>{qty}</span>
-                        <button onClick={(e) => addToCart(p, e)}
-                          style={{ width:22, height:22, border:'none', background:'transparent', color:'#fff', fontSize:16, fontWeight:300, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', padding:0 }}>+</button>
-                      </div>
-                    ) : (
+                <div key={p.id} style={{ flexShrink:0, width:CARD_W, position:'relative' }}>
+                  {/* Card: Link handles all navigation */}
+                  <Link href={`/stores/${p.shop_id}`} style={{ display:'block', textDecoration:'none' }}>
+                    <div style={{ width:CARD_W, height:CARD_W, borderRadius:14, overflow:'hidden', position:'relative', background:'var(--chip-bg)', marginBottom:7 }}>
+                      {p.image_url
+                        ? <Image src={p.image_url} alt={p.name} fill sizes={`${CARD_W}px`} className="object-cover" />
+                        : <div style={{ width:'100%', height:'100%', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                            <svg viewBox="0 0 24 24" fill="none" width={30} height={30}><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4zM3 6h18M16 10a4 4 0 01-8 0" stroke="var(--text-faint)" strokeWidth="1.5" strokeLinecap="round"/></svg>
+                          </div>}
+                      {disc && (
+                        <div style={{ position:'absolute', top:6, left:6, background:'#FF3008', color:'#fff', fontSize:9, fontWeight:900, padding:'2px 6px', borderRadius:5 }}>-{disc}%</div>
+                      )}
+                    </div>
+                    <p style={{ fontSize:12, fontWeight:700, color:'var(--text-primary)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', marginBottom:3, lineHeight:1.3 }}>{p.name}</p>
+                    <div style={{ display:'flex', alignItems:'baseline', gap:4 }}>
+                      <span style={{ fontSize:13, fontWeight:900, color:'var(--text-primary)' }}>₹{p.price}</span>
+                      {p.original_price && p.original_price > p.price && (
+                        <span style={{ fontSize:10, color:'var(--text-faint)', textDecoration:'line-through' }}>₹{p.original_price}</span>
+                      )}
+                    </div>
+                  </Link>
+                  {/* Action: outside Link, positioned over image — no click conflict */}
+                  {qty > 0 ? (
+                    <div style={{ position:'absolute', top:btnTop, right:6, display:'flex', alignItems:'center', background:'#FF3008', borderRadius:16, boxShadow:'0 2px 8px rgba(255,48,8,.4)', overflow:'hidden', zIndex:3 }}>
+                      <button onClick={(e) => { e.preventDefault(); cart.updateQty(p.id, qty - 1) }}
+                        style={{ width:22, height:22, border:'none', background:'transparent', color:'#fff', fontSize:16, fontWeight:300, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', padding:0 }}>−</button>
+                      <span style={{ fontSize:11, fontWeight:900, color:'#fff', minWidth:14, textAlign:'center' }}>{qty}</span>
                       <button onClick={(e) => addToCart(p, e)}
-                        style={{ position:'absolute', bottom:6, right:6, width:28, height:28, borderRadius:'50%', border:'none', background:'#FF3008', color:'#fff', fontSize:20, fontWeight:300, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', padding:0, lineHeight:1, boxShadow:'0 2px 8px rgba(255,48,8,.4)', zIndex:2 }}>+</button>
-                    )}
-                  </div>
-                  {/* Name */}
-                  <p style={{ fontSize:12, fontWeight:700, color:'var(--text-primary)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', marginBottom:3, lineHeight:1.3 }}>{p.name}</p>
-                  {/* Price */}
-                  <div style={{ display:'flex', alignItems:'baseline', gap:4 }}>
-                    <span style={{ fontSize:13, fontWeight:900, color:'var(--text-primary)' }}>₹{p.price}</span>
-                    {p.original_price && p.original_price > p.price && (
-                      <span style={{ fontSize:10, color:'var(--text-faint)', textDecoration:'line-through' }}>₹{p.original_price}</span>
-                    )}
-                  </div>
+                        style={{ width:22, height:22, border:'none', background:'transparent', color:'#fff', fontSize:16, fontWeight:300, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', padding:0 }}>+</button>
+                    </div>
+                  ) : (
+                    <button onClick={(e) => addToCart(p, e)}
+                      style={{ position:'absolute', top:btnTop, right:6, width:28, height:28, borderRadius:'50%', border:'none', background:'#FF3008', color:'#fff', fontSize:20, fontWeight:300, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', padding:0, lineHeight:1, boxShadow:'0 2px 8px rgba(255,48,8,.4)', zIndex:3 }}>+</button>
+                  )}
                 </div>
               )
             })}

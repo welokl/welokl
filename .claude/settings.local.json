@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(mv /tmp/page_clean.tsx \"c:/dev/welokl-cto-update/src/app/dashboard/customer/page.tsx\")"
+      "Bash(mv /tmp/page_clean.tsx \"c:/dev/welokl-cto-update/src/app/dashboard/customer/page.tsx\")",
+      "Bash(node_modules/.bin/tsc --noEmit)"
     ]
   }
 }
