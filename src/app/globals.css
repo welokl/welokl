@@ -844,3 +844,170 @@ html.dark {
   .mgmt-card-row { flex-direction: column !important; align-items: flex-start !important; }
   .mgmt-card-right { text-align: left !important; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   UI COMPONENT SYSTEM — micro-interactions & utilities
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* Button base micro-interaction */
+.ui-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-family: var(--font-jakarta, 'Plus Jakarta Sans', sans-serif);
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+  transition: background 150ms ease, color 150ms ease, box-shadow 150ms ease, transform 100ms ease, opacity 150ms ease;
+  outline: none;
+  text-decoration: none;
+  white-space: nowrap;
+  user-select: none;
+  border-radius: var(--radius-md, 10px);
+}
+.ui-btn:active:not(:disabled) { transform: scale(0.97); }
+.ui-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* Primary */
+.ui-btn-primary {
+  background: #FF3008;
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(255,48,8,0.28);
+}
+.ui-btn-primary:hover:not(:disabled) { background: #CC2600; box-shadow: 0 6px 20px rgba(255,48,8,0.36); }
+
+/* Outline */
+.ui-btn-outline {
+  background: transparent;
+  color: #FF3008;
+  border: 1.5px solid #FF3008;
+}
+.ui-btn-outline:hover:not(:disabled) { background: #FFF0EC; }
+
+/* Ghost */
+.ui-btn-ghost {
+  background: transparent;
+  color: #FF3008;
+  border: none;
+}
+.ui-btn-ghost:hover:not(:disabled) { background: #FFF0EC; }
+
+/* Danger */
+.ui-btn-danger {
+  background: #ef4444;
+  color: #fff;
+}
+.ui-btn-danger:hover:not(:disabled) { background: #dc2626; }
+
+/* Sizes */
+.ui-btn-sm { height: 34px; padding: 0 14px; font-size: 12px; border-radius: 8px; }
+.ui-btn-md { height: 42px; padding: 0 20px; font-size: 14px; }
+.ui-btn-lg { height: 52px; padding: 0 28px; font-size: 15px; border-radius: 12px; }
+.ui-btn-full { width: 100%; }
+
+/* Spinner (loading state) */
+.ui-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255,255,255,0.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: ui-spin 0.6s linear infinite;
+  flex-shrink: 0;
+}
+.ui-spinner-dark {
+  border-color: rgba(0,0,0,0.15);
+  border-top-color: #FF3008;
+}
+@keyframes ui-spin { to { transform: rotate(360deg); } }
+
+/* Card */
+.ui-card {
+  background: var(--card-white, #fff);
+  border: 1px solid var(--border, #e8e8e8);
+  border-radius: 14px;
+  transition: box-shadow 200ms ease, transform 200ms ease;
+}
+.ui-card-hover:hover {
+  box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+  transform: translateY(-2px);
+}
+
+/* Input */
+.ui-input {
+  width: 100%;
+  height: 48px;
+  padding: 0 14px;
+  border: 1.5px solid var(--border, #e8e8e8);
+  border-radius: 10px;
+  background: var(--input-bg, #f5f5f5);
+  color: var(--text-primary, #111);
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+  box-sizing: border-box;
+}
+.ui-input:focus {
+  border-color: #FF3008;
+  background: var(--card-white, #fff);
+  box-shadow: 0 0 0 3px rgba(255,48,8,0.1);
+}
+.ui-input-error { border-color: #ef4444 !important; }
+.ui-input-error:focus { box-shadow: 0 0 0 3px rgba(239,68,68,0.1) !important; }
+
+/* Auth split layout */
+.auth-split {
+  display: flex;
+  min-height: 100vh;
+}
+.auth-panel-left {
+  width: 420px;
+  flex-shrink: 0;
+  background: #FF3008;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 48px 40px;
+}
+.auth-panel-right {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 24px;
+  background: var(--page-bg, #f5f5f5);
+  overflow-y: auto;
+}
+@media (max-width: 900px) {
+  .auth-panel-left { display: none; }
+  .auth-panel-right { background: var(--page-bg, #f5f5f5); }
+}
+
+/* Navbar scroll shadow */
+.nav-scrolled {
+  box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+}
+
+/* Page fade-in on mount */
+.ui-fadein {
+  animation: ui-fadein 200ms ease both;
+}
+@keyframes ui-fadein {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Skeleton shimmer */
+.ui-skeleton {
+  background: linear-gradient(90deg, var(--shimmer-1, #f0f0f0) 25%, var(--shimmer-2, #e0e0e0) 50%, var(--shimmer-1, #f0f0f0) 75%);
+  background-size: 200% 100%;
+  animation: ui-shimmer 1.5s ease-in-out infinite;
+  border-radius: 8px;
+}
+@keyframes ui-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}

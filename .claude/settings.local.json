@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mv /tmp/page_clean.tsx \"c:/dev/welokl-cto-update/src/app/dashboard/customer/page.tsx\")"
+    ]
+  }
+}
