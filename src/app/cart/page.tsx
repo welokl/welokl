@@ -108,7 +108,12 @@ export default function CartPage() {
 
               {/* Name + unit × qty = total */}
               <div style={{ flex:1, minWidth:0 }}>
-                <p style={{ fontWeight:700, fontSize:13, color:'var(--text-primary)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', marginBottom:2 }}>{item.product.name}</p>
+                <p style={{ fontWeight:700, fontSize:13, color:'var(--text-primary)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', marginBottom:2 }}>
+                  {item.product.name}
+                  {(item.product as any).variant_label && (
+                    <span style={{ fontWeight:600, color:'#888', fontSize:12, marginLeft:5 }}>({(item.product as any).variant_label})</span>
+                  )}
+                </p>
                 <p style={{ fontSize:12, color:'var(--text-muted)' }}>
                   ₹{item.product.price} × {item.quantity}
                   <span style={{ fontWeight:800, color:'var(--text-primary)', marginLeft:6 }}>= ₹{item.product.price * item.quantity}</span>

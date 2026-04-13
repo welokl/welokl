@@ -241,19 +241,19 @@ export default function SearchPage() {
                 const qty  = getQty(p.id)
                 const disc = p.original_price && p.original_price > p.price ? Math.round((1 - p.price / p.original_price) * 100) : 0
                 return (
-                  <div key={p.id} className="sr" style={{ animationDelay:`${i*0.025}s`, opacity:p.shop_is_open ? 1 : 0.55 }}>
+                  <div key={p.id} className="sr" style={{ animationDelay:`${i*0.025}s` }}>
                     {/* Image */}
-                    <div style={{ width:88, height:88, flexShrink:0, background:'var(--chip-bg)', position:'relative', overflow:'hidden' }}>
+                    <div style={{ width:88, height:88, flexShrink:0, background:'var(--chip-bg)', position:'relative', overflow:'hidden', filter: p.shop_is_open ? undefined : 'grayscale(1)' }}>
                       {p.image_url
                         ? <img src={p.image_url} alt={p.name} style={{ width:'100%', height:'100%', objectFit:'cover' }} />
                         : <div style={{ width:'100%', height:'100%', display:'flex', alignItems:'center', justifyContent:'center' }}>
                             <svg viewBox="0 0 24 24" fill="none" width={32} height={32}><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z" stroke="var(--text-faint)" strokeWidth="1.5"/><line x1="3" y1="6" x2="21" y2="6" stroke="var(--text-faint)" strokeWidth="1.5"/><path d="M16 10a4 4 0 01-8 0" stroke="var(--text-faint)" strokeWidth="1.5" strokeLinecap="round"/></svg>
                           </div>
                       }
-                      {disc > 0 && <div style={{ position:'absolute', top:6, left:6, background:'#FF3008', color:'#fff', fontSize:9, fontWeight:900, padding:'2px 5px', borderRadius:5 }}>-{disc}%</div>}
+                      {disc > 0 && p.shop_is_open && <div style={{ position:'absolute', top:6, left:6, background:'#FF3008', color:'#fff', fontSize:9, fontWeight:900, padding:'2px 5px', borderRadius:5 }}>-{disc}%</div>}
                       {!p.shop_is_open && (
-                        <div style={{ position:'absolute', inset:0, background:'rgba(0,0,0,.4)', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                          <span style={{ fontSize:9, fontWeight:800, color:'#fff', background:'rgba(0,0,0,.6)', padding:'2px 6px', borderRadius:4 }}>CLOSED</span>
+                        <div style={{ position:'absolute', inset:0, background:'rgba(0,0,0,.3)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                          <span style={{ fontSize:9, fontWeight:800, color:'#fff', background:'rgba(0,0,0,.55)', padding:'2px 6px', borderRadius:4 }}>CLOSED</span>
                         </div>
                       )}
                     </div>

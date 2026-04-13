@@ -1336,14 +1336,22 @@ function AddProductModal({ shopId, userId, onClose, onSuccess }: { shopId: strin
   const [imgFiles, setImgFiles] = useState<(File | null)[]>([null, null])
   const [imgPreviews, setImgPreviews] = useState<(string | null)[]>([null, null])
   const [imgProgress, setImgProgress] = useState<number[]>([0, 0])
-  const [existingCats, setExistingCats] = useState<string[]>([])
+  // Menu sections already used in this shop (e.g. "Starters", "Main Course")
+  const [menuSections, setMenuSections] = useState<string[]>([])
+  const [addingNewSection, setAddingNewSection] = useState(false)
+  // Portion variants (Half / Full)
+  const [usePortions, setUsePortions] = useState(false)
+  const [portions, setPortions] = useState([{ label: 'Half', price: '' }, { label: 'Full', price: '' }])
   function update(field: string, value: string | boolean) { setForm(p => ({ ...p, [field]: value })) }
+  function updatePortion(idx: number, field: 'label' | 'price', val: string) {
+    setPortions(prev => prev.map((p, i) => i === idx ? { ...p, [field]: val } : p))
+  }
 
   useEffect(() => {
     createClient().from('products').select('category').eq('shop_id', shopId).not('category', 'is', null)
       .then(({ data }) => {
-        const cats = Array.from(new Set((data ?? []).map((r: any) => r.category).filter(Boolean))) as string[]
-        setExistingCats(cats)
+        const unique = Array.from(new Set((data ?? []).map((r: any) => r.category).filter(Boolean))) as string[]
+        setMenuSections(unique)
       })
   }, [shopId])
   function handleImgSelect(file: File, slot: 0 | 1) {
@@ -1353,15 +1361,27 @@ function AddProductModal({ shopId, userId, onClose, onSuccess }: { shopId: strin
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!form.name.trim()) { setError('Name required'); return }
-    if (!form.price || isNaN(Number(form.price))) { setError('Valid price required'); return }
+    if (usePortions) {
+      const filled = portions.filter(p => p.label.trim() && p.price && !isNaN(Number(p.price)))
+      if (filled.length < 2) { setError('Enter a label and price for each portion'); return }
+    } else {
+      if (!form.price || isNaN(Number(form.price))) { setError('Valid price required'); return }
+    }
     setLoading(true); setError('')
     const supabase = createClient()
+    const variantsPayload = usePortions
+      ? portions.filter(p => p.label.trim() && p.price).map(p => ({ label: p.label.trim(), price: parseInt(p.price) }))
+      : null
+    const basePrice = usePortions
+      ? Math.min(...variantsPayload!.map(v => v.price))
+      : parseInt(form.price)
     const { data: product, error: err } = await supabase.from('products').insert({
       shop_id: shopId, name: form.name.trim(), description: form.description.trim() || null,
-      price: parseInt(form.price), original_price: form.original_price ? parseInt(form.original_price) : null,
+      price: basePrice, original_price: form.original_price ? parseInt(form.original_price) : null,
       category: form.category.trim() || null,
       is_veg: form.is_veg === 'veg' ? true : form.is_veg === 'nonveg' ? false : null,
       is_available: form.is_available,
+      variants: variantsPayload,
     }).select('id').single()
     if (err || !product) { setError(err?.message || 'Failed to create product'); setLoading(false); return }
     const { uploadProductImage } = await import('@/lib/imageService')
@@ -1397,21 +1417,87 @@ function AddProductModal({ shopId, userId, onClose, onSuccess }: { shopId: strin
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
           <div><label style={{display:"block", fontSize:13, fontWeight:700, color:"var(--text-2)", marginBottom:6}}>Product name *</label><input type="text" value={form.name} onChange={e => update('name', e.target.value)} className="input-field" placeholder="Butter Chicken, Amul Milk 1L..." required /></div>
           <div><label style={{display:"block", fontSize:13, fontWeight:700, color:"var(--text-2)", marginBottom:6}}>Description</label><textarea value={form.description} onChange={e => update('description', e.target.value)} className="input-field resize-none" rows={2} placeholder="Short description..." /></div>
-          <div className="grid grid-cols-2 gap-3">
-            <div><label style={{display:"block", fontSize:13, fontWeight:700, color:"var(--text-2)", marginBottom:6}}>Selling Price (₹) *</label><input type="number" value={form.price} onChange={e => update('price', e.target.value)} className="input-field" placeholder="199" min="0" required /></div>
-            <div><label style={{display:"block", fontSize:13, fontWeight:700, color:"var(--text-2)", marginBottom:6}}>Original Price (₹)</label><input type="number" value={form.original_price} onChange={e => update('original_price', e.target.value)} className="input-field" placeholder="249" min="0" /></div>
+          {/* Price — hidden when using portions */}
+          {!usePortions && (
+            <div className="grid grid-cols-2 gap-3">
+              <div><label style={{display:"block", fontSize:13, fontWeight:700, color:"var(--text-2)", marginBottom:6}}>Selling Price (₹) *</label><input type="number" value={form.price} onChange={e => update('price', e.target.value)} className="input-field" placeholder="199" min="0" /></div>
+              <div><label style={{display:"block", fontSize:13, fontWeight:700, color:"var(--text-2)", marginBottom:6}}>Original Price (₹)</label><input type="number" value={form.original_price} onChange={e => update('original_price', e.target.value)} className="input-field" placeholder="249" min="0" /></div>
+            </div>
+          )}
+          {/* Portions (Half / Full) */}
+          <div style={{background:'var(--bg-2)', borderRadius:14, padding:'12px 14px'}}>
+            <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom: usePortions ? 14 : 0}}>
+              <div>
+                <p style={{fontSize:13, fontWeight:700, color:'var(--text)', marginBottom:2}}>Portions pricing</p>
+                <p style={{fontSize:11, color:'var(--text-3)'}}>e.g. Half / Full for paneer, biryani…</p>
+              </div>
+              <button type="button" onClick={() => { setUsePortions(v => !v); update('price', '') }}
+                style={{position:'relative', width:44, height:24, borderRadius:999, background:usePortions?'#FF3008':'var(--bg-4)', border:'none', cursor:'pointer', transition:'background .2s', flexShrink:0}}>
+                <span style={{position:'absolute', top:2, left:2, width:20, height:20, borderRadius:'50%', background:'white', boxShadow:'0 1px 3px rgba(0,0,0,.2)', transition:'transform .2s', transform:usePortions?'translateX(20px)':'none'}} />
+              </button>
+            </div>
+            {usePortions && (
+              <div style={{display:'flex', flexDirection:'column', gap:8}}>
+                {portions.map((p, idx) => (
+                  <div key={idx} style={{display:'flex', gap:8, alignItems:'center'}}>
+                    <input
+                      value={p.label}
+                      onChange={e => updatePortion(idx, 'label', e.target.value)}
+                      className="input-field" style={{flex:'0 0 100px'}}
+                      placeholder="Label"
+                    />
+                    <div style={{position:'relative', flex:1}}>
+                      <span style={{position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', color:'var(--text-3)', fontWeight:700, fontSize:13}}>₹</span>
+                      <input
+                        type="number" value={p.price}
+                        onChange={e => updatePortion(idx, 'price', e.target.value)}
+                        className="input-field" style={{paddingLeft:24}}
+                        placeholder="Price" min="0"
+                      />
+                    </div>
+                    {portions.length > 2 && (
+                      <button type="button" onClick={() => setPortions(prev => prev.filter((_, i) => i !== idx))}
+                        style={{color:'var(--text-3)', background:'none', border:'none', cursor:'pointer', fontSize:16, padding:'0 4px'}}>✕</button>
+                    )}
+                  </div>
+                ))}
+                <button type="button" onClick={() => setPortions(prev => [...prev, { label: '', price: '' }])}
+                  style={{fontSize:12, fontWeight:700, color:'#FF3008', background:'none', border:'1.5px dashed #FF300840', borderRadius:10, padding:'7px 0', cursor:'pointer', fontFamily:'inherit', marginTop:2}}>
+                  + Add another portion
+                </button>
+              </div>
+            )}
           </div>
           <div>
-            <label style={{display:"block", fontSize:13, fontWeight:700, color:"var(--text-2)", marginBottom:6}}>Category</label>
-            {existingCats.length > 0 ? (
-              <select value={existingCats.includes(form.category) ? form.category : form.category ? '__custom__' : ''} onChange={e => { if (e.target.value === '__custom__') update('category', ''); else update('category', e.target.value) }} className="input-field" style={{cursor:'pointer'}}>
-                <option value="">-- Select category --</option>
-                {existingCats.map(c => <option key={c} value={c}>{c}</option>)}
-                <option value="__custom__">+ Add new category</option>
+            <label style={{display:"block", fontSize:13, fontWeight:700, color:"var(--text-2)", marginBottom:6}}>
+              Menu section <span style={{fontWeight:500, color:"var(--text-4)"}}>(optional)</span>
+            </label>
+            {!addingNewSection ? (
+              <select
+                value={form.category}
+                onChange={e => {
+                  if (e.target.value === '__new__') { setAddingNewSection(true); update('category', '') }
+                  else update('category', e.target.value)
+                }}
+                className="input-field" style={{cursor:'pointer'}}>
+                <option value="">No section / uncategorised</option>
+                {menuSections.map(s => <option key={s} value={s}>{s}</option>)}
+                <option value="__new__">+ Create new section…</option>
               </select>
-            ) : null}
-            {(existingCats.length === 0 || !existingCats.includes(form.category)) && (
-              <input type="text" value={form.category} onChange={e => update('category', e.target.value)} className="input-field" placeholder="e.g. Starters, Main Course, Dairy…" style={{marginTop: existingCats.length > 0 ? 8 : 0}} />
+            ) : (
+              <div style={{display:'flex', gap:8}}>
+                <input
+                  autoFocus
+                  type="text" value={form.category}
+                  onChange={e => update('category', e.target.value)}
+                  className="input-field" style={{flex:1}}
+                  placeholder="e.g. Starters, Main Course, Beverages"
+                />
+                <button type="button" onClick={() => { setAddingNewSection(false); update('category', '') }}
+                  style={{padding:'0 12px', borderRadius:10, border:'1.5px solid var(--border)', background:'var(--bg-3)', color:'var(--text-3)', cursor:'pointer', fontFamily:'inherit', fontSize:13, fontWeight:700}}>
+                  ✕
+                </button>
+              </div>
             )}
           </div>
           <div>
@@ -1461,13 +1547,21 @@ function EditProductModal({ product, userId, onClose, onSuccess }: { product: an
   const [imgPreview, setImgPreview] = useState<string | null>(product.image_url || null)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState('')
-  const [existingCats, setExistingCats] = useState<string[]>([])
+  const [menuSections, setMenuSections] = useState<string[]>([])
+  const [addingNewSection, setAddingNewSection] = useState(false)
+  const existingVariants = Array.isArray(product.variants) && product.variants.length > 0 ? product.variants : null
+  const [usePortions, setUsePortions] = useState(!!existingVariants)
+  const [portions, setPortions] = useState<{label:string; price:string}[]>(
+    existingVariants
+      ? existingVariants.map((v: any) => ({ label: v.label, price: String(v.price) }))
+      : [{ label: 'Half', price: '' }, { label: 'Full', price: '' }]
+  )
 
   useEffect(() => {
     createClient().from('products').select('category').eq('shop_id', product.shop_id).not('category', 'is', null)
       .then(({ data }) => {
-        const cats = Array.from(new Set((data ?? []).map((r: any) => r.category).filter(Boolean))) as string[]
-        setExistingCats(cats)
+        const unique = Array.from(new Set((data ?? []).map((r: any) => r.category).filter(Boolean))) as string[]
+        setMenuSections(unique)
       })
   }, [product.shop_id])
 
@@ -1478,15 +1572,25 @@ function EditProductModal({ product, userId, onClose, onSuccess }: { product: an
 
   async function handleSave() {
     if (!form.name.trim()) { setError('Name required'); return }
-    if (!form.price || isNaN(Number(form.price))) { setError('Valid price required'); return }
+    if (usePortions) {
+      const filled = portions.filter(p => p.label.trim() && p.price && !isNaN(Number(p.price)))
+      if (filled.length < 2) { setError('Enter a label and price for each portion'); return }
+    } else {
+      if (!form.price || isNaN(Number(form.price))) { setError('Valid price required'); return }
+    }
     setUploading(true); setError('')
     const supabase = createClient()
+    const variantsPayload = usePortions
+      ? portions.filter(p => p.label.trim() && p.price).map(p => ({ label: p.label.trim(), price: parseInt(p.price) }))
+      : null
+    const basePrice = usePortions ? Math.min(...variantsPayload!.map(v => v.price)) : parseInt(form.price)
     const { error: err } = await supabase.from('products').update({
       name: form.name.trim(), description: form.description.trim() || null,
-      price: parseInt(form.price), original_price: form.original_price ? parseInt(form.original_price) : null,
+      price: basePrice, original_price: form.original_price ? parseInt(form.original_price) : null,
       category: form.category.trim() || null,
       is_veg: form.is_veg === 'veg' ? true : form.is_veg === 'nonveg' ? false : null,
       is_available: form.is_available,
+      variants: variantsPayload,
     }).eq('id', product.id)
     if (err) { setError(err.message); setUploading(false); return }
     if (imgFile) {
@@ -1531,19 +1635,75 @@ function EditProductModal({ product, userId, onClose, onSuccess }: { product: an
           </div>
           <input placeholder="Product name *" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} style={inp} />
           <input placeholder="Description" value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} style={inp} />
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <input placeholder="Price ₹ *" type="number" value={form.price} onChange={e => setForm(p => ({ ...p, price: e.target.value }))} style={inp} />
-            <input placeholder="Original ₹ (optional)" type="number" value={form.original_price} onChange={e => setForm(p => ({ ...p, original_price: e.target.value }))} style={inp} />
+          {/* Price — hidden when using portions */}
+          {!usePortions && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <input placeholder="Price ₹ *" type="number" value={form.price} onChange={e => setForm(p => ({ ...p, price: e.target.value }))} style={inp} />
+              <input placeholder="Original ₹ (optional)" type="number" value={form.original_price} onChange={e => setForm(p => ({ ...p, original_price: e.target.value }))} style={inp} />
+            </div>
+          )}
+          {/* Portions (Half / Full) */}
+          <div style={{ background: 'var(--bg-2)', borderRadius: 14, padding: '12px 14px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: usePortions ? 14 : 0 }}>
+              <div>
+                <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginBottom: 2 }}>Portions pricing</p>
+                <p style={{ fontSize: 11, color: 'var(--text-3)' }}>e.g. Half / Full for paneer, biryani…</p>
+              </div>
+              <button type="button" onClick={() => { setUsePortions(v => !v); setForm(p => ({ ...p, price: '' })) }}
+                style={{ position: 'relative', width: 44, height: 24, borderRadius: 999, background: usePortions ? '#FF3008' : 'var(--bg-4)', border: 'none', cursor: 'pointer', transition: 'background .2s', flexShrink: 0 }}>
+                <span style={{ position: 'absolute', top: 2, left: 2, width: 20, height: 20, borderRadius: '50%', background: 'white', boxShadow: '0 1px 3px rgba(0,0,0,.2)', transition: 'transform .2s', transform: usePortions ? 'translateX(20px)' : 'none' }} />
+              </button>
+            </div>
+            {usePortions && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {portions.map((p, idx) => (
+                  <div key={idx} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <input value={p.label} onChange={e => setPortions(prev => prev.map((x, i) => i === idx ? { ...x, label: e.target.value } : x))}
+                      style={{ ...inp, flex: '0 0 100px' }} placeholder="Label" />
+                    <div style={{ position: 'relative', flex: 1 }}>
+                      <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-3)', fontWeight: 700, fontSize: 13 }}>₹</span>
+                      <input type="number" value={p.price} onChange={e => setPortions(prev => prev.map((x, i) => i === idx ? { ...x, price: e.target.value } : x))}
+                        style={{ ...inp, paddingLeft: 24 }} placeholder="Price" min="0" />
+                    </div>
+                    {portions.length > 2 && (
+                      <button type="button" onClick={() => setPortions(prev => prev.filter((_, i) => i !== idx))}
+                        style={{ color: 'var(--text-3)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, padding: '0 4px' }}>✕</button>
+                    )}
+                  </div>
+                ))}
+                <button type="button" onClick={() => setPortions(prev => [...prev, { label: '', price: '' }])}
+                  style={{ fontSize: 12, fontWeight: 700, color: '#FF3008', background: 'none', border: '1.5px dashed #FF300840', borderRadius: 10, padding: '7px 0', cursor: 'pointer', fontFamily: 'inherit', marginTop: 2 }}>
+                  + Add another portion
+                </button>
+              </div>
+            )}
           </div>
-          {existingCats.length > 0 ? (
-            <select value={existingCats.includes(form.category) ? form.category : form.category ? '__custom__' : ''} onChange={e => { if (e.target.value === '__custom__') setForm(p => ({ ...p, category: '' })); else setForm(p => ({ ...p, category: e.target.value })) }} style={{ ...inp, cursor: 'pointer' }}>
-              <option value="">-- Select category --</option>
-              {existingCats.map(c => <option key={c} value={c}>{c}</option>)}
-              <option value="__custom__">+ Add new category</option>
+          {!addingNewSection ? (
+            <select
+              value={form.category}
+              onChange={e => {
+                if (e.target.value === '__new__') { setAddingNewSection(true); setForm(p => ({ ...p, category: '' })) }
+                else setForm(p => ({ ...p, category: e.target.value }))
+              }}
+              style={{ ...inp, cursor: 'pointer' }}>
+              <option value="">No section / uncategorised</option>
+              {menuSections.map(s => <option key={s} value={s}>{s}</option>)}
+              <option value="__new__">+ Create new section…</option>
             </select>
-          ) : null}
-          {(existingCats.length === 0 || !existingCats.includes(form.category)) && (
-            <input placeholder="e.g. Starters, Main Course, Dairy…" value={form.category} onChange={e => setForm(p => ({ ...p, category: e.target.value }))} style={{ ...inp, marginTop: existingCats.length > 0 ? 8 : 0 }} />
+          ) : (
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input
+                autoFocus
+                value={form.category}
+                onChange={e => setForm(p => ({ ...p, category: e.target.value }))}
+                style={{ ...inp, flex: 1 }}
+                placeholder="e.g. Starters, Main Course, Beverages"
+              />
+              <button type="button" onClick={() => { setAddingNewSection(false); setForm(p => ({ ...p, category: '' })) }}
+                style={{ padding: '0 12px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg-3)', color: 'var(--text-3)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13 }}>
+                ✕
+              </button>
+            </div>
           )}
           <select value={form.is_veg} onChange={e => setForm(p => ({ ...p, is_veg: e.target.value }))} style={{ ...inp, cursor: 'pointer' }}>
             <option value="">Veg / Non-veg (optional)</option>

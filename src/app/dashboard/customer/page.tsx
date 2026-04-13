@@ -25,7 +25,7 @@ interface Shop {
 }
 interface Product {
   id: string; name: string; price: number; original_price: number | null
-  image_url: string | null; shop_id: string; shop_name?: string
+  image_url: string | null; shop_id: string; shop_name?: string; shop_is_open?: boolean
 }
 
 function dist(lat1: number, lng1: number, lat2: number, lng2: number) {
@@ -234,7 +234,7 @@ export default function CustomerHome() {
     const { data } = await createClient().from('products')
       .select('id,name,price,original_price,image_url,shop_id,shops(name)')
       .in('shop_id', shopIds.slice(0, 50))
-      .order('original_price', { ascending: false }).limit(24)
+      .order('price', { ascending: true }).limit(24)
     // Filter unavailable in JS — avoids broken .or() query
     const available = (data || []).filter((p: any) => p.is_available !== false)
     setProducts(available.map((p: any) => ({ ...p, shop_name: p.shops?.name })))
@@ -395,11 +395,14 @@ export default function CustomerHome() {
 
   // ── Personalised product / shop slices ────────────────────────
   // Price-band product slices — freq-sorted, shown as horizontal scrolls
-  const under49    = sortByFreq(products.filter(p => p.price <= 49)).slice(0, 10)
-  const under100   = sortByFreq(products.filter(p => p.price <= 99 && p.price > 49)).slice(0, 10)
+  const shopOpenMap = Object.fromEntries(allShops.map(s => [s.id, computeIsOpen(s)]))
+  const enrichedProducts = products.map(p => ({ ...p, shop_is_open: shopOpenMap[p.shop_id] ?? true }))
+  const under49    = sortByFreq(enrichedProducts.filter(p => p.price <= 49)).slice(0, 10)
+  const under100   = sortByFreq(enrichedProducts.filter(p => p.price <= 99 && p.price > 49)).slice(0, 10)
 
   // Products grouped by shop — powers the shop+products rows in the feed
-  const productsByShop = products.reduce<Record<string, Product[]>>((acc, p) => {
+  // Sorted price-ascending within each shop so cheapest shows first
+  const productsByShop = [...products].sort((a, b) => a.price - b.price).reduce<Record<string, Product[]>>((acc, p) => {
     if (!acc[p.shop_id]) acc[p.shop_id] = []
     acc[p.shop_id].push(p)
     return acc
@@ -518,7 +521,10 @@ export default function CustomerHome() {
               icon: <svg viewBox="0 0 24 24" fill="none" width={20} height={20}><rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" strokeWidth="2"/><path d="M12 8v8M8 12h8" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/></svg> },
             { label:'Stationery', q:'stationery', color:'#7c3aed', bg:'#FAF5FF',
               icon: <svg viewBox="0 0 24 24" fill="none" width={20} height={20}><path d="M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg> },
-          ] as const).map(cat => {
+          ] as const).filter(cat =>
+            // Hide tiles for categories the admin has disabled; before data loads show all
+            !shopsLoaded || activeCats.length === 0 || activeCats.some(c => c.q === cat.q)
+          ).map(cat => {
             const isActive = activeCategory === cat.q
             return (
               <button key={cat.q} onClick={() => setActiveCat(isActive ? null : cat.q)}
@@ -759,6 +765,7 @@ function PriceBandCard({ product: p }: { product: Product }) {
   const disc = p.original_price && p.original_price > p.price
     ? Math.round(((p.original_price - p.price) / p.original_price) * 100) : null
   const qty: number = cart.items?.find((i: any) => i.product.id === p.id)?.quantity ?? 0
+  const shopClosed = p.shop_is_open === false
 
   function handleAdd(e: React.MouseEvent) {
     e.preventDefault()
@@ -779,14 +786,19 @@ function PriceBandCard({ product: p }: { product: Product }) {
       {/* ── Card body: Link handles navigation ── */}
       <Link href={`/stores/${p.shop_id}`}
         style={{ display:'block', textDecoration:'none', background:'var(--card-white)', borderRadius:16, overflow:'hidden', border:'1px solid var(--divider)', boxShadow:'0 1px 6px rgba(0,0,0,.06)' }}>
-        <div style={{ height:140, position:'relative', background:'var(--chip-bg)', overflow:'hidden' }}>
+        <div style={{ height:140, position:'relative', background:'var(--chip-bg)', overflow:'hidden', filter: shopClosed ? 'grayscale(1)' : undefined }}>
           {p.image_url
             ? <Image src={p.image_url} alt={p.name} fill sizes="160px" className="object-cover" />
             : <div style={{ width:'100%', height:'100%', display:'flex', alignItems:'center', justifyContent:'center' }}>
                 <svg viewBox="0 0 24 24" fill="none" width={36} height={36}><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4zM3 6h18M16 10a4 4 0 01-8 0" stroke="var(--text-faint)" strokeWidth="1.5" strokeLinecap="round"/></svg>
               </div>}
-          {disc && (
+          {disc && !shopClosed && (
             <div style={{ position:'absolute', top:8, left:8, background:'#FF3008', color:'#fff', fontSize:10, fontWeight:900, padding:'3px 8px', borderRadius:6 }}>-{disc}%</div>
+          )}
+          {shopClosed && (
+            <div style={{ position:'absolute', inset:0, background:'rgba(0,0,0,.35)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+              <span style={{ fontSize:9, fontWeight:800, color:'#fff', background:'rgba(0,0,0,.55)', padding:'2px 7px', borderRadius:4, letterSpacing:'0.04em' }}>CLOSED</span>
+            </div>
           )}
         </div>
         <div style={{ padding:'9px 11px 11px' }}>
@@ -800,8 +812,8 @@ function PriceBandCard({ product: p }: { product: Product }) {
           </div>
         </div>
       </Link>
-      {/* ── Action button: outside Link, absolutely positioned over image ── */}
-      {qty > 0 ? (
+      {/* ── Action button: hidden when shop is closed ── */}
+      {!shopClosed && (qty > 0 ? (
         <div style={{ position:'absolute', top:100, right:8, display:'flex', alignItems:'center', background:'#FF3008', borderRadius:20, boxShadow:'0 3px 10px rgba(255,48,8,.4)', overflow:'hidden', zIndex:3 }}>
           <button onClick={handleRemove} style={{ width:26, height:26, border:'none', background:'transparent', color:'#fff', fontSize:18, fontWeight:300, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', padding:0 }}>−</button>
           <span style={{ fontSize:12, fontWeight:900, color:'#fff', minWidth:16, textAlign:'center' }}>{qty}</span>
@@ -810,7 +822,7 @@ function PriceBandCard({ product: p }: { product: Product }) {
       ) : (
         <button onClick={handleAdd}
           style={{ position:'absolute', top:100, right:8, width:32, height:32, borderRadius:'50%', border:'none', background:'#FF3008', color:'#fff', fontSize:22, fontWeight:300, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', padding:0, lineHeight:1, boxShadow:'0 3px 10px rgba(255,48,8,.4)', zIndex:3 }}>+</button>
-      )}
+      ))}
     </div>
   )
 }
@@ -935,13 +947,13 @@ function ShopProductRow({ shop, products }: { shop: Shop & { km: number | null }
                 <div key={p.id} style={{ flexShrink:0, width:CARD_W, position:'relative' }}>
                   {/* Card: Link handles all navigation */}
                   <Link href={`/stores/${p.shop_id}`} style={{ display:'block', textDecoration:'none' }}>
-                    <div style={{ width:CARD_W, height:CARD_W, borderRadius:14, overflow:'hidden', position:'relative', background:'var(--chip-bg)', marginBottom:7 }}>
+                    <div style={{ width:CARD_W, height:CARD_W, borderRadius:14, overflow:'hidden', position:'relative', background:'var(--chip-bg)', marginBottom:7, filter: isOpen ? undefined : 'grayscale(1)' }}>
                       {p.image_url
                         ? <Image src={p.image_url} alt={p.name} fill sizes={`${CARD_W}px`} className="object-cover" />
                         : <div style={{ width:'100%', height:'100%', display:'flex', alignItems:'center', justifyContent:'center' }}>
                             <svg viewBox="0 0 24 24" fill="none" width={30} height={30}><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4zM3 6h18M16 10a4 4 0 01-8 0" stroke="var(--text-faint)" strokeWidth="1.5" strokeLinecap="round"/></svg>
                           </div>}
-                      {disc && (
+                      {disc && isOpen && (
                         <div style={{ position:'absolute', top:6, left:6, background:'#FF3008', color:'#fff', fontSize:9, fontWeight:900, padding:'2px 6px', borderRadius:5 }}>-{disc}%</div>
                       )}
                     </div>
@@ -953,8 +965,8 @@ function ShopProductRow({ shop, products }: { shop: Shop & { km: number | null }
                       )}
                     </div>
                   </Link>
-                  {/* Action: outside Link, positioned over image — no click conflict */}
-                  {qty > 0 ? (
+                  {/* Action: outside Link, hidden when shop is closed */}
+                  {isOpen && (qty > 0 ? (
                     <div style={{ position:'absolute', top:btnTop, right:6, display:'flex', alignItems:'center', background:'#FF3008', borderRadius:16, boxShadow:'0 2px 8px rgba(255,48,8,.4)', overflow:'hidden', zIndex:3 }}>
                       <button onClick={(e) => { e.preventDefault(); cart.updateQty(p.id, qty - 1) }}
                         style={{ width:22, height:22, border:'none', background:'transparent', color:'#fff', fontSize:16, fontWeight:300, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', padding:0 }}>−</button>
@@ -965,7 +977,7 @@ function ShopProductRow({ shop, products }: { shop: Shop & { km: number | null }
                   ) : (
                     <button onClick={(e) => addToCart(p, e)}
                       style={{ position:'absolute', top:btnTop, right:6, width:28, height:28, borderRadius:'50%', border:'none', background:'#FF3008', color:'#fff', fontSize:20, fontWeight:300, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', padding:0, lineHeight:1, boxShadow:'0 2px 8px rgba(255,48,8,.4)', zIndex:3 }}>+</button>
-                  )}
+                  ))}
                 </div>
               )
             })}

@@ -17,12 +17,14 @@ interface Shop {
   offer_text?: string | null; free_delivery_above?: number | null
   opening_time?: string | null; closing_time?: string | null; manually_closed?: boolean | null
 }
+interface ProductVariant { label: string; price: number }
 interface Product {
   id: string; name: string; description?: string | null
   price: number; original_price?: number | null
   image_url?: string | null; is_veg?: boolean | null
   is_available?: boolean; category?: string | null; category_name?: string | null
-  shop_id?: string; [key: string]: unknown
+  shop_id?: string; variants?: ProductVariant[] | null
+  [key: string]: unknown
 }
 
 export default function StorePage() {
@@ -54,7 +56,7 @@ export default function StorePage() {
 
     const [{ data: s }, { data: p, error: pe }, { data: planRows }, { data: subRows }, { data: prevOrder }] = await Promise.all([
       sb.from('shops').select('*').eq('id', id).single(),
-      sb.from('products').select('id,name,description,price,original_price,image_url,is_veg,is_available,shop_id,category,category_name').eq('shop_id', id).order('name'),
+      sb.from('products').select('id,name,description,price,original_price,image_url,is_veg,is_available,shop_id,category,category_name,variants').eq('shop_id', id).order('name'),
       sb.from('subscription_plans').select('*').eq('shop_id', id).order('price'),
       user ? sb.from('customer_subscriptions').select('plan_id').eq('customer_id', user.id).eq('shop_id', id).neq('status', 'cancelled') : Promise.resolve({ data: [] }),
       user ? sb.from('orders').select('id, shop_id, total_amount, items:order_items(product_id, product_name, product_image, price, quantity)').eq('customer_id', user.id).eq('shop_id', id).eq('status', 'delivered').order('created_at', { ascending: false }).limit(1).maybeSingle() : Promise.resolve({ data: null }),
@@ -108,6 +110,27 @@ export default function StorePage() {
     if (!computeIsOpen(shop ?? { is_open: false })) { alert('This shop is currently closed and not accepting orders.'); return }
     if (cart.shop_id && cart.shop_id !== id && cart.count() > 0) { setDiffWarn(true); return }
     cart.addItem(product, id, shop?.name ?? '')
+  }
+
+  function handleVariantAdd(product: Product, variant: ProductVariant) {
+    if (!computeIsOpen(shop ?? { is_open: false })) { alert('This shop is currently closed and not accepting orders.'); return }
+    if (cart.shop_id && cart.shop_id !== id && cart.count() > 0) { setDiffWarn(true); return }
+    const cartProduct = {
+      ...product,
+      id: `${product.id}_${variant.label.toLowerCase().replace(/\s+/g, '_')}`,
+      price: variant.price,
+      variant_label: variant.label,
+    }
+    cart.addItem(cartProduct, id, shop?.name ?? '')
+  }
+
+  function handleVariantRemove(product: Product, variant: ProductVariant) {
+    cart.removeItem(`${product.id}_${variant.label.toLowerCase().replace(/\s+/g, '_')}`)
+  }
+
+  function handleVariantUpdate(product: Product, variant: ProductVariant, qty: number) {
+    const cartId = `${product.id}_${variant.label.toLowerCase().replace(/\s+/g, '_')}`
+    cart.updateQty(cartId, qty)
   }
 
   const grouped = products.reduce<Record<string, Product[]>>((acc, p) => {
@@ -432,12 +455,20 @@ export default function StorePage() {
                     <ProductCard key={product.id}
                       product={product}
                       shopClosed={!computeIsOpen(shop ?? { is_open: false })}
-                      qty={cart.items?.find((i: any) => i.product.id === product.id)?.quantity ?? 0}
+                      qty={
+                        product.variants?.length
+                          ? (cart.items?.filter((i: any) => i.product.id.startsWith(`${product.id}_`)) ?? []).reduce((s: number, i: any) => s + i.quantity, 0)
+                          : cart.items?.find((i: any) => i.product.id === product.id)?.quantity ?? 0
+                      }
                       note={cart.items?.find((i: any) => i.product.id === product.id)?.note ?? ''}
                       onAdd={() => handleAdd(product)}
                       onRemove={() => cart.removeItem(product.id)}
                       onUpdate={(q: number) => cart.updateQty(product.id, q)}
                       onNote={(n: string) => cart.setNote(product.id, n)}
+                      cartItems={cart.items ?? []}
+                      onAddVariant={(v) => handleVariantAdd(product, v)}
+                      onRemoveVariant={(v) => handleVariantRemove(product, v)}
+                      onUpdateVariant={(v, q) => handleVariantUpdate(product, v, q)}
                     />
                   ))}
                 </div>
@@ -484,87 +515,151 @@ export default function StorePage() {
 }
 
 // ── Product Card ──────────────────────────────────────────────────
-function ProductCard({ product, qty, shopClosed, onAdd, onRemove, onUpdate, note, onNote }: {
+function ProductCard({ product, qty, shopClosed, onAdd, onRemove, onUpdate, note, onNote, cartItems, onAddVariant, onRemoveVariant, onUpdateVariant }: {
   product: Product; qty: number; shopClosed?: boolean
   onAdd: () => void; onRemove: () => void; onUpdate: (q: number) => void
   note?: string; onNote?: (n: string) => void
+  cartItems?: any[]
+  onAddVariant?: (v: ProductVariant) => void
+  onRemoveVariant?: (v: ProductVariant) => void
+  onUpdateVariant?: (v: ProductVariant, qty: number) => void
 }) {
   const [showNote, setShowNote] = useState(false)
+  const [variantOpen, setVariantOpen] = useState(false)
   const disc = product.original_price && product.original_price > product.price
     ? Math.round((1 - product.price / product.original_price) * 100) : 0
   const unavailable = product.is_available === false || !!shopClosed
+  const hasVariants = !!(product.variants?.length)
+
+  // Per-variant cart quantities
+  const variantRows = hasVariants ? product.variants!.map(v => {
+    const cartId = `${product.id}_${v.label.toLowerCase().replace(/\s+/g, '_')}`
+    const cartQty = (cartItems ?? []).find((i: any) => i.product.id === cartId)?.quantity ?? 0
+    return { ...v, cartId, cartQty }
+  }) : []
 
   return (
-    <div className="pcard" style={{ opacity: unavailable ? 0.55 : 1 }}>
-      {/* Info — left */}
-      <div style={{ flex:1, padding:'14px 8px 14px 14px', display:'flex', flexDirection:'column', justifyContent:'space-between', minWidth:0 }}>
-        <div>
-          {product.is_veg != null && (
-            <div style={{ width:14, height:14, border:`2px solid ${product.is_veg ? '#16a34a' : '#ef4444'}`, borderRadius:3, display:'inline-flex', alignItems:'center', justifyContent:'center', marginBottom:6, flexShrink:0 }}>
-              <div style={{ width:6, height:6, borderRadius:'50%', background: product.is_veg ? '#16a34a' : '#ef4444' }} />
-            </div>
-          )}
-          <p style={{ fontWeight:800, fontSize:14, color:'#111', marginBottom:4, lineHeight:1.3 }}>{product.name}</p>
-          {product.description && (
-            <p style={{ fontSize:12, color:'#999', lineHeight:1.5, overflow:'hidden', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical' as any }}>{product.description}</p>
-          )}
-        </div>
-        <div style={{ display:'flex', alignItems:'baseline', gap:5, marginTop:10 }}>
-          <span style={{ fontWeight:900, fontSize:15, color:'#111' }}>₹{product.price}</span>
-          {disc > 0 && <span style={{ fontSize:11, color:'#bbb', textDecoration:'line-through' }}>₹{product.original_price}</span>}
-        </div>
-        {product.is_available === false && !shopClosed && (
-          <span style={{ fontSize:11, color:'#bbb', fontWeight:700, marginTop:4 }}>Unavailable</span>
-        )}
-        {/* Per-item note — visible when item is in cart */}
-        {qty > 0 && !unavailable && (
-          <div style={{ marginTop:8 }}>
-            {!showNote && !note ? (
-              <button onClick={() => setShowNote(true)}
-                style={{ fontSize:11, color:'#FF3008', fontWeight:700, background:'none', border:'none', cursor:'pointer', padding:0, fontFamily:'inherit' }}>
-                + Add cooking instructions
-              </button>
-            ) : (
-              <input
-                autoFocus={showNote && !note}
-                value={note || ''}
-                onChange={e => onNote?.(e.target.value)}
-                onBlur={() => { if (!note) setShowNote(false) }}
-                placeholder="e.g. No onions, extra spicy…"
-                style={{ fontSize:11, width:'100%', border:'1px solid #e0e0e0', borderRadius:8, padding:'5px 8px', outline:'none', fontFamily:'inherit', background:'var(--page-bg)', color:'var(--text-primary)', boxSizing:'border-box' }}
-              />
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Image — right side with ADD button overlaid */}
-      <div style={{ width:110, flexShrink:0, position:'relative', margin:'10px 10px 10px 0', paddingBottom:16 }}>
-        <div style={{ width:110, height:110, background:'#F8F8F8', borderRadius:14, overflow:'hidden', position:'relative' }}>
-          {product.image_url
-            ? <Image src={product.image_url} alt={product.name} fill sizes="110px" className="object-cover" />
-            : <div style={{ width:'100%', height:'100%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:34, opacity:.15 }}>🛍️</div>
-          }
-          {disc > 0 && (
-            <div style={{ position:'absolute', top:5, left:5, background:'#FF3008', color:'#fff', fontSize:9, fontWeight:900, padding:'2px 6px', borderRadius:6 }}>-{disc}%</div>
-          )}
-        </div>
-
-        {/* ADD / stepper overlaid at bottom-center of image */}
-        {!unavailable && (
-          <div style={{ position:'absolute', bottom:0, left:'50%', transform:'translateX(-50%)', zIndex:2 }}>
-            {qty === 0 ? (
-              <button onClick={onAdd} className="add-btn">+ ADD</button>
-            ) : (
-              <div className="img-stepper">
-                <button onClick={() => onUpdate(qty - 1)}>−</button>
-                <span>{qty}</span>
-                <button onClick={() => onUpdate(qty + 1)}>+</button>
+    <div className="pcard" style={{ opacity: unavailable ? 0.55 : 1, flexDirection:'column' }}>
+      {/* Main row */}
+      <div style={{ display:'flex', width:'100%' }}>
+        {/* Info — left */}
+        <div style={{ flex:1, padding:'14px 8px 14px 14px', display:'flex', flexDirection:'column', justifyContent:'space-between', minWidth:0 }}>
+          <div>
+            {product.is_veg != null && (
+              <div style={{ width:14, height:14, border:`2px solid ${product.is_veg ? '#16a34a' : '#ef4444'}`, borderRadius:3, display:'inline-flex', alignItems:'center', justifyContent:'center', marginBottom:6, flexShrink:0 }}>
+                <div style={{ width:6, height:6, borderRadius:'50%', background: product.is_veg ? '#16a34a' : '#ef4444' }} />
               </div>
             )}
+            <p style={{ fontWeight:800, fontSize:14, color:'#111', marginBottom:4, lineHeight:1.3 }}>{product.name}</p>
+            {product.description && (
+              <p style={{ fontSize:12, color:'#999', lineHeight:1.5, overflow:'hidden', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical' as any }}>{product.description}</p>
+            )}
           </div>
-        )}
+          <div style={{ display:'flex', alignItems:'baseline', gap:5, marginTop:10 }}>
+            <span style={{ fontWeight:900, fontSize:15, color:'#111' }}>
+              {hasVariants ? `from ₹${Math.min(...product.variants!.map(v => v.price))}` : `₹${product.price}`}
+            </span>
+            {!hasVariants && disc > 0 && <span style={{ fontSize:11, color:'#bbb', textDecoration:'line-through' }}>₹{product.original_price}</span>}
+          </div>
+          {hasVariants && (
+            <p style={{ fontSize:11, color:'#aaa', marginTop:3 }}>
+              {product.variants!.map(v => `${v.label} ₹${v.price}`).join(' · ')}
+            </p>
+          )}
+          {product.is_available === false && !shopClosed && (
+            <span style={{ fontSize:11, color:'#bbb', fontWeight:700, marginTop:4 }}>Unavailable</span>
+          )}
+          {/* Per-item note — visible when item is in cart (non-variant only) */}
+          {!hasVariants && qty > 0 && !unavailable && (
+            <div style={{ marginTop:8 }}>
+              {!showNote && !note ? (
+                <button onClick={() => setShowNote(true)}
+                  style={{ fontSize:11, color:'#FF3008', fontWeight:700, background:'none', border:'none', cursor:'pointer', padding:0, fontFamily:'inherit' }}>
+                  + Add cooking instructions
+                </button>
+              ) : (
+                <input
+                  autoFocus={showNote && !note}
+                  value={note || ''}
+                  onChange={e => onNote?.(e.target.value)}
+                  onBlur={() => { if (!note) setShowNote(false) }}
+                  placeholder="e.g. No onions, extra spicy…"
+                  style={{ fontSize:11, width:'100%', border:'1px solid #e0e0e0', borderRadius:8, padding:'5px 8px', outline:'none', fontFamily:'inherit', background:'var(--page-bg)', color:'var(--text-primary)', boxSizing:'border-box' }}
+                />
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Image — right side with ADD button overlaid */}
+        <div style={{ width:110, flexShrink:0, position:'relative', margin:'10px 10px 10px 0', paddingBottom:16 }}>
+          <div style={{ width:110, height:110, background:'#F8F8F8', borderRadius:14, overflow:'hidden', position:'relative', filter: unavailable ? 'grayscale(1)' : undefined }}>
+            {product.image_url
+              ? <Image src={product.image_url} alt={product.name} fill sizes="110px" className="object-cover" />
+              : <div style={{ width:'100%', height:'100%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:34, opacity:.15 }}>🛍️</div>
+            }
+            {disc > 0 && !unavailable && !hasVariants && (
+              <div style={{ position:'absolute', top:5, left:5, background:'#FF3008', color:'#fff', fontSize:9, fontWeight:900, padding:'2px 6px', borderRadius:6 }}>-{disc}%</div>
+            )}
+          </div>
+
+          {/* ADD / stepper overlaid at bottom-center of image */}
+          {!unavailable && (
+            <div style={{ position:'absolute', bottom:0, left:'50%', transform:'translateX(-50%)', zIndex:2 }}>
+              {hasVariants ? (
+                qty === 0 ? (
+                  <button onClick={() => setVariantOpen(v => !v)} className="add-btn">+ ADD</button>
+                ) : (
+                  <button onClick={() => setVariantOpen(v => !v)}
+                    style={{ display:'flex', alignItems:'center', gap:5, background:'#FF3008', color:'#fff', border:'none', borderRadius:10, padding:'6px 12px', fontWeight:900, fontSize:13, cursor:'pointer', fontFamily:'inherit', boxShadow:'0 2px 8px rgba(0,0,0,.15)' }}>
+                    <span>{qty}</span>
+                    <svg viewBox="0 0 24 24" fill="none" width={12} height={12}><path d="M6 9l6 6 6-6" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"/></svg>
+                  </button>
+                )
+              ) : (
+                qty === 0 ? (
+                  <button onClick={onAdd} className="add-btn">+ ADD</button>
+                ) : (
+                  <div className="img-stepper">
+                    <button onClick={() => onUpdate(qty - 1)}>−</button>
+                    <span>{qty}</span>
+                    <button onClick={() => onUpdate(qty + 1)}>+</button>
+                  </div>
+                )
+              )}
+            </div>
+          )}
+        </div>
       </div>
+
+      {/* Variant picker — inline, full width, shown when open */}
+      {hasVariants && variantOpen && !unavailable && (
+        <div style={{ borderTop:'1px solid #f0f0f0', padding:'10px 14px 14px', width:'100%', boxSizing:'border-box' }}>
+          <p style={{ fontSize:11, fontWeight:700, color:'#aaa', marginBottom:8, textTransform:'uppercase', letterSpacing:'0.05em' }}>Choose size</p>
+          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+            {variantRows.map(v => (
+              <div key={v.label} style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                <div>
+                  <span style={{ fontWeight:700, fontSize:13, color:'#111' }}>{v.label}</span>
+                  <span style={{ fontSize:12, color:'#888', marginLeft:8 }}>₹{v.price}</span>
+                </div>
+                {v.cartQty === 0 ? (
+                  <button onClick={() => onAddVariant?.(v)}
+                    style={{ padding:'5px 16px', borderRadius:10, border:'2px solid #FF3008', color:'#FF3008', background:'#fff', fontWeight:800, fontSize:12, cursor:'pointer', fontFamily:'inherit' }}>
+                    ADD
+                  </button>
+                ) : (
+                  <div className="img-stepper" style={{ borderRadius:10 }}>
+                    <button onClick={() => onUpdateVariant?.(v, v.cartQty - 1)}>−</button>
+                    <span>{v.cartQty}</span>
+                    <button onClick={() => onAddVariant?.(v)}>+</button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

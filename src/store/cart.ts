@@ -9,6 +9,7 @@ export interface CartProduct {
   original_price?: number | null; image_url: string | null
   is_veg?: boolean | null; category?: string | null
   category_name?: string | null; shop_id?: string
+  variant_label?: string   // e.g. "Half", "Full" — set when product has quantity variants
   [key: string]: unknown
 }
 
