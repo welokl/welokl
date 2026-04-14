@@ -512,9 +512,6 @@ export default function CustomerHome() {
         </Link>
       )}
 
-      {/* ── Value prop marketing strip ── */}
-      <ValuePropStrip />
-
       {/* ═══════════════════════════════════════════════
           ZONE 4 — WHAT DO YOU NEED? — compact 4-col strip
           ═══════════════════════════════════════════════ */}
@@ -734,38 +731,6 @@ export default function CustomerHome() {
 }
 
 // ── VALUE PROP ANIMATED TICKER ────────────────────────────────────
-function ValuePropStrip() {
-  const items = [
-    { icon: <svg viewBox="0 0 24 24" fill="none" width={14} height={14}><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" fill="#fff"/></svg>, text:'₹0 Platform fee' },
-    { icon: <svg viewBox="0 0 24 24" fill="none" width={14} height={14}><circle cx="12" cy="12" r="10" stroke="#fff" strokeWidth="2"/><path d="M12 8v4l3 3" stroke="#fff" strokeWidth="2" strokeLinecap="round"/></svg>, text:'₹0 Night charges' },
-    { icon: <svg viewBox="0 0 24 24" fill="none" width={14} height={14}><path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><line x1="7" y1="7" x2="7.01" y2="7" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"/></svg>, text:'₹0 Handling fee' },
-    { icon: <svg viewBox="0 0 24 24" fill="none" width={14} height={14}><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>, text:'Offline menu prices' },
-    { icon: <svg viewBox="0 0 24 24" fill="none" width={14} height={14}><path d="M22 11.08V12a10 10 0 11-5.93-9.14" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><polyline points="22 4 12 14.01 9 11.01" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>, text:'Lowest price guaranteed' },
-  ]
-  // Render twice for seamless loop
-  const row = (
-    <>
-      {items.map((item, i) => (
-        <div key={i} style={{ display:'inline-flex', alignItems:'center', gap:6, padding:'0 20px', borderRight:'1px solid rgba(255,255,255,.25)', flexShrink:0 }}>
-          {item.icon}
-          <span style={{ fontSize:12, fontWeight:800, color:'#fff', whiteSpace:'nowrap', letterSpacing:'0.01em' }}>{item.text}</span>
-        </div>
-      ))}
-    </>
-  )
-  return (
-    <div style={{ margin:'14px 0 0', background:'#1a1a1a', overflow:'hidden', height:36, display:'flex', alignItems:'center', position:'relative' }}>
-      {/* Fade edges */}
-      <div style={{ position:'absolute', left:0, top:0, bottom:0, width:24, background:'linear-gradient(to right,#1a1a1a,transparent)', zIndex:2 }} />
-      <div style={{ position:'absolute', right:0, top:0, bottom:0, width:24, background:'linear-gradient(to left,#1a1a1a,transparent)', zIndex:2 }} />
-      {/* Ticker */}
-      <div className="ticker-track">
-        {row}{row}
-      </div>
-    </div>
-  )
-}
-
 // ── PRICE BAND SECTION ────────────────────────────────────────────
 // ── PRICE BAND CARD — top-level (never nested) so cart hook is stable ──
 function PriceBandCard({ product: p }: { product: Product }) {
