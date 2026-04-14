@@ -44,6 +44,7 @@ export default function StorePage() {
   const [activeCat,  setActiveCat] = useState('all')
   const [search,     setSearch]    = useState('')
   const [lastOrder,  setLastOrder] = useState<any | null>(null)
+  const [popular,    setPopular]   = useState<{product_id:string; product_name:string; product_image:string|null; times:number}[]>([])
 
   useEffect(() => { cart._hydrate?.() }, [])
   useEffect(() => { load() }, [id])
@@ -72,6 +73,30 @@ export default function StorePage() {
     setMySubIds(new Set((subRows ?? []).map((r: any) => r.plan_id)))
     setLastOrder(prevOrder ?? null)
     setLoading(false)
+
+    // "People also ordered" — two-step: get order IDs first, then count product frequency
+    sb.from('orders').select('id').eq('shop_id', id).eq('status', 'delivered').limit(200)
+      .then(({ data: orderRows }) => {
+        const orderIds = (orderRows ?? []).map((o: any) => o.id)
+        if (!orderIds.length) return
+        sb.from('order_items').select('product_id,product_name,product_image')
+          .in('order_id', orderIds).limit(500)
+          .then(({ data: oi }) => {
+            if (!oi?.length) return
+            const freq: Record<string, { name: string; image: string | null; count: number }> = {}
+            for (const row of oi) {
+              if (!row.product_id) continue
+              if (!freq[row.product_id]) freq[row.product_id] = { name: row.product_name, image: row.product_image, count: 0 }
+              freq[row.product_id].count++
+            }
+            setPopular(
+              Object.entries(freq)
+                .sort((a, b) => b[1].count - a[1].count)
+                .slice(0, 6)
+                .map(([pid, v]) => ({ product_id: pid, product_name: v.name, product_image: v.image, times: v.count }))
+            )
+          })
+      })
   }
 
   function reorderFromStore(order: any) {
@@ -452,24 +477,26 @@ export default function StorePage() {
                 )}
                 <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
                   {items.map(product => (
-                    <ProductCard key={product.id}
-                      product={product}
-                      shopClosed={!computeIsOpen(shop ?? { is_open: false })}
-                      qty={
-                        product.variants?.length
-                          ? (cart.items?.filter((i: any) => i.product.id.startsWith(`${product.id}_`)) ?? []).reduce((s: number, i: any) => s + i.quantity, 0)
-                          : cart.items?.find((i: any) => i.product.id === product.id)?.quantity ?? 0
-                      }
-                      note={cart.items?.find((i: any) => i.product.id === product.id)?.note ?? ''}
-                      onAdd={() => handleAdd(product)}
-                      onRemove={() => cart.removeItem(product.id)}
-                      onUpdate={(q: number) => cart.updateQty(product.id, q)}
-                      onNote={(n: string) => cart.setNote(product.id, n)}
-                      cartItems={cart.items ?? []}
-                      onAddVariant={(v) => handleVariantAdd(product, v)}
-                      onRemoveVariant={(v) => handleVariantRemove(product, v)}
-                      onUpdateVariant={(v, q) => handleVariantUpdate(product, v, q)}
-                    />
+                    <div key={product.id} data-product-id={product.id}>
+                      <ProductCard
+                        product={product}
+                        shopClosed={!computeIsOpen(shop ?? { is_open: false })}
+                        qty={
+                          product.variants?.length
+                            ? (cart.items?.filter((i: any) => i.product.id.startsWith(`${product.id}_`)) ?? []).reduce((s: number, i: any) => s + i.quantity, 0)
+                            : cart.items?.find((i: any) => i.product.id === product.id)?.quantity ?? 0
+                        }
+                        note={cart.items?.find((i: any) => i.product.id === product.id)?.note ?? ''}
+                        onAdd={() => handleAdd(product)}
+                        onRemove={() => cart.removeItem(product.id)}
+                        onUpdate={(q: number) => cart.updateQty(product.id, q)}
+                        onNote={(n: string) => cart.setNote(product.id, n)}
+                        cartItems={cart.items ?? []}
+                        onAddVariant={(v) => handleVariantAdd(product, v)}
+                        onRemoveVariant={(v) => handleVariantRemove(product, v)}
+                        onUpdateVariant={(v, q) => handleVariantUpdate(product, v, q)}
+                      />
+                    </div>
                   ))}
                 </div>
               </div>
@@ -477,6 +504,45 @@ export default function StorePage() {
           </>
         )}
       </div>
+
+      {/* People also ordered */}
+      {popular.length > 0 && (
+        <div style={{ maxWidth:760, margin:'0 auto', padding:'0 12px 16px' }}>
+          <p style={{ fontSize:12, fontWeight:800, color:'#aaa', textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:10 }}>People also ordered</p>
+          <div style={{ display:'flex', gap:10, overflowX:'auto', paddingBottom:4, scrollbarWidth:'none' }}>
+            {popular.map(p => {
+              const product = products.find(pr => pr.id === p.product_id)
+              return (
+                <button key={p.product_id}
+                  onClick={() => {
+                    if (product) {
+                      if (product.variants?.length) {
+                        // scroll to that product by name
+                        document.querySelector(`[data-product-id="${product.id}"]`)?.scrollIntoView({ behavior:'smooth', block:'center' })
+                      } else {
+                        handleAdd(product)
+                      }
+                    }
+                  }}
+                  style={{ flexShrink:0, width:100, background:'#fff', border:'1.5px solid #f0f0f0', borderRadius:14, padding:'10px 8px', cursor:'pointer', textAlign:'left', fontFamily:'inherit' }}>
+                  <div style={{ width:'100%', aspectRatio:'1', borderRadius:10, overflow:'hidden', background:'#f5f5f5', marginBottom:7, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                    {p.product_image
+                      ? <img src={p.product_image} alt={p.product_name} style={{ width:'100%', height:'100%', objectFit:'cover' }} onError={e => { (e.currentTarget as HTMLImageElement).style.display='none' }} />
+                      : <span style={{ fontSize:24 }}>🍽️</span>
+                    }
+                  </div>
+                  <p style={{ fontSize:11, fontWeight:700, color:'#111', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', marginBottom:2 }}>{p.product_name}</p>
+                  {product && (
+                    <p style={{ fontSize:11, fontWeight:900, color:'#FF3008' }}>
+                      {product.variants?.length ? `from ₹${Math.min(...product.variants.map(v => v.price))}` : `₹${product.price}`}
+                    </p>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Floating cart */}
       {showCartBar && (

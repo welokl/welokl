@@ -74,10 +74,12 @@ export interface Product {
   original_price?: number
   image_url?: string
   category?: string
+  category_name?: string
   is_available: boolean
   is_veg?: boolean
   stock_count?: number
   sort_order?: number
+  variants?: { label: string; price: number }[] | null
   created_at: string
 }
 
