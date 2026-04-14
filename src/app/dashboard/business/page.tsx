@@ -261,6 +261,24 @@ export default function BusinessDashboard() {
     loadData()
   }
 
+  async function duplicateProduct(p: any) {
+    if (!shop) return
+    const supabase = createClient()
+    await supabase.from('products').insert({
+      shop_id: shop.id,
+      name: `${p.name} (copy)`,
+      description: p.description ?? null,
+      price: p.price,
+      original_price: p.original_price ?? null,
+      category: p.category ?? null,
+      is_veg: p.is_veg ?? null,
+      is_available: false,   // hidden by default so vendor can edit before publishing
+      variants: p.variants ?? null,
+      // image_url intentionally not copied — vendor must add their own photo
+    })
+    loadData()
+  }
+
   async function handleShopImageUpload(file: File, type: 'logo' | 'banner') {
     if (!user?.id || !shop?.id) return
     setImgError('')
@@ -637,21 +655,42 @@ export default function BusinessDashboard() {
             ) : (
               <div className="space-y-2">
                 {products.map(p => (
-                  <div key={p.id} className="card px-4 py-3 flex items-center gap-3">
+                  <div key={p.id} className="card px-3 py-3 flex items-center gap-3">
+                    {/* Thumbnail */}
+                    <div style={{width:52, height:52, borderRadius:10, overflow:'hidden', flexShrink:0, background:'var(--bg-3)', border:'1.5px solid var(--border)', position:'relative'}}>
+                      {p.image_url
+                        ? <img src={p.image_url} alt={p.name} style={{width:'100%', height:'100%', objectFit:'cover'}} />
+                        : <div style={{width:'100%', height:'100%', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:2}}>
+                            <span style={{fontSize:18}}>📷</span>
+                            <span style={{fontSize:8, fontWeight:800, color:'#FF3008', lineHeight:1}}>NO PHOTO</span>
+                          </div>
+                      }
+                    </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-sm truncate">{p.name}</p>
+                      <div style={{display:'flex', alignItems:'center', gap:6}}>
+                        <p className="font-semibold text-sm truncate">{p.name}</p>
+                        {!p.image_url && (
+                          <span style={{flexShrink:0, fontSize:9, fontWeight:800, color:'#FF3008', background:'rgba(255,48,8,.1)', padding:'2px 6px', borderRadius:6}}>ADD PHOTO</span>
+                        )}
+                      </div>
                       <div className="flex items-center gap-2 mt-0.5">
                         <span className="text-sm font-bold text-brand-500">₹{p.price}</span>
                         {p.original_price && p.original_price > p.price && <span style={{fontSize:12, color:"var(--text-3)", textDecoration:"line-through"}}>₹{p.original_price}</span>}
-                        {p.category && <span style={{fontSize:11,color:"var(--text-3)"}}>- {p.category}</span>}
+                        {p.category && <span style={{fontSize:11,color:"var(--text-3)"}}>· {p.category}</span>}
+                        {Array.isArray(p.variants) && p.variants.length > 0 && (
+                          <span style={{fontSize:10, color:'#7c3aed', fontWeight:700, background:'rgba(124,58,237,.1)', padding:'1px 5px', borderRadius:5}}>
+                            {p.variants.map((v: any) => v.label).join('/')}
+                          </span>
+                        )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1">
                       <button onClick={() => toggleProduct(p.id, !p.is_available)}
                         style={{position:'relative', width:40, height:20, borderRadius:999, background:p.is_available?'#22c55e':'var(--bg-4)', border:'none', cursor:'pointer', transition:'background .2s', flexShrink:0}}>
                         <span style={{position:'absolute', top:2, left:2, width:16, height:16, borderRadius:'50%', background:'white', boxShadow:'0 1px 3px rgba(0,0,0,.2)', transition:'transform .2s', transform:p.is_available?'translateX(20px)':'none'}} />
                       </button>
-                      <button onClick={() => setEditingProduct(p)} style={{color:"var(--text-3)", background:"none", border:"none", cursor:"pointer", fontSize:15, padding:"0 4px", fontFamily:"inherit"}} title="Edit & add image">✏️</button>
+                      <button onClick={() => duplicateProduct(p)} style={{color:"var(--text-3)", background:"none", border:"none", cursor:"pointer", fontSize:14, padding:"0 4px", fontFamily:"inherit"}} title="Duplicate">⧉</button>
+                      <button onClick={() => setEditingProduct(p)} style={{color:"var(--text-3)", background:"none", border:"none", cursor:"pointer", fontSize:15, padding:"0 4px", fontFamily:"inherit"}} title="Edit">✏️</button>
                       <button onClick={() => deleteProduct(p.id)} style={{color:"var(--text-3)", background:"none", border:"none", cursor:"pointer", fontSize:16, padding:"0 4px", fontFamily:"inherit"}}>✕</button>
                     </div>
                   </div>
@@ -1361,6 +1400,7 @@ function AddProductModal({ shopId, userId, onClose, onSuccess }: { shopId: strin
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!form.name.trim()) { setError('Name required'); return }
+    if (!imgFiles[0]) { setError('Product photo is required — customers buy with their eyes!'); return }
     if (usePortions) {
       const filled = portions.filter(p => p.label.trim() && p.price && !isNaN(Number(p.price)))
       if (filled.length < 2) { setError('Enter a label and price for each portion'); return }
@@ -1516,11 +1556,21 @@ function AddProductModal({ shopId, userId, onClose, onSuccess }: { shopId: strin
               <span style={{position:'absolute', top:2, left:2, width:16, height:16, borderRadius:'50%', background:'white', boxShadow:'0 1px 3px rgba(0,0,0,.2)', transition:'transform .2s', transform:form.is_available?'translateX(20px)':'none'}} />
             </button>
           </div>
-          <div>
-            <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: 'var(--text-2)', marginBottom: 10 }}>Product Photos <span style={{ fontWeight: 500, color: 'var(--text-4)' }}>(optional, max 2)</span></label>
+          <div style={{border: imgFiles[0] ? '2px solid #22c55e' : '2px solid #FF3008', borderRadius:16, padding:'14px 14px 10px', background: imgFiles[0] ? 'rgba(34,197,94,.04)' : 'rgba(255,48,8,.04)'}}>
+            <div style={{display:'flex', alignItems:'center', gap:8, marginBottom:10}}>
+              {imgFiles[0]
+                ? <span style={{fontSize:16}}>✅</span>
+                : <span style={{fontSize:16}}>📸</span>}
+              <div>
+                <p style={{fontSize:13, fontWeight:800, color: imgFiles[0] ? '#16a34a' : '#FF3008'}}>
+                  {imgFiles[0] ? 'Photo added!' : 'Product photo required *'}
+                </p>
+                <p style={{fontSize:11, color:'var(--text-3)'}}>Products with photos get 3× more orders</p>
+              </div>
+            </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               {[0, 1].map(i => (
-                <div key={i}><ImageUploader label={i === 0 ? 'Main photo' : 'Extra photo'} currentUrl={imgPreviews[i]} aspectRatio="1:1" progress={imgProgress[i]} onUpload={(file: File) => handleImgSelect(file, i as 0 | 1)} hint={i === 0 ? 'Primary image' : 'Optional 2nd image'} /></div>
+                <div key={i}><ImageUploader label={i === 0 ? 'Main photo *' : 'Extra photo'} currentUrl={imgPreviews[i]} aspectRatio="1:1" progress={imgProgress[i]} onUpload={(file: File) => handleImgSelect(file, i as 0 | 1)} hint={i === 0 ? 'Required' : 'Optional'} /></div>
               ))}
             </div>
           </div>

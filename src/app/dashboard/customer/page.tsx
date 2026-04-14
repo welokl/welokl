@@ -25,7 +25,8 @@ interface Shop {
 }
 interface Product {
   id: string; name: string; price: number; original_price: number | null
-  image_url: string | null; shop_id: string; shop_name?: string; shop_is_open?: boolean
+  image_url: string | null; shop_id: string; shop_name?: string
+  shop_is_open?: boolean; is_bestseller?: boolean
 }
 
 function dist(lat1: number, lng1: number, lat2: number, lng2: number) {
@@ -396,7 +397,14 @@ export default function CustomerHome() {
   // ── Personalised product / shop slices ────────────────────────
   // Price-band product slices — freq-sorted, shown as horizontal scrolls
   const shopOpenMap = Object.fromEntries(allShops.map(s => [s.id, computeIsOpen(s)]))
-  const enrichedProducts = products.map(p => ({ ...p, shop_is_open: shopOpenMap[p.shop_id] ?? true }))
+  // Mark top-3 most-ordered products as bestsellers (freq > 0 only)
+  const freqEntries = Object.entries(prodFreqMap).filter(([, f]) => f > 0).sort((a, b) => b[1] - a[1])
+  const bestsellerIds = new Set(freqEntries.slice(0, 3).map(([id]) => id))
+  const enrichedProducts = products.map(p => ({
+    ...p,
+    shop_is_open: shopOpenMap[p.shop_id] ?? true,
+    is_bestseller: bestsellerIds.has(p.id),
+  }))
   const under49    = sortByFreq(enrichedProducts.filter(p => p.price <= 49)).slice(0, 10)
   const under100   = sortByFreq(enrichedProducts.filter(p => p.price <= 99 && p.price > 49)).slice(0, 10)
 
@@ -795,6 +803,11 @@ function PriceBandCard({ product: p }: { product: Product }) {
           {disc && !shopClosed && (
             <div style={{ position:'absolute', top:8, left:8, background:'#FF3008', color:'#fff', fontSize:10, fontWeight:900, padding:'3px 8px', borderRadius:6 }}>-{disc}%</div>
           )}
+          {p.is_bestseller && !shopClosed && (
+            <div style={{ position:'absolute', top:8, right:8, background:'#f59e0b', color:'#fff', fontSize:9, fontWeight:900, padding:'3px 7px', borderRadius:6, display:'flex', alignItems:'center', gap:3 }}>
+              🔥 Popular
+            </div>
+          )}
           {shopClosed && (
             <div style={{ position:'absolute', inset:0, background:'rgba(0,0,0,.35)', display:'flex', alignItems:'center', justifyContent:'center' }}>
               <span style={{ fontSize:9, fontWeight:800, color:'#fff', background:'rgba(0,0,0,.55)', padding:'2px 7px', borderRadius:4, letterSpacing:'0.04em' }}>CLOSED</span>
@@ -955,6 +968,9 @@ function ShopProductRow({ shop, products }: { shop: Shop & { km: number | null }
                           </div>}
                       {disc && isOpen && (
                         <div style={{ position:'absolute', top:6, left:6, background:'#FF3008', color:'#fff', fontSize:9, fontWeight:900, padding:'2px 6px', borderRadius:5 }}>-{disc}%</div>
+                      )}
+                      {(p as any).is_bestseller && isOpen && (
+                        <div style={{ position:'absolute', top:6, right:6, background:'#f59e0b', color:'#fff', fontSize:8, fontWeight:900, padding:'2px 5px', borderRadius:5 }}>🔥</div>
                       )}
                     </div>
                     <p style={{ fontSize:12, fontWeight:700, color:'var(--text-primary)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', marginBottom:3, lineHeight:1.3 }}>{p.name}</p>
