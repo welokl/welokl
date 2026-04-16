@@ -455,6 +455,8 @@ export default function BusinessDashboard() {
                   const sub = (order as any).subtotal ?? (order as any).total_amount
                   const commPct = (shop as any)?.commission_percent ?? 15
                   const commAmt = Math.round(sub * commPct / 100)
+                  const netAmt = sub - commAmt
+                  const isCODDelivery = (order as any).payment_method === 'cod' && (order as any).type === 'delivery'
                   return (
                     <div style={{ borderTop:'1px dashed #eee', paddingTop:10, display:'flex', flexDirection:'column', gap:5 }}>
                       <div style={{ display:'flex', justifyContent:'space-between', fontSize:13, color:'#888' }}>
@@ -462,10 +464,10 @@ export default function BusinessDashboard() {
                         <span style={{ fontWeight:700 }}>₹{(order as any).total_amount}</span>
                       </div>
                       <div style={{ display:'flex', justifyContent:'space-between', fontWeight:900, fontSize:15 }}>
-                        <span style={{ color:'#16a34a' }}>You receive</span>
-                        <span style={{ color:'#16a34a' }}>₹{sub - commAmt}</span>
+                        <span style={{ color:'#16a34a' }}>{isCODDelivery ? 'Collect from partner' : 'You receive'}</span>
+                        <span style={{ color:'#16a34a' }}>₹{netAmt}</span>
                       </div>
-                      <p style={{ fontSize:11, color:'#bbb', marginTop:2 }}>After {commPct}% platform commission (−₹{commAmt})</p>
+                      <p style={{ fontSize:11, color:'#bbb', marginTop:2 }}>After {commPct}% commission (−₹{commAmt}){isCODDelivery ? ' · partner pays you after collecting from customer' : ''}</p>
                     </div>
                   )
                 })()}
@@ -665,6 +667,7 @@ export default function BusinessDashboard() {
                       const commPct = (shop as any)?.commission_percent ?? 15
                       const commAmt = Math.round(sub * commPct / 100)
                       const netAmt = sub - commAmt
+                      const isCODDel = (order as any).payment_method === 'cod' && (order as any).type === 'delivery'
                       return (
                         <div key={order.id} style={{ background:'var(--card-white)', borderRadius:18, padding:'14px 16px', border:'1px solid var(--divider)' }}>
                           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:8 }}>
@@ -682,7 +685,7 @@ export default function BusinessDashboard() {
                             </div>
                             <div style={{ textAlign:'right' }}>
                               <p style={{ fontWeight:900, fontSize:15, color: order.status === 'delivered' ? '#16a34a' : 'var(--text-primary)' }}>₹{netAmt}</p>
-                              <p style={{ fontSize:10, color:'var(--text-muted)' }}>after {commPct}% comm</p>
+                              <p style={{ fontSize:10, color:'var(--text-muted)' }}>{isCODDel ? 'from partner' : 'received'} · after {commPct}% comm</p>
                             </div>
                           </div>
 
@@ -785,6 +788,11 @@ export default function BusinessDashboard() {
                     const isPickupType = order.type === 'pickup'
                     const hasPartner   = !!(order as any).delivery_partner_id
                     const pickupCode   = (order as any).pickup_code as string | null
+                    const isCODDelivery = order.payment_method === 'cod' && order.type === 'delivery'
+                    const sub          = (order as any).subtotal ?? order.total_amount
+                    const commPct      = (shop as any)?.commission_percent ?? 15
+                    const commAmt      = Math.round(sub * commPct / 100)
+                    const netAmt       = sub - commAmt
 
                     return (
                       <div key={order.id} style={{ background: 'var(--card-bg)', border: `2px solid ${(order as any).is_priority ? '#f97316' : isReady ? 'var(--brand)' : 'var(--border)'}`, borderRadius: 16, padding: 16, boxShadow: (order as any).is_priority ? '0 0 0 3px rgba(249,115,22,.15)' : isReady ? '0 0 0 2px var(--brand-glow)' : 'var(--card-shadow)' }}>
@@ -817,6 +825,17 @@ export default function BusinessDashboard() {
                             </div>
                           ))}
                         </div>
+
+                        {/* COD delivery: show net amount shop will collect from partner */}
+                        {isCODDelivery && (
+                          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', background:'#eefaf4', borderRadius:12, padding:'10px 14px', marginBottom:12 }}>
+                            <div>
+                              <p style={{ fontSize:13, fontWeight:800, color:'#16a34a' }}>Collect from delivery partner</p>
+                              <p style={{ fontSize:11, color:'#16a34a', opacity:0.8 }}>After {commPct}% commission (−₹{commAmt})</p>
+                            </div>
+                            <p style={{ fontSize:20, fontWeight:900, color:'#16a34a' }}>₹{netAmt}</p>
+                          </div>
+                        )}
 
                         {isReady && isPickupType && (
                           <PickupCodeVerifier orderId={order.id} correctCode={pickupCode} mode="customer" onVerified={() => loadData()} />
