@@ -33,6 +33,10 @@ export default function BusinessDashboard() {
   const [bannerProgress, setBannerProgress] = useState(0)
   const [imgError, setImgError]             = useState('')
   const [showPhoneGate, setShowPhoneGate]   = useState(false)
+  const [orderFilter, setOrderFilter]       = useState<'live' | 'history'>('live')
+  const [customerModal, setCustomerModal]   = useState<{ name: string; customerId: string } | null>(null)
+  const [customerHistory, setCustomerHistory] = useState<any[]>([])
+  const [custHistLoading, setCustHistLoading] = useState(false)
 
   const loadData = useCallback(async () => {
     const supabase = createClient()
@@ -84,7 +88,7 @@ export default function BusinessDashboard() {
     setVerStatus(vStatus)
     setVerNote((shopData as any).verification_note ?? null)
     const [{ data: orderData }, { data: productData }] = await Promise.all([
-      supabase.from('orders').select('*, delivery_partner_id, pickup_code, items:order_items(*), customer:users!customer_id(name, phone)').eq('shop_id', shopData.id).order('created_at', { ascending: false }).limit(50),
+      supabase.from('orders').select('*, delivery_partner_id, pickup_code, items:order_items(*), customer:users!customer_id(name)').eq('shop_id', shopData.id).order('created_at', { ascending: false }).limit(50),
       supabase.from('products').select('*').eq('shop_id', shopData.id).order('sort_order'),
     ])
     setOrders(orderData || [])
@@ -315,9 +319,26 @@ export default function BusinessDashboard() {
 
   // Priority orders always surface first
   const sortPriority = (arr: Order[]) => [...arr].sort((a, b) => ((b as any).is_priority ? 1 : 0) - ((a as any).is_priority ? 1 : 0))
-  const newOrders    = sortPriority(orders.filter(o => o.status === 'placed'))
-  const activeOrders = sortPriority(orders.filter(o => ['accepted','preparing','ready'].includes(o.status)))
+  const newOrders      = sortPriority(orders.filter(o => o.status === 'placed'))
+  const activeOrders   = sortPriority(orders.filter(o => ['accepted','preparing','ready'].includes(o.status)))
   const deliveredOrders = orders.filter(o => o.status === 'delivered')
+  const historyOrders   = orders.filter(o => ['delivered','cancelled','rejected'].includes(o.status))
+
+  async function openCustomer(customerId: string, name: string) {
+    if (!shop) return
+    setCustomerModal({ name, customerId })
+    setCustHistLoading(true)
+    setCustomerHistory([])
+    const sb = createClient()
+    const { data } = await sb
+      .from('orders')
+      .select('id, order_number, status, total_amount, created_at, items:order_items(product_name, quantity, price)')
+      .eq('shop_id', shop.id)
+      .eq('customer_id', customerId)
+      .order('created_at', { ascending: false })
+    setCustomerHistory(data ?? [])
+    setCustHistLoading(false)
+  }
   const totalRevenue = deliveredOrders.reduce((s, o) => s + o.subtotal, 0)
   const commission = Math.round(totalRevenue * ((shop?.commission_percent || 15) / 100))
   const netEarnings = totalRevenue - commission
@@ -435,7 +456,7 @@ export default function BusinessDashboard() {
                   <span style={{ color:'#FF3008' }}>₹{(order as any).total_amount}</span>
                 </div>
                 {(order as any).customer?.name && (
-                  <p style={{ fontSize:12, color:'#888', marginTop:8 }}>👤 {(order as any).customer.name}{(order as any).customer.phone ? ` · ${(order as any).customer.phone}` : ''}</p>
+                  <p style={{ fontSize:12, color:'#888', marginTop:8 }}>👤 {(order as any).customer.name}</p>
                 )}
               </div>
             )}
@@ -593,7 +614,89 @@ export default function BusinessDashboard() {
 
         {tab === 'orders' && (
           <div className="space-y-5">
-            {newOrders.length > 0 && (
+
+            {/* Live / History toggle */}
+            <div style={{ display:'flex', background:'var(--chip-bg)', borderRadius:14, padding:4, gap:4 }}>
+              {(['live','history'] as const).map(f => (
+                <button key={f} onClick={() => setOrderFilter(f)} style={{
+                  flex:1, padding:'9px 0', borderRadius:11, border:'none', cursor:'pointer', fontFamily:'inherit',
+                  fontWeight:800, fontSize:13,
+                  background: orderFilter === f ? 'var(--card-white)' : 'transparent',
+                  color: orderFilter === f ? 'var(--text-primary)' : 'var(--text-muted)',
+                  boxShadow: orderFilter === f ? '0 1px 6px rgba(0,0,0,.08)' : 'none',
+                  transition: 'all .15s',
+                }}>
+                  {f === 'live'
+                    ? `Live ${newOrders.length + activeOrders.length > 0 ? `(${newOrders.length + activeOrders.length})` : ''}`
+                    : `History (${historyOrders.length})`}
+                </button>
+              ))}
+            </div>
+
+            {orderFilter === 'history' && (
+              <div>
+                {historyOrders.length === 0 ? (
+                  <div style={{ textAlign:'center', padding:'48px 20px', background:'var(--card-white)', borderRadius:20, border:'1px solid var(--divider)' }}>
+                    <div style={{ fontSize:40, marginBottom:12 }}>📋</div>
+                    <p style={{ fontWeight:800, fontSize:15, color:'var(--text-primary)', marginBottom:4 }}>No past orders yet</p>
+                    <p style={{ fontSize:13, color:'var(--text-muted)' }}>Completed and cancelled orders appear here</p>
+                  </div>
+                ) : (
+                  <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                    {historyOrders.map(order => {
+                      const cust = (order as any).customer
+                      const statusColor: Record<string,string> = { delivered:'#16a34a', cancelled:'#ef4444', rejected:'#ef4444' }
+                      const statusLabel: Record<string,string> = { delivered:'Delivered', cancelled:'Cancelled', rejected:'Rejected' }
+                      return (
+                        <div key={order.id} style={{ background:'var(--card-white)', borderRadius:18, padding:'14px 16px', border:'1px solid var(--divider)' }}>
+                          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:8 }}>
+                            <div>
+                              <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:3 }}>
+                                <span style={{ fontWeight:900, fontSize:14, color:'var(--text-primary)' }}>#{order.order_number}</span>
+                                <span style={{ fontSize:11, fontWeight:700, padding:'2px 8px', borderRadius:999, background: order.status === 'delivered' ? 'rgba(22,163,74,.1)' : 'rgba(239,68,68,.1)', color: statusColor[order.status] || '#888' }}>
+                                  {statusLabel[order.status] || order.status}
+                                </span>
+                              </div>
+                              <p style={{ fontSize:11, color:'var(--text-muted)' }}>
+                                {new Date((order as any).created_at).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' })}
+                                {' · '}{new Date((order as any).created_at).toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit' })}
+                              </p>
+                            </div>
+                            <span style={{ fontWeight:900, fontSize:15, color:'var(--text-primary)' }}>₹{order.total_amount}</span>
+                          </div>
+
+                          {/* Items */}
+                          <div style={{ marginBottom: cust ? 10 : 0 }}>
+                            {(order as any).items?.map((i: any, idx: number) => (
+                              <div key={idx} style={{ fontSize:13, color:'var(--text-secondary)', padding:'2px 0' }}>
+                                {i.product_name} <span style={{ color:'var(--text-muted)' }}>×{i.quantity}</span>
+                                {i.price && <span style={{ float:'right', fontSize:12 }}>₹{i.price * i.quantity}</span>}
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* Customer chip — tappable to see full history */}
+                          {cust?.name && (
+                            <button onClick={() => openCustomer((order as any).customer_id, cust.name)}
+                              style={{ display:'flex', alignItems:'center', gap:8, marginTop:10, paddingTop:10, borderTop:'1px solid var(--divider)', background:'none', border:'none', cursor:'pointer', fontFamily:'inherit', width:'100%', textAlign:'left' }}>
+                              <div style={{ width:28, height:28, borderRadius:'50%', background:'#FF3008', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:900, fontSize:12, color:'#fff', flexShrink:0 }}>
+                                {cust.name[0].toUpperCase()}
+                              </div>
+                              <div style={{ flex:1 }}>
+                                <p style={{ fontSize:13, fontWeight:700, color:'var(--text-primary)' }}>{cust.name}</p>
+                              </div>
+                              <span style={{ fontSize:11, color:'#FF3008', fontWeight:700 }}>View history →</span>
+                            </button>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {orderFilter === 'live' && newOrders.length > 0 && (
               <div>
                 <div className="flex items-center gap-2 mb-3"><span className="w-2 h-2 bg-red-500 rounded-full animate-pulse" /><h2 className="font-bold text-red-600">New Orders ({newOrders.length})</h2></div>
                 <div className="space-y-3">
@@ -609,9 +712,14 @@ export default function BusinessDashboard() {
                         <span className="font-bold">₹{order.total_amount}</span>
                       </div>
                       {(order as any).customer?.name && (
-                        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-2)', marginBottom: 8 }}>
-                          👤 {(order as any).customer.name}
-                        </div>
+                        <button onClick={() => openCustomer((order as any).customer_id, (order as any).customer.name)}
+                          style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10, background:'var(--chip-bg)', border:'none', borderRadius:10, padding:'6px 10px', cursor:'pointer', fontFamily:'inherit', width:'fit-content' }}>
+                          <div style={{ width:22, height:22, borderRadius:'50%', background:'#FF3008', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:900, fontSize:11, color:'#fff', flexShrink:0 }}>
+                            {(order as any).customer.name[0].toUpperCase()}
+                          </div>
+                          <span style={{ fontSize:13, fontWeight:700, color:'var(--text-primary)' }}>{(order as any).customer.name}</span>
+                          <span style={{ fontSize:11, color:'#FF3008', fontWeight:700 }}>history →</span>
+                        </button>
                       )}
                       <div style={{ marginBottom: 12 }}>
                         {(order as any).items?.map((i: any) => (
@@ -635,7 +743,7 @@ export default function BusinessDashboard() {
               </div>
             )}
 
-            {activeOrders.length > 0 && (
+            {orderFilter === 'live' && activeOrders.length > 0 && (
               <div>
                 <h2 className="font-bold text-amber-600 mb-3">Active ({activeOrders.length})</h2>
                 <div className="space-y-3">
@@ -711,7 +819,7 @@ export default function BusinessDashboard() {
               </div>
             )}
 
-            {newOrders.length === 0 && activeOrders.length === 0 && (
+            {orderFilter === 'live' && newOrders.length === 0 && activeOrders.length === 0 && (
               <div className="card p-12 text-center">
                 <div className="text-5xl mb-3">⏳</div>
                 <p className="font-bold">No active orders</p>
@@ -793,6 +901,85 @@ export default function BusinessDashboard() {
       )}
       {editingProduct && user && (
         <EditProductModal product={editingProduct} userId={user.id} onClose={() => setEditingProduct(null)} onSuccess={() => { setEditingProduct(null); loadData() }} />
+      )}
+
+      {/* Customer history modal */}
+      {customerModal && (
+        <div style={{ position:'fixed', inset:0, zIndex:300, background:'rgba(0,0,0,.55)', display:'flex', alignItems:'flex-end', justifyContent:'center', fontFamily:"'Plus Jakarta Sans',sans-serif" }}
+          onClick={e => { if (e.target === e.currentTarget) setCustomerModal(null) }}>
+          <div style={{ background:'var(--card-white)', borderRadius:'24px 24px 0 0', width:'100%', maxWidth:520, maxHeight:'82vh', display:'flex', flexDirection:'column' }}>
+
+            {/* Header */}
+            <div style={{ padding:'20px 20px 14px', borderBottom:'1px solid var(--divider)', flexShrink:0 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:4 }}>
+                <div style={{ width:44, height:44, borderRadius:'50%', background:'#FF3008', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:900, fontSize:18, color:'#fff', flexShrink:0 }}>
+                  {customerModal.name[0].toUpperCase()}
+                </div>
+                <div style={{ flex:1 }}>
+                  <p style={{ fontWeight:900, fontSize:17, color:'var(--text-primary)' }}>{customerModal.name}</p>
+                </div>
+                <button onClick={() => setCustomerModal(null)} style={{ width:32, height:32, borderRadius:999, background:'var(--chip-bg)', border:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontSize:16, color:'var(--text-muted)' }}>✕</button>
+              </div>
+              {!custHistLoading && customerHistory.length > 0 && (
+                <div style={{ display:'flex', gap:16, marginTop:10 }}>
+                  <div style={{ textAlign:'center' }}>
+                    <p style={{ fontSize:18, fontWeight:900, color:'var(--text-primary)' }}>{customerHistory.length}</p>
+                    <p style={{ fontSize:11, color:'var(--text-muted)', fontWeight:600 }}>Orders</p>
+                  </div>
+                  <div style={{ textAlign:'center' }}>
+                    <p style={{ fontSize:18, fontWeight:900, color:'#16a34a' }}>₹{customerHistory.filter(o => o.status === 'delivered').reduce((s: number, o: any) => s + o.total_amount, 0)}</p>
+                    <p style={{ fontSize:11, color:'var(--text-muted)', fontWeight:600 }}>Total spent</p>
+                  </div>
+                  <div style={{ textAlign:'center' }}>
+                    <p style={{ fontSize:18, fontWeight:900, color:'var(--text-primary)' }}>{customerHistory.filter(o => o.status === 'delivered').length}</p>
+                    <p style={{ fontSize:11, color:'var(--text-muted)', fontWeight:600 }}>Completed</p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Order list */}
+            <div style={{ overflowY:'auto', padding:'14px 20px 32px', display:'flex', flexDirection:'column', gap:10 }}>
+              {custHistLoading ? (
+                <div style={{ textAlign:'center', padding:'40px 0', color:'var(--text-muted)', fontSize:14 }}>Loading…</div>
+              ) : customerHistory.length === 0 ? (
+                <div style={{ textAlign:'center', padding:'40px 0' }}>
+                  <p style={{ fontSize:40, marginBottom:10 }}>📋</p>
+                  <p style={{ fontWeight:700, color:'var(--text-muted)' }}>No orders from this customer yet</p>
+                </div>
+              ) : customerHistory.map((o: any) => {
+                const statusColor: Record<string,string> = { delivered:'#16a34a', cancelled:'#ef4444', rejected:'#ef4444', placed:'#2563eb', accepted:'#7c3aed', preparing:'#d97706', ready:'#0891b2' }
+                const statusLabel: Record<string,string> = { delivered:'Delivered', cancelled:'Cancelled', rejected:'Rejected', placed:'Placed', accepted:'Accepted', preparing:'Preparing', ready:'Ready' }
+                return (
+                  <div key={o.id} style={{ background:'var(--page-bg)', borderRadius:16, padding:'14px 16px', border:'1px solid var(--divider)' }}>
+                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:8 }}>
+                      <div>
+                        <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:3 }}>
+                          <span style={{ fontWeight:800, fontSize:14, color:'var(--text-primary)' }}>#{o.order_number}</span>
+                          <span style={{ fontSize:11, fontWeight:700, padding:'2px 8px', borderRadius:999, background: o.status === 'delivered' ? 'rgba(22,163,74,.1)' : 'rgba(239,68,68,.1)', color: statusColor[o.status] || '#888' }}>
+                            {statusLabel[o.status] || o.status}
+                          </span>
+                        </div>
+                        <p style={{ fontSize:11, color:'var(--text-muted)' }}>
+                          {new Date(o.created_at).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' })}
+                        </p>
+                      </div>
+                      <span style={{ fontWeight:900, fontSize:15, color:'var(--text-primary)' }}>₹{o.total_amount}</span>
+                    </div>
+                    <div>
+                      {o.items?.map((i: any, idx: number) => (
+                        <div key={idx} style={{ fontSize:13, color:'var(--text-secondary)', padding:'2px 0' }}>
+                          {i.product_name} <span style={{ color:'var(--text-muted)' }}>×{i.quantity}</span>
+                          {i.price && <span style={{ float:'right', fontSize:12, fontWeight:700 }}>₹{i.price * i.quantity}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
       )}
     </div>
     </>
@@ -925,7 +1112,7 @@ function SubscriptionPlans({ shopId }: { shopId: string }) {
     const sb = createClient()
     const [{ data: planRows }, { data: subRows }] = await Promise.all([
       sb.from('subscription_plans').select('*').eq('shop_id', shopId).order('created_at', { ascending: false }),
-      sb.from('customer_subscriptions').select('*, customer:users!customer_id(name, phone)').eq('shop_id', shopId).neq('status', 'cancelled'),
+      sb.from('customer_subscriptions').select('*, customer:users!customer_id(name)').eq('shop_id', shopId).neq('status', 'cancelled'),
     ])
     setPlans(planRows ?? [])
     setSubs(subRows ?? [])
@@ -1081,11 +1268,6 @@ function SubscriptionPlans({ shopId }: { shopId: string }) {
                             <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{s.customer?.name || '—'}</span>
                             {s.delivery_address && <span style={{ fontSize: 11, color: 'var(--text-3)', marginLeft: 8 }}>{s.delivery_address}</span>}
                           </div>
-                          {s.customer?.phone && (
-                            <a href={`tel:${s.customer.phone}`} style={{ fontSize: 11, fontWeight: 800, color: '#fff', background: '#16a34a', padding: '3px 10px', borderRadius: 8, textDecoration: 'none' }}>
-                              Call
-                            </a>
-                          )}
                         </div>
                       ))}
                     </div>

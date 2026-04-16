@@ -168,27 +168,71 @@ export default function DeliveryAnalytics() {
 
         {activeTab === 'earnings' && (
           <>
-            {/* All-time hero */}
-            <div style={{ background: 'linear-gradient(135deg, #FF3008 0%, #ff6b35 100%)', borderRadius: 24, padding: '24px 24px', marginBottom: 16, color: '#fff', boxShadow: '0 8px 32px rgba(255,48,8,.3)' }}>
-              <p style={{ fontSize: 13, fontWeight: 700, opacity: 0.8, marginBottom: 6 }}>Total earned (all time)</p>
-              <p style={{ fontSize: 40, fontWeight: 900, letterSpacing: '-1px', marginBottom: 4 }}>₹{totalEarned.toFixed(0)}</p>
-              <p style={{ fontSize: 13, opacity: 0.75 }}>{totalDeliveries} deliveries completed</p>
+            {/* Hero — wallet balance + all-time earned */}
+            <div style={{ background: 'linear-gradient(135deg, #FF3008 0%, #ff6b35 100%)', borderRadius: 24, padding: '24px', marginBottom: 12, color: '#fff', boxShadow: '0 8px 32px rgba(255,48,8,.3)' }}>
+              <p style={{ fontSize: 12, fontWeight: 700, opacity: 0.75, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Wallet balance</p>
+              <p style={{ fontSize: 42, fontWeight: 900, letterSpacing: '-1.5px', marginBottom: 2 }}>₹{balance.toFixed(0)}</p>
+              <p style={{ fontSize: 13, opacity: 0.8 }}>Total earned all time: ₹{totalEarned.toFixed(0)} · {totalDeliveries} deliveries</p>
+            </div>
+
+            {/* Per-delivery earnings breakdown — the most important card */}
+            <div style={{ background: 'var(--card-white)', borderRadius: 20, padding: '18px 20px', marginBottom: 12, border: '1.5px solid var(--divider)' }}>
+              <p style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 14 }}>💰 How you earn per delivery</p>
+
+              {/* Flow: delivery fee → your cut → platform */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 0, marginBottom: 16 }}>
+                {/* Customer pays */}
+                <div style={{ flex: 1, textAlign: 'center', padding: '10px 8px', background: '#f5f5f5', borderRadius: '12px 0 0 12px' }}>
+                  <p style={{ fontSize: 10, color: '#888', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Customer pays</p>
+                  <p style={{ fontSize: 18, fontWeight: 900, color: '#111' }}>₹25</p>
+                  <p style={{ fontSize: 10, color: '#aaa' }}>delivery fee</p>
+                </div>
+                <div style={{ fontSize: 16, color: '#ccc', padding: '0 4px' }}>→</div>
+                {/* Your earning */}
+                <div style={{ flex: 1, textAlign: 'center', padding: '10px 8px', background: '#eefaf4', borderRadius: 0 }}>
+                  <p style={{ fontSize: 10, color: '#16a34a', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>You receive</p>
+                  <p style={{ fontSize: 22, fontWeight: 900, color: '#16a34a' }}>₹20</p>
+                  <p style={{ fontSize: 10, color: '#16a34a', opacity: 0.7 }}>per delivery</p>
+                </div>
+                <div style={{ fontSize: 16, color: '#ccc', padding: '0 4px' }}>+</div>
+                {/* Platform */}
+                <div style={{ flex: 1, textAlign: 'center', padding: '10px 8px', background: '#fff5f0', borderRadius: '0 12px 12px 0' }}>
+                  <p style={{ fontSize: 10, color: '#FF3008', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Platform</p>
+                  <p style={{ fontSize: 18, fontWeight: 900, color: '#FF3008' }}>₹5</p>
+                  <p style={{ fontSize: 10, color: '#FF3008', opacity: 0.7 }}>service fee</p>
+                </div>
+              </div>
+
+              {/* Rules list */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {[
+                  { icon: '✅', text: 'You keep ₹20 flat for every delivery completed', color: '#16a34a' },
+                  { icon: '📦', text: 'Orders ≥ ₹299 have free delivery — you still earn ₹20', color: '#2563eb' },
+                  { icon: '🚫', text: 'No other deductions — ₹20 goes straight to your wallet', color: '#555' },
+                ].map(({ icon, text, color }) => (
+                  <div key={text} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px 12px', background: 'var(--page-bg)', borderRadius: 12 }}>
+                    <span style={{ fontSize: 14, flexShrink: 0 }}>{icon}</span>
+                    <p style={{ fontSize: 13, color, fontWeight: 600, lineHeight: 1.4 }}>{text}</p>
+                  </div>
+                ))}
+              </div>
             </div>
 
             {/* Period breakdown */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
               {periods.filter(p => p.label !== 'All time').map((p, i) => (
                 <div key={p.label} style={{ background: 'var(--card-white)', borderRadius: 18, padding: '16px 18px', border: '1.5px solid var(--divider)' }}>
                   <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{p.label}</p>
                   <p style={{ fontSize: 26, fontWeight: 900, color: PERIOD_COLORS[i], marginBottom: 2 }}>₹{p.amount.toFixed(0)}</p>
                   <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>{p.count} {p.count === 1 ? 'delivery' : 'deliveries'}</p>
+                  {p.count > 0 && <p style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 2 }}>₹20 × {p.count}</p>}
                 </div>
               ))}
             </div>
 
-            {/* Stats row */}
-            <div style={{ background: 'var(--card-white)', borderRadius: 20, padding: '18px 20px', marginBottom: 16, border: '1.5px solid var(--divider)' }}>
-              <p style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 16 }}>Performance</p>
+            {/* Performance stats */}
+            <div style={{ background: 'var(--card-white)', borderRadius: 20, padding: '18px 20px', border: '1.5px solid var(--divider)' }}>
+              <p style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 14 }}>📊 Performance</p>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 0 }}>
                 {[
                   { label: 'Total', value: String(totalDeliveries), sub: 'deliveries' },
@@ -201,22 +245,6 @@ export default function DeliveryAnalytics() {
                     <p style={{ fontSize: 10, color: 'var(--text-faint)' }}>{s.sub}</p>
                   </div>
                 ))}
-              </div>
-            </div>
-
-            {/* Wallet balance card */}
-            <div style={{ background: 'var(--card-white)', borderRadius: 20, padding: '18px 20px', border: '1.5px solid var(--divider)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div>
-                <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 4 }}>Wallet balance</p>
-                <p style={{ fontSize: 28, fontWeight: 900, color: '#16a34a' }}>₹{balance.toFixed(0)}</p>
-                <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>Available to withdraw</p>
-              </div>
-              <div style={{ width: 56, height: 56, borderRadius: 18, background: 'rgba(22,163,74,.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <svg viewBox="0 0 24 24" fill="none" width={28} height={28}>
-                  <rect x="2" y="5" width="20" height="15" rx="3" stroke="#16a34a" strokeWidth="2"/>
-                  <path d="M16 12a1 1 0 100 2 1 1 0 000-2z" fill="#16a34a"/>
-                  <path d="M2 9h20" stroke="#16a34a" strokeWidth="2"/>
-                </svg>
               </div>
             </div>
           </>
@@ -239,30 +267,45 @@ export default function DeliveryAnalytics() {
                 </p>
                 {deliveries.map(d => (
                   <div key={d.id} style={{ background: 'var(--card-white)', borderRadius: 18, padding: '16px 18px', border: '1.5px solid var(--divider)' }}>
+                    {/* Top row: shop + earned */}
                     <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 10 }}>
                       <div>
                         <p style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 2 }}>
                           {d.shop?.name || 'Shop'}
                         </p>
                         <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                          {d.order_number} · {d.delivered_at ? fmtDate(d.delivered_at) : fmtDate(d.created_at)}
+                          #{d.order_number} · {d.delivered_at ? fmtDate(d.delivered_at) : fmtDate(d.created_at)}
                           {d.delivered_at ? ` · ${fmtTime(d.delivered_at)}` : ''}
                         </p>
                       </div>
-                      <span style={{ fontSize: 16, fontWeight: 900, color: '#16a34a', flexShrink: 0, marginLeft: 12 }}>
-                        +₹{d.earned}
-                      </span>
+                      <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: 12 }}>
+                        <p style={{ fontSize: 18, fontWeight: 900, color: '#16a34a' }}>+₹{d.earned}</p>
+                        <p style={{ fontSize: 10, color: '#16a34a', opacity: 0.7 }}>credited</p>
+                      </div>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, paddingTop: 10, borderTop: '1px solid var(--divider)' }}>
-                      <svg viewBox="0 0 24 24" fill="none" width={14} height={14} style={{ marginTop: 1, flexShrink: 0 }}>
+
+                    {/* Earnings breakdown */}
+                    <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+                      <div style={{ flex: 1, background: '#f5f5f5', borderRadius: 10, padding: '6px 10px', textAlign: 'center' }}>
+                        <p style={{ fontSize: 10, color: '#888', fontWeight: 600, marginBottom: 2 }}>Order value</p>
+                        <p style={{ fontSize: 13, fontWeight: 800, color: '#111' }}>₹{d.total_amount}</p>
+                      </div>
+                      <div style={{ flex: 1, background: '#eefaf4', borderRadius: 10, padding: '6px 10px', textAlign: 'center' }}>
+                        <p style={{ fontSize: 10, color: '#16a34a', fontWeight: 600, marginBottom: 2 }}>Your cut</p>
+                        <p style={{ fontSize: 13, fontWeight: 800, color: '#16a34a' }}>₹{d.earned}</p>
+                      </div>
+                      <div style={{ flex: 1, background: '#fff5f0', borderRadius: 10, padding: '6px 10px', textAlign: 'center' }}>
+                        <p style={{ fontSize: 10, color: '#FF3008', fontWeight: 600, marginBottom: 2 }}>Platform</p>
+                        <p style={{ fontSize: 13, fontWeight: 800, color: '#FF3008' }}>₹5</p>
+                      </div>
+                    </div>
+
+                    {/* Address */}
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, paddingTop: 8, borderTop: '1px solid var(--divider)' }}>
+                      <svg viewBox="0 0 24 24" fill="none" width={13} height={13} style={{ marginTop: 2, flexShrink: 0 }}>
                         <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 010-5 2.5 2.5 0 010 5z" fill="#9ca3af"/>
                       </svg>
                       <p style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.4 }}>{d.delivery_address || '—'}</p>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
-                      <span style={{ fontSize: 11, color: 'var(--text-muted)', background: 'var(--chip-bg)', padding: '3px 10px', borderRadius: 999 }}>
-                        Order ₹{d.total_amount}
-                      </span>
                     </div>
                   </div>
                 ))}
