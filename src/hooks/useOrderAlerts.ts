@@ -162,6 +162,12 @@ export function useShopkeeperOrderAlerts(shopId: string | null | undefined) {
         delete alarms.current[orderId]
       }
       window.dispatchEvent(new CustomEvent('welokl-order-resolved', { detail: { orderId } }))
+      // Tell the service worker to kill its own repeat loop for this order
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.ready.then(reg => {
+          reg.active?.postMessage({ type: 'STOP_RING', tag: `order-${orderId}` })
+        }).catch(() => {})
+      }
     }
 
     const ch = supabase

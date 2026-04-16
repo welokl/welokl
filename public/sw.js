@@ -24,6 +24,37 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging()
 
+// ── Active order alarm tags — cleared by STOP_RING message ───
+const activeAlarms = new Set()
+
+// Rings a notification repeatedly until stopped or max rings reached.
+// Uses event.waitUntil so the browser keeps the SW alive during the loop.
+// Each call to showNotification with renotify:true replays the system sound.
+function ringUntilResolved(title, body, tag, url, ringEvery = 5000, maxRings = 10) {
+  if (activeAlarms.has(tag)) return Promise.resolve()
+  activeAlarms.add(tag)
+  const opts = {
+    body,
+    icon:               '/icons/icon-192.png',
+    badge:              '/icons/badge-72.png',
+    tag,
+    renotify:           true,
+    requireInteraction: true,
+    vibrate:            [600, 100, 600, 100, 600, 100, 1000, 100, 1000],
+    actions:            [{ action: 'view', title: '👀 View Order' }],
+    data:               { url },
+  }
+  const delays = Array.from({ length: maxRings }, (_, i) => i * ringEvery)
+  return Promise.all(
+    delays.map(ms =>
+      new Promise(resolve => setTimeout(resolve, ms)).then(() => {
+        if (!activeAlarms.has(tag)) return   // stopped by STOP_RING
+        return self.registration.showNotification(title, opts)
+      })
+    )
+  ).then(() => activeAlarms.delete(tag))
+}
+
 // ── FCM background messages (app closed / tab in background) ─
 messaging.onBackgroundMessage(payload => {
   const title = payload.notification?.title || 'Welokl'
@@ -32,23 +63,19 @@ messaging.onBackgroundMessage(payload => {
   const tag   = payload.data?.tag || 'welokl'
   const type  = payload.data?.type || ''
 
-  const isNewOrder = type === 'order_placed'
+  if (type === 'order_placed') {
+    // Ring every 5 s for up to 50 s (10 rings). event.waitUntil extends SW lifetime.
+    return ringUntilResolved(title, body, tag, url, 5000, 10)
+  }
 
-  self.registration.showNotification(title, {
+  return self.registration.showNotification(title, {
     body,
-    icon:               '/icons/icon-192.png',
-    badge:              '/icons/badge-72.png',
+    icon:    '/icons/icon-192.png',
+    badge:   '/icons/badge-72.png',
     tag,
-    renotify:           true,
-    // New order: stays on screen until tapped (like Rapido) — must not auto-dismiss
-    requireInteraction: isNewOrder,
-    vibrate:            isNewOrder
-      ? [600, 100, 600, 100, 600, 100, 1000, 100, 1000]
-      : [300, 100, 300, 100, 500, 100, 700],
-    actions:            isNewOrder
-      ? [{ action: 'view', title: '👀 View Order' }]
-      : [],
-    data: { url },
+    renotify: true,
+    vibrate: [300, 100, 300, 100, 500, 100, 700],
+    data:    { url },
   })
 })
 
@@ -93,22 +120,22 @@ self.addEventListener('fetch', e => {
 self.addEventListener('push', e => {
   let data = { title: 'Welokl', body: 'You have a new update', url: '/', tag: 'welokl', type: '' }
   try { if (e.data) data = { ...data, ...e.data.json() } } catch {}
-  const isNewOrder = data.type === 'order_placed'
+
+  if (data.type === 'order_placed') {
+    e.waitUntil(ringUntilResolved(data.title, data.body, data.tag, data.url, 5000, 10))
+    return
+  }
+
   e.waitUntil(
     self.registration.showNotification(data.title, {
-      body:               data.body,
-      icon:               '/icons/icon-192.png',
-      badge:              '/icons/badge-72.png',
-      tag:                data.tag,
-      renotify:           true,
-      requireInteraction: isNewOrder,
-      vibrate:            isNewOrder
-        ? [600, 100, 600, 100, 600, 100, 1000, 100, 1000]
-        : [300, 100, 300, 100, 500, 100, 700],
-      actions:            isNewOrder
-        ? [{ action: 'view', title: '👀 View Order' }]
-        : [],
-      data: { url: data.url },
+      body:    data.body,
+      icon:    '/icons/icon-192.png',
+      badge:   '/icons/badge-72.png',
+      tag:     data.tag,
+      renotify: true,
+      vibrate: [300, 100, 300, 100, 500, 100, 700],
+      actions: [],
+      data:    { url: data.url },
     })
   )
 })
@@ -127,23 +154,33 @@ self.addEventListener('notificationclick', e => {
 })
 
 // ── Message from client (useOrderAlerts postMessage) ─────────
-// SW only shows the notification — the PAGE drives the repeat interval.
-// (SW setInterval is unreliable — browser kills idle SWs between events)
 self.addEventListener('message', e => {
-  if (!e.data || e.data.type !== 'NOTIFY') return
+  if (!e.data) return
+
+  // Client accepted/rejected order — stop SW alarm loop and close notification
+  if (e.data.type === 'STOP_RING') {
+    const tag = e.data.tag
+    if (tag) {
+      activeAlarms.delete(tag)
+      self.registration.getNotifications({ tag }).then(notifs => notifs.forEach(n => n.close()))
+    }
+    return
+  }
+
+  if (e.data.type !== 'NOTIFY') return
   const { title, body, tag, url, notifType } = e.data
-  const isNewOrder = notifType === 'order_placed'
+  // New-order from open tab: SW shows one notification (page's setInterval drives repeat)
   self.registration.showNotification(title || 'Welokl', {
     body:               body || '',
     icon:               '/icons/icon-192.png',
     badge:              '/icons/badge-72.png',
     tag:                tag || 'welokl',
     renotify:           true,
-    requireInteraction: isNewOrder,
-    vibrate:            isNewOrder
+    requireInteraction: notifType === 'order_placed',
+    vibrate:            notifType === 'order_placed'
       ? [600, 100, 600, 100, 600, 100, 1000, 100, 1000]
       : [300, 100, 300, 100, 500, 100, 700],
-    actions:            isNewOrder ? [{ action: 'view', title: '👀 View Order' }] : [],
+    actions:            notifType === 'order_placed' ? [{ action: 'view', title: '👀 View Order' }] : [],
     data:               { url: url || '/' },
   })
 })
