@@ -189,6 +189,9 @@ export default function ProfilePage() {
             )}
           </div>
 
+          {/* Install app */}
+          <InstallButton />
+
           {/* Sign out */}
           <button onClick={signOut} style={{ width:'100%', padding:'14px', borderRadius:18, border:'none', background:'var(--card-white)', color:'#ef4444', fontWeight:800, fontSize:15, cursor:'pointer', fontFamily:'inherit', display:'flex', alignItems:'center', justifyContent:'center', gap:10 }}>
             <svg viewBox="0 0 24 24" fill="none" width={18} height={18}>
@@ -202,5 +205,78 @@ export default function ProfilePage() {
 
       <BottomNav active="account" />
     </div>
+  )
+}
+
+function InstallButton() {
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null)
+  const [isIOS, setIsIOS]                   = useState(false)
+  const [showIOSGuide, setShowIOSGuide]     = useState(false)
+  const [installed, setInstalled]           = useState(false)
+
+  useEffect(() => {
+    const standalone = window.matchMedia('(display-mode: standalone)').matches || (navigator as any).standalone === true
+    if (standalone) { setInstalled(true); return }
+
+    const ua = navigator.userAgent
+    if (/iphone|ipad|ipod/i.test(ua)) { setIsIOS(true); return }
+
+    const handler = (e: Event) => { e.preventDefault(); setDeferredPrompt(e) }
+    window.addEventListener('beforeinstallprompt', handler as any)
+    return () => window.removeEventListener('beforeinstallprompt', handler as any)
+  }, [])
+
+  if (installed) return (
+    <div style={{ width:'100%', padding:'14px', borderRadius:18, background:'var(--card-white)', display:'flex', alignItems:'center', justifyContent:'center', gap:10 }}>
+      <span style={{ fontSize:16 }}>✅</span>
+      <span style={{ fontWeight:700, fontSize:15, color:'#16a34a' }}>App installed</span>
+    </div>
+  )
+
+  async function handleAndroid() {
+    if (!deferredPrompt) return
+    deferredPrompt.prompt()
+    const { outcome } = await deferredPrompt.userChoice
+    if (outcome === 'accepted') { setInstalled(true); localStorage.removeItem('welokl_install_dismissed') }
+    setDeferredPrompt(null)
+  }
+
+  if (!deferredPrompt && !isIOS) return null
+
+  return (
+    <>
+      <button
+        onClick={isIOS ? () => setShowIOSGuide(true) : handleAndroid}
+        style={{ width:'100%', padding:'14px', borderRadius:18, border:'none', background:'var(--card-white)', color:'#FF3008', fontWeight:800, fontSize:15, cursor:'pointer', fontFamily:'inherit', display:'flex', alignItems:'center', justifyContent:'center', gap:10 }}>
+        <svg viewBox="0 0 24 24" fill="none" width={18} height={18}>
+          <path d="M12 2v13M7 10l5 5 5-5" stroke="#FF3008" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+          <path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke="#FF3008" strokeWidth="2" strokeLinecap="round"/>
+        </svg>
+        Install Welokl App
+      </button>
+
+      {showIOSGuide && (
+        <div style={{ position:'fixed', inset:0, zIndex:9999, background:'rgba(0,0,0,.6)', display:'flex', alignItems:'flex-end', justifyContent:'center', fontFamily:"'Plus Jakarta Sans',sans-serif" }}>
+          <div style={{ background:'#fff', borderRadius:'24px 24px 0 0', padding:'28px 20px 40px', width:'100%', maxWidth:480 }}>
+            <p style={{ fontWeight:900, fontSize:17, color:'#111', marginBottom:4 }}>Add to Home Screen</p>
+            <p style={{ fontSize:13, color:'#888', marginBottom:20 }}>Install Welokl in 3 easy steps</p>
+            {[
+              { n:'1', icon:'⬆️', text: <><strong>Tap the Share button</strong> (box with arrow) at the bottom of Safari</> },
+              { n:'2', icon:'📲', text: <>Scroll and tap <strong>"Add to Home Screen"</strong></> },
+              { n:'3', icon:'✅', text: <>Tap <strong>"Add"</strong> — done!</> },
+            ].map(({ n, icon, text }) => (
+              <div key={n} style={{ display:'flex', alignItems:'flex-start', gap:14, marginBottom:14 }}>
+                <div style={{ width:30, height:30, borderRadius:999, background:'#FF3008', color:'#fff', fontWeight:900, fontSize:13, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>{n}</div>
+                <div style={{ display:'flex', alignItems:'center', gap:8, paddingTop:4 }}>
+                  <span style={{ fontSize:18 }}>{icon}</span>
+                  <p style={{ fontSize:14, color:'#444', lineHeight:1.5 }}>{text}</p>
+                </div>
+              </div>
+            ))}
+            <button onClick={() => setShowIOSGuide(false)} style={{ marginTop:10, width:'100%', padding:'13px', borderRadius:16, border:'none', background:'#f5f5f5', color:'#888', fontWeight:700, fontSize:14, cursor:'pointer', fontFamily:'inherit' }}>Close</button>
+          </div>
+        </div>
+      )}
+    </>
   )
 }

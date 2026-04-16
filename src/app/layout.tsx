@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from 'next'
 import { Syne, Plus_Jakarta_Sans } from 'next/font/google'
 import './globals.css'
 import CartProvider from '@/components/CartProvider'
+import InstallPrompt from '@/components/InstallPrompt'
 
 const syne = Syne({
   subsets: ['latin'],
@@ -69,7 +70,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link rel="dns-prefetch" href={`https://${process.env.NEXT_PUBLIC_SUPABASE_URL?.replace('https://', '')}`} />
       </head>
       <body className="bg-surface-50 text-surface-900 font-sans antialiased">
-        <CartProvider>{children}</CartProvider>
+        <CartProvider>
+          {children}
+          <InstallPrompt />
+        </CartProvider>
       </body>
     </html>
   )
