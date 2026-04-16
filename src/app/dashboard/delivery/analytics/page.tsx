@@ -10,8 +10,9 @@ interface DeliveryRecord {
   created_at: string
   delivered_at: string | null
   total_amount: number
+  subtotal: number
   delivery_fee: number
-  shop: { name: string } | null
+  shop: { name: string; commission_percent: number } | null
   delivery_address: string
   earned: number
 }
@@ -82,10 +83,10 @@ export default function DeliveryAnalytics() {
       { label: 'All time',   amount: allCount   * payout, count: allCount   },
     ])
 
-    // Delivery history — include delivery_fee so platform cut is per-order accurate
+    // Delivery history — include subtotal + commission_percent so platform cut is accurate
     const { data: orders } = await sb
       .from('orders')
-      .select('id, order_number, created_at, delivered_at, total_amount, delivery_fee, delivery_address, shop:shops(name)')
+      .select('id, order_number, created_at, delivered_at, total_amount, subtotal, delivery_fee, delivery_address, shop:shops(name, commission_percent)')
       .eq('delivery_partner_id', user.id)
       .eq('status', 'delivered')
       .order('delivered_at', { ascending: false })
@@ -258,13 +259,19 @@ export default function DeliveryAnalytics() {
                 <p style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 600, paddingLeft: 4 }}>
                   {deliveries.length} {deliveries.length === 1 ? 'delivery' : 'deliveries'} completed
                 </p>
-                {deliveries.map(d => (
+                {deliveries.map(d => {
+                  const shop = Array.isArray(d.shop) ? d.shop[0] : d.shop
+                  const commissionPct = shop?.commission_percent ?? 15
+                  const commissionAmt = Math.round((d.subtotal ?? (d.total_amount - (d.delivery_fee ?? 0))) * commissionPct / 100)
+                  const deliveryMargin = Math.max(0, (d.delivery_fee ?? deliveryFee) - partnerPayout)
+                  const platformCut = commissionAmt + deliveryMargin
+                  return (
                   <div key={d.id} style={{ background: 'var(--card-white)', borderRadius: 18, padding: '16px 18px', border: '1.5px solid var(--divider)' }}>
                     {/* Top row: shop + earned */}
                     <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 10 }}>
                       <div>
                         <p style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 2 }}>
-                          {d.shop?.name || 'Shop'}
+                          {shop?.name || 'Shop'}
                         </p>
                         <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>
                           #{d.order_number} · {d.delivered_at ? fmtDate(d.delivered_at) : fmtDate(d.created_at)}
@@ -273,7 +280,7 @@ export default function DeliveryAnalytics() {
                       </div>
                       <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: 12 }}>
                         <p style={{ fontSize: 18, fontWeight: 900, color: '#16a34a' }}>+₹{d.earned}</p>
-                        <p style={{ fontSize: 10, color: '#16a34a', opacity: 0.7 }}>credited</p>
+                        <p style={{ fontSize: 10, color: '#16a34a', opacity: 0.7 }}>your payout</p>
                       </div>
                     </div>
 
@@ -289,7 +296,8 @@ export default function DeliveryAnalytics() {
                       </div>
                       <div style={{ flex: 1, background: '#fff5f0', borderRadius: 10, padding: '6px 10px', textAlign: 'center' }}>
                         <p style={{ fontSize: 10, color: '#FF3008', fontWeight: 600, marginBottom: 2 }}>Platform</p>
-                        <p style={{ fontSize: 13, fontWeight: 800, color: '#FF3008' }}>₹{Math.max(0, (d.delivery_fee ?? deliveryFee) - partnerPayout)}</p>
+                        <p style={{ fontSize: 13, fontWeight: 800, color: '#FF3008' }}>₹{platformCut}</p>
+                        <p style={{ fontSize: 9, color: '#FF3008', opacity: 0.6 }}>comm+del</p>
                       </div>
                     </div>
 
@@ -301,7 +309,8 @@ export default function DeliveryAnalytics() {
                       <p style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.4 }}>{d.delivery_address || '—'}</p>
                     </div>
                   </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </>
