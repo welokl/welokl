@@ -97,7 +97,16 @@ export default function DeliveryAnalytics() {
     setLoading(false)
   }, [])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    load()
+    const sb = createClient()
+    const ch = sb.channel('dp-analytics-rt')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, () => load())
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'wallets' }, () => load())
+      .subscribe()
+    return () => { sb.removeChannel(ch) }
+  }, [load])
 
   const PERIOD_COLORS = ['#f97316', '#8b5cf6', '#0ea5e9', '#16a34a']
 

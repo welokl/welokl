@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
@@ -24,14 +24,14 @@ export default function OrdersHistoryPage() {
   const [filter, setFilter] = useState<'all' | 'active' | 'delivered' | 'cancelled'>('all')
   const [ratedIds, setRatedIds] = useState<Set<string>>(new Set())
   const [reviewOrder, setReviewOrder] = useState<any>(null)
+  const userIdRef = useRef<string | null>(null)
 
-  useEffect(() => { load() }, [])
-
-  async function load() {
+  const load = useCallback(async () => {
     try {
       const sb = createClient()
       const { data: { user } } = await sb.auth.getUser()
       if (!user) { window.location.href = '/auth/login'; return }
+      userIdRef.current = user.id
 
       const { data, error } = await sb
         .from('orders')
@@ -54,7 +54,19 @@ export default function OrdersHistoryPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
+
+  // Initial load + realtime subscription — order status updates live without refresh
+  useEffect(() => {
+    load()
+    const sb = createClient()
+    // Channel subscribes after we have the userId; filter applied client-side to avoid
+    // needing userId synchronously here (userId arrives async from getUser inside load)
+    const ch = sb.channel('orders-history-rt')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => load())
+      .subscribe()
+    return () => { sb.removeChannel(ch) }
+  }, [load])
 
   function timeAgo(date: string) {
     const diff = Date.now() - new Date(date).getTime()
