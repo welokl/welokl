@@ -451,10 +451,24 @@ export default function BusinessDashboard() {
                     ))}
                   </div>
                 )}
-                <div style={{ borderTop:'1px dashed #eee', paddingTop:10, display:'flex', justifyContent:'space-between', fontWeight:900, fontSize:15 }}>
-                  <span>Total</span>
-                  <span style={{ color:'#FF3008' }}>₹{(order as any).total_amount}</span>
-                </div>
+                {(() => {
+                  const sub = (order as any).subtotal ?? (order as any).total_amount
+                  const commPct = (shop as any)?.commission_percent ?? 15
+                  const commAmt = Math.round(sub * commPct / 100)
+                  return (
+                    <div style={{ borderTop:'1px dashed #eee', paddingTop:10, display:'flex', flexDirection:'column', gap:5 }}>
+                      <div style={{ display:'flex', justifyContent:'space-between', fontSize:13, color:'#888' }}>
+                        <span>Order total</span>
+                        <span style={{ fontWeight:700 }}>₹{(order as any).total_amount}</span>
+                      </div>
+                      <div style={{ display:'flex', justifyContent:'space-between', fontWeight:900, fontSize:15 }}>
+                        <span style={{ color:'#16a34a' }}>You receive</span>
+                        <span style={{ color:'#16a34a' }}>₹{sub - commAmt}</span>
+                      </div>
+                      <p style={{ fontSize:11, color:'#bbb', marginTop:2 }}>After {commPct}% platform commission (−₹{commAmt})</p>
+                    </div>
+                  )
+                })()}
                 {(order as any).customer?.name && (
                   <p style={{ fontSize:12, color:'#888', marginTop:8 }}>👤 {(order as any).customer.name}</p>
                 )}
@@ -647,6 +661,10 @@ export default function BusinessDashboard() {
                       const cust = (order as any).customer
                       const statusColor: Record<string,string> = { delivered:'#16a34a', cancelled:'#ef4444', rejected:'#ef4444' }
                       const statusLabel: Record<string,string> = { delivered:'Delivered', cancelled:'Cancelled', rejected:'Rejected' }
+                      const sub = (order as any).subtotal ?? order.total_amount
+                      const commPct = (shop as any)?.commission_percent ?? 15
+                      const commAmt = Math.round(sub * commPct / 100)
+                      const netAmt = sub - commAmt
                       return (
                         <div key={order.id} style={{ background:'var(--card-white)', borderRadius:18, padding:'14px 16px', border:'1px solid var(--divider)' }}>
                           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:8 }}>
@@ -662,7 +680,10 @@ export default function BusinessDashboard() {
                                 {' · '}{new Date((order as any).created_at).toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit' })}
                               </p>
                             </div>
-                            <span style={{ fontWeight:900, fontSize:15, color:'var(--text-primary)' }}>₹{order.total_amount}</span>
+                            <div style={{ textAlign:'right' }}>
+                              <p style={{ fontWeight:900, fontSize:15, color: order.status === 'delivered' ? '#16a34a' : 'var(--text-primary)' }}>₹{netAmt}</p>
+                              <p style={{ fontSize:10, color:'var(--text-muted)' }}>after {commPct}% comm</p>
+                            </div>
                           </div>
 
                           {/* Items */}
@@ -700,8 +721,11 @@ export default function BusinessDashboard() {
               <div>
                 <div className="flex items-center gap-2 mb-3"><span className="w-2 h-2 bg-red-500 rounded-full animate-pulse" /><h2 className="font-bold text-red-600">New Orders ({newOrders.length})</h2></div>
                 <div className="space-y-3">
-                  {newOrders.map(order => (
-                    <div key={order.id} className="card p-4" style={(order as any).is_priority ? { border:'2px solid #f97316', boxShadow:'0 0 0 3px rgba(249,115,22,.15)' } : undefined}>
+                  {newOrders.map(order => {
+                    const sub = (order as any).subtotal ?? order.total_amount
+                    const commPct = (shop as any)?.commission_percent ?? 15
+                    const commAmt = Math.round(sub * commPct / 100)
+                    return <div key={order.id} className="card p-4" style={(order as any).is_priority ? { border:'2px solid #f97316', boxShadow:'0 0 0 3px rgba(249,115,22,.15)' } : undefined}>
                       <div className="flex justify-between mb-1">
                         <div style={{ display:'flex', alignItems:'center', gap:6 }}>
                           {(order as any).is_priority && (
@@ -709,7 +733,10 @@ export default function BusinessDashboard() {
                           )}
                           <span className="font-bold text-sm">#{order.order_number}</span>
                         </div>
-                        <span className="font-bold">₹{order.total_amount}</span>
+                        <div style={{ textAlign:'right' }}>
+                          <p style={{ fontWeight:900, fontSize:14, color:'#16a34a' }}>₹{sub - commAmt}</p>
+                          <p style={{ fontSize:10, color:'var(--text-muted)' }}>after {commPct}% comm</p>
+                        </div>
                       </div>
                       {(order as any).customer?.name && (
                         <button onClick={() => openCustomer((order as any).customer_id, (order as any).customer.name)}
@@ -738,7 +765,7 @@ export default function BusinessDashboard() {
                         <button onClick={() => updateOrderStatus(order.id, 'rejected')} className="btn-secondary text-sm py-2 flex-1 text-red-500 border-red-200">✕ Reject</button>
                       </div>
                     </div>
-                  ))}
+                  })}
                 </div>
               </div>
             )}

@@ -74,7 +74,7 @@ export default function DeliveryDashboard() {
     if (partnerData) {
       const activeOrdersQuery = supabase
         .from('orders')
-        .select('*, shop:shops(name, address, phone, latitude, longitude), customer:users!customer_id(name, phone)')
+        .select('*, shop:shops(name, address, phone, latitude, longitude, commission_percent), customer:users!customer_id(name, phone)')
         .eq('delivery_partner_id', user.id)
         .in('status', ['accepted', 'preparing', 'ready', 'picked_up'])
 
@@ -87,7 +87,7 @@ export default function DeliveryDashboard() {
         if (partnerData.is_online && (activeOrders?.length ?? 0) < MAX_BATCH) {
           const { data: readyOrders } = await supabase
             .from('orders')
-            .select('*, shop:shops(name, address, phone, latitude, longitude), customer:users!customer_id(name, phone)')
+            .select('*, shop:shops(name, address, phone, latitude, longitude, commission_percent), customer:users!customer_id(name, phone)')
             .in('status', ['preparing', 'ready'])
             .is('delivery_partner_id', null)
             .eq('type', 'delivery')
@@ -106,7 +106,7 @@ export default function DeliveryDashboard() {
         if (partnerData.is_online && !activeOrder) {
           const { data: readyOrders } = await supabase
             .from('orders')
-            .select('*, shop:shops(name, address, phone, latitude, longitude), customer:users!customer_id(name, phone)')
+            .select('*, shop:shops(name, address, phone, latitude, longitude, commission_percent), customer:users!customer_id(name, phone)')
             .in('status', ['preparing', 'ready'])
             .is('delivery_partner_id', null)
             .eq('type', 'delivery')
@@ -940,10 +940,12 @@ export default function DeliveryDashboard() {
 
             {/* Money flow breakdown */}
             {(() => {
-              const subtotal    = (assignedOrder as any).subtotal ?? assignedOrder.total_amount
-              const platformFee = (assignedOrder as any).platform_fee ?? 0
-              const payToShop   = subtotal
-              const weloklCut   = Math.max(0, platformFee - partnerPayout)
+              const subtotal       = (assignedOrder as any).subtotal ?? (assignedOrder.total_amount - ((assignedOrder as any).delivery_fee ?? 0))
+              const commissionPct  = (assignedOrder as any).shop?.commission_percent ?? 15
+              const commissionAmt  = Math.round(subtotal * commissionPct / 100)
+              const deliveryMargin = Math.max(0, ((assignedOrder as any).delivery_fee ?? 0) - partnerPayout)
+              const payToShop      = subtotal - commissionAmt
+              const weloklCut      = commissionAmt + deliveryMargin
               return (
                 <div style={{ background: 'var(--bg-3)', borderRadius: 16, padding: '14px 16px', marginBottom: 16 }}>
                   <p style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 12 }}>Money flow (COD)</p>
@@ -964,7 +966,7 @@ export default function DeliveryDashboard() {
                           <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(239,68,68,.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>🏪</div>
                           <div>
                             <p style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-2)' }}>Pay to shop</p>
-                            <p style={{ fontSize: 11, color: 'var(--text-3)' }}>Items subtotal</p>
+                            <p style={{ fontSize: 11, color: 'var(--text-3)' }}>After {commissionPct}% platform commission</p>
                           </div>
                         </div>
                         <span style={{ fontWeight: 800, fontSize: 13, color: '#ef4444' }}>− ₹{payToShop}</span>
@@ -974,7 +976,7 @@ export default function DeliveryDashboard() {
                           <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(217,119,6,.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>🏢</div>
                           <div>
                             <p style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-2)' }}>Welokl platform fee</p>
-                            <p style={{ fontSize: 11, color: 'var(--text-3)' }}>Delivery fee share</p>
+                            <p style={{ fontSize: 11, color: 'var(--text-3)' }}>Commission + delivery margin</p>
                           </div>
                         </div>
                         <span style={{ fontWeight: 800, fontSize: 13, color: '#d97706' }}>− ₹{weloklCut}</span>
