@@ -16,7 +16,7 @@ import BottomNav from '@/components/BottomNav'
 interface Shop {
   id: string; name: string; description: string | null; category_name: string
   is_open: boolean; rating: number; avg_delivery_time: number
-  delivery_enabled: boolean; pickup_enabled: boolean; min_order_amount: number
+  delivery_enabled: boolean; min_order_amount: number
   area: string; image_url: string | null; latitude: number | null; longitude: number | null
   offer_text?: string | null; free_delivery_above?: number | null
   // Boost fields (joined at query time — 0/null means no active boost)
@@ -174,7 +174,7 @@ export default function CustomerHome() {
     const today = new Date().toISOString().slice(0, 10)
     const [{ data: shops }, { data: cats }, { data: boosts }, { data: metrics }] = await Promise.all([
       sb.from('shops')
-        .select('id,name,category_name,area,is_open,is_active,rating,avg_delivery_time,image_url,offer_text,delivery_enabled,pickup_enabled,latitude,longitude,verification_status,opening_time,closing_time,manually_closed')
+        .select('id,name,category_name,area,is_open,is_active,rating,avg_delivery_time,image_url,offer_text,delivery_enabled,latitude,longitude,verification_status,opening_time,closing_time,manually_closed')
         .eq('is_active', true).eq('verification_status', 'approved').order('rating', { ascending: false }),
       sb.from('categories').select('*').eq('is_active', true),
       // Active boosts only — join plan for badge label + weight

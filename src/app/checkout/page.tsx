@@ -21,10 +21,10 @@ export default function CheckoutPage() {
   const [savedAddrs,    setSavedAddrs]    = useState<{id:string;label:string;address:string}[]>([])
   const [saveLabel,     setSaveLabel]     = useState('')
   const [note,          setNote]          = useState('')
-  const [type,          setType]          = useState<'delivery'|'pickup'>('delivery')
+  const type = 'delivery'
   const [loading,       setLoading]       = useState(false)
   const [userId,        setUserId]        = useState<string|null>(null)
-  const [shopInfo,      setShopInfo]      = useState<{delivery_enabled:boolean;pickup_enabled:boolean;min_order_amount:number;commission_percent:number}|null>(null)
+  const [shopInfo,      setShopInfo]      = useState<{min_order_amount:number;commission_percent:number}|null>(null)
   const [mounted,       setMounted]       = useState(false)
   const [locStatus,     setLocStatus]     = useState<'idle'|'detecting'|'done'|'denied'>('idle')
   const [deliveryLat,   setDeliveryLat]   = useState<number|null>(null)
@@ -134,7 +134,7 @@ export default function CheckoutPage() {
     if (!mounted || !cart.shop_id) return
     createClient()
       .from('shops')
-      .select('delivery_enabled,pickup_enabled,min_order_amount,commission_percent')
+      .select('min_order_amount,commission_percent')
       .eq('id', cart.shop_id)
       .single()
       .then(({ data }) => { if (data) setShopInfo(data) })
@@ -157,7 +157,7 @@ export default function CheckoutPage() {
     </div>
   )
 
-  const delivery_fee   = type === 'pickup' ? 0 : subtotal >= platformCfg.free_delivery_threshold ? 0 : platformCfg.delivery_fee
+  const delivery_fee   = subtotal >= platformCfg.free_delivery_threshold ? 0 : platformCfg.delivery_fee
   const promoDiscount  = promo?.discount ?? 0
   const priorityFee    = isPriority ? PRIORITY_FEE : 0
   const total          = subtotal + delivery_fee + tip + priorityFee - promoDiscount
@@ -238,7 +238,7 @@ export default function CheckoutPage() {
       order_number:          'WLK-' + Date.now().toString().slice(-6),
       status:                'placed',
       type:                  type,
-      delivery_address:      type === 'pickup' ? 'Pickup' : (address?.trim() || ''),
+      delivery_address:      address?.trim() || '',
       delivery_lat:          type === 'delivery' ? deliveryLat : null,
       delivery_lng:          type === 'delivery' ? deliveryLng : null,
       delivery_instructions: note?.trim() || null,
@@ -354,30 +354,8 @@ export default function CheckoutPage() {
 
       <div style={{ maxWidth:560, margin:'0 auto', padding:'16px 12px' }}>
 
-        {/* Order type */}
-        {shopInfo?.pickup_enabled && shopInfo?.delivery_enabled && (
-          <div style={{ background:'var(--card-white)', borderRadius:20, padding:'18px 16px', marginBottom:12 }}>
-            <p style={{ fontWeight:800, fontSize:14, color:'var(--text-primary)', marginBottom:12 }}>Order type</p>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
-              {([
-                { id:'delivery' as const, label:'Delivery', sub:'Delivered to you',
-                  icon:<svg viewBox="0 0 24 24" fill="none" width={20} height={20}><circle cx="5.5" cy="18.5" r="2.5" stroke="currentColor" strokeWidth="2"/><circle cx="18.5" cy="18.5" r="2.5" stroke="currentColor" strokeWidth="2"/><path d="M8 18H3V7l3-4h5v5M16 18h-3.5M8 7h5l3 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><path d="M13 11h5l1.5 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg> },
-                { id:'pickup'   as const, label:'Pickup',   sub:'Collect from shop',
-                  icon:<svg viewBox="0 0 24 24" fill="none" width={20} height={20}><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><polyline points="9 22 9 12 15 12 15 22" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg> },
-              ]).map(opt => (
-                <button key={opt.id} onClick={() => setType(opt.id)}
-                  style={{ padding:'14px', borderRadius:16, border:`2px solid ${type===opt.id ? '#FF3008' : 'var(--divider)'}`, background:type===opt.id ? 'var(--red-light)' : 'var(--page-bg)', cursor:'pointer', textAlign:'left', fontFamily:'inherit', transition:'all .15s' }}>
-                  <div style={{ color:type===opt.id ? '#FF3008' : 'var(--text-muted)', marginBottom:6 }}>{opt.icon}</div>
-                  <p style={{ fontWeight:800, fontSize:14, color:type===opt.id ? '#FF3008' : 'var(--text-primary)', marginBottom:2 }}>{opt.label}</p>
-                  <p style={{ fontSize:11, color:'var(--text-muted)' }}>{opt.sub}</p>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* Delivery address */}
-        {type === 'delivery' && (
+        {(
           <div style={{ background:'var(--card-white)', borderRadius:20, padding:'18px 16px', marginBottom:12 }}>
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
               <div style={{ display:'flex', alignItems:'center', gap:8 }}>
@@ -592,7 +570,7 @@ export default function CheckoutPage() {
           <p style={{ fontSize:12, fontWeight:800, color:'var(--text-faint)', letterSpacing:'0.08em', marginBottom:14 }}>BILL SUMMARY</p>
           {[
             { label:'Item total', val:`₹${subtotal}`, green:false },
-            { label:`Delivery${delivery_fee===0&&type==='delivery'?' (Free!)':type==='pickup'?' (Pickup)':''}`, val:delivery_fee===0?'FREE':`₹${delivery_fee}`, green:delivery_fee===0 },
+            { label:`Delivery${delivery_fee===0?' (Free!)':''}`, val:delivery_fee===0?'FREE':`₹${delivery_fee}`, green:delivery_fee===0 },
             ...(tip > 0 ? [{ label:'Tip for rider', val:`₹${tip}`, green:false }] : []),
             ...(priorityFee > 0 ? [{ label:'🔥 Priority fee', val:`₹${priorityFee}`, green:false }] : []),
             ...(promoDiscount > 0 ? [{ label:`Promo (${promo?.code})`, val:`-₹${promoDiscount}`, green:true }] : []),

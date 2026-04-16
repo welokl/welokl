@@ -626,12 +626,12 @@ export default function DeliveryDashboard() {
               const destLng  = order.delivery_lng    as number | null
               const destAddr = order.delivery_address as string | null
               const isExpanded = expandedOrder === order.id
-              const isPickup = order.status !== 'picked_up'
-              const navLat = isPickup ? shopLat : destLat
-              const navLng = isPickup ? shopLng : destLng
+              const isGoingToShop = order.status !== 'picked_up'
+              const navLat = isGoingToShop ? shopLat : destLat
+              const navLng = isGoingToShop ? shopLng : destLng
               const mapsUrl = navLat && navLng
                 ? `https://www.google.com/maps/dir/?api=1&destination=${navLat},${navLng}&travelmode=driving`
-                : !isPickup && destAddr
+                : !isGoingToShop && destAddr
                   ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destAddr)}&travelmode=driving`
                   : null
 
@@ -725,8 +725,8 @@ export default function DeliveryDashboard() {
                       <div style={{ display: 'flex', gap: 8 }}>
                         {mapsUrl && (
                           <a href={mapsUrl} target="_blank" rel="noopener noreferrer"
-                            style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '11px 14px', borderRadius: 13, background: isPickup ? '#FF3008' : '#16a34a', color: '#fff', fontWeight: 800, fontSize: 13, textDecoration: 'none' }}>
-                            <Navigation size={15} />{isPickup ? 'Navigate to pickup' : 'Navigate to drop'}
+                            style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '11px 14px', borderRadius: 13, background: isGoingToShop ? '#FF3008' : '#16a34a', color: '#fff', fontWeight: 800, fontSize: 13, textDecoration: 'none' }}>
+                            <Navigation size={15} />{isGoingToShop ? 'Navigate to pickup' : 'Navigate to drop'}
                           </a>
                         )}
                         {order.status === 'picked_up' && (
@@ -849,14 +849,14 @@ export default function DeliveryDashboard() {
               const destLat  = assignedOrder.delivery_lat             as number | null
               const destLng  = (assignedOrder as any).delivery_lng    as number | null
               const destAddr = assignedOrder.delivery_address         as string | null
-              const isPickup = assignedOrder.status !== 'picked_up'
-              const navLat   = isPickup ? shopLat  : destLat
-              const navLng   = isPickup ? shopLng  : destLng
-              const navLabel = isPickup ? 'Navigate to Pickup' : 'Navigate to Customer'
+              const isGoingToShop = assignedOrder.status !== 'picked_up'
+              const navLat   = isGoingToShop ? shopLat  : destLat
+              const navLng   = isGoingToShop ? shopLng  : destLng
+              const navLabel = isGoingToShop ? 'Navigate to Pickup' : 'Navigate to Customer'
               // Use coords if available, fall back to text address search
               const mapsUrl  = navLat && navLng
                 ? `https://www.google.com/maps/dir/?api=1&destination=${navLat},${navLng}&travelmode=driving`
-                : !isPickup && destAddr
+                : !isGoingToShop && destAddr
                   ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destAddr)}&travelmode=driving`
                   : null
               return (
@@ -866,7 +866,7 @@ export default function DeliveryDashboard() {
                     <a href={mapsUrl} target="_blank" rel="noopener noreferrer"
                       style={{
                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                        background: isPickup ? '#FF3008' : '#16a34a',
+                        background: isGoingToShop ? '#FF3008' : '#16a34a',
                         color: '#fff', fontWeight: 800, fontSize: 15,
                         padding: '13px 20px', borderRadius: 14, marginBottom: 12,
                         textDecoration: 'none', letterSpacing: '0.01em',

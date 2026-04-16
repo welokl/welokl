@@ -784,10 +784,9 @@ export default function BusinessDashboard() {
                       ready: null,
                     }
                     const a = nextMap[order.status]
-                    const isReady      = order.status === 'ready'
-                    const isPickupType = order.type === 'pickup'
-                    const hasPartner   = !!(order as any).delivery_partner_id
-                    const pickupCode   = (order as any).pickup_code as string | null
+                    const isReady    = order.status === 'ready'
+                    const hasPartner = !!(order as any).delivery_partner_id
+                    const pickupCode = (order as any).pickup_code as string | null
                     const isCODDelivery = order.payment_method === 'cod' && order.type === 'delivery'
                     const sub          = (order as any).subtotal ?? order.total_amount
                     const commPct      = (shop as any)?.commission_percent ?? 15
@@ -804,8 +803,8 @@ export default function BusinessDashboard() {
                             <span style={{ fontWeight: 900, fontSize: 14, color: 'var(--text)' }}>#{order.order_number}</span>
                           </div>
                           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                            <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: isPickupType ? 'rgba(59,130,246,0.12)' : 'rgba(245,158,11,0.12)', color: isPickupType ? '#3b82f6' : '#d97706' }}>
-                              {isPickupType ? '🏪 Pickup' : '🛵 Delivery'}
+                            <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: 'rgba(245,158,11,0.12)', color: '#d97706' }}>
+                              🛵 Delivery
                             </span>
                             <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: 'var(--amber-bg)', color: '#d97706' }}>
                               {ORDER_STATUS_LABELS[order.status as keyof typeof ORDER_STATUS_LABELS]}
@@ -837,10 +836,7 @@ export default function BusinessDashboard() {
                           </div>
                         )}
 
-                        {isReady && isPickupType && (
-                          <PickupCodeVerifier orderId={order.id} correctCode={pickupCode} mode="customer" onVerified={() => loadData()} />
-                        )}
-                        {isReady && !isPickupType && !hasPartner && (
+                        {isReady && !hasPartner && (
                           <div style={{ background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 14px', textAlign: 'center' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center', marginBottom: 4 }}>
                               <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#f59e0b', display: 'inline-block', animation: 'pulse 1.5s infinite' }} />
@@ -849,7 +845,7 @@ export default function BusinessDashboard() {
                             <p style={{ fontSize: 12, color: 'var(--text-3)' }}>A rider will accept and show you their code</p>
                           </div>
                         )}
-                        {isReady && !isPickupType && hasPartner && (
+                        {isReady && hasPartner && (
                           <PickupCodeVerifier orderId={order.id} correctCode={pickupCode} mode="rider" onVerified={() => loadData()} />
                         )}
                         {a && (
@@ -1344,7 +1340,6 @@ function ShopSettings({ shop, onSaved }: { shop: any; onSaved: () => void }) {
   const [openTime, setOpenTime]     = useState(shop.opening_time || '09:00')
   const [closeTime, setCloseTime]   = useState(shop.closing_time || '21:00')
   const [deliveryEnabled, setDelivery] = useState(shop.delivery_enabled ?? true)
-  const [pickupEnabled, setPickup]     = useState(shop.pickup_enabled ?? true)
   const [minOrder, setMinOrder]        = useState(String(shop.min_order_amount || 0))
   const [avgTime, setAvgTime]          = useState(String(shop.avg_delivery_time || 30))
   const [deliveryFee, setDeliveryFee]  = useState(String(shop.delivery_fee || 0))
@@ -1373,7 +1368,7 @@ function ShopSettings({ shop, onSaved }: { shop: any; onSaved: () => void }) {
   async function saveDelivery() {
     setSaving(true)
     try {
-      await sb.from('shops').update({ delivery_enabled: deliveryEnabled, pickup_enabled: pickupEnabled, min_order_amount: parseInt(minOrder) || 0, avg_delivery_time: parseInt(avgTime) || 30, delivery_fee: parseInt(deliveryFee) || 0 }).eq('id', shop.id)
+      await sb.from('shops').update({ delivery_enabled: deliveryEnabled, pickup_enabled: false, min_order_amount: parseInt(minOrder) || 0, avg_delivery_time: parseInt(avgTime) || 30, delivery_fee: parseInt(deliveryFee) || 0 }).eq('id', shop.id)
       setSaved('delivery'); setTimeout(() => setSaved(''), 2200); onSaved()
     } finally { setSaving(false) }
   }
@@ -1548,7 +1543,6 @@ function ShopSettings({ shop, onSaved }: { shop: any; onSaved: () => void }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {[
             { label: '🛵 Delivery', sub: 'Riders deliver to customers', val: deliveryEnabled, set: setDelivery },
-            { label: '🏪 Pickup', sub: 'Customers come to your shop', val: pickupEnabled, set: setPickup },
           ].map(item => (
             <div key={item.label} onClick={() => item.set(!item.val)}
               style={{ display: 'flex', alignItems: 'center', gap: 14, background: 'var(--card-bg)', border: `1.5px solid ${item.val ? '#FF3008' : 'var(--border)'}`, borderRadius: 16, padding: '14px 16px', cursor: 'pointer', transition: 'border .2s' }}>

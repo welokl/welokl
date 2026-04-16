@@ -12,7 +12,7 @@ import BottomNav from '@/components/BottomNav'
 interface Shop {
   id: string; name: string; description: string | null; category_name: string
   is_open: boolean; rating: number; avg_delivery_time: number
-  delivery_enabled: boolean; pickup_enabled: boolean; min_order_amount: number
+  delivery_enabled: boolean; min_order_amount: number
   area: string; image_url: string | null; banner_url?: string | null
   offer_text?: string | null; free_delivery_above?: number | null
   opening_time?: string | null; closing_time?: string | null; manually_closed?: boolean | null
@@ -301,12 +301,6 @@ export default function StorePage() {
               <>
                 <span style={{ color:'#ddd' }}>|</span>
                 <span style={{ fontSize:13, fontWeight:600, color:'#555' }}>Min ₹{shop.min_order_amount}</span>
-              </>
-            )}
-            {shop.pickup_enabled && (
-              <>
-                <span style={{ color:'#ddd' }}>|</span>
-                <span style={{ fontSize:13, fontWeight:600, color:'#555' }}>🏪 Pickup</span>
               </>
             )}
           </div>

@@ -20,7 +20,7 @@ export default function ShopSetupPage() {
     name: '', description: '', category_name: 'Food & Restaurants',
     address: '', area: '', city: '', phone: '',
     latitude: '', longitude: '',
-    delivery_enabled: true, pickup_enabled: true,
+    delivery_enabled: true,
     min_order_amount: '0', avg_delivery_time: '30',
     opening_time: '09:00', closing_time: '22:00',
   })
@@ -97,7 +97,7 @@ export default function ShopSetupPage() {
       latitude: parseFloat(form.latitude),
       longitude: parseFloat(form.longitude),
       delivery_enabled: form.delivery_enabled,
-      pickup_enabled: form.pickup_enabled,
+      pickup_enabled: false,
       min_order_amount: parseInt(form.min_order_amount) || 0,
       avg_delivery_time: parseInt(form.avg_delivery_time) || 30,
       opening_time: form.opening_time,
@@ -242,7 +242,6 @@ export default function ShopSetupPage() {
             <div className="space-y-3">
               {[
                 { field: 'delivery_enabled', label: 'Home Delivery', sub: 'Riders will deliver to customers' },
-                { field: 'pickup_enabled', label: 'Pickup', sub: 'Customers can pick up from shop' },
               ].map(({ field, label, sub }) => (
                 <div key={field} className="flex items-center justify-between p-3 rounded-2xl" style={{ background: '#f8f7f4' }}>
                   <div><p className="font-bold text-sm">{label}</p><p className="text-xs text-gray-400">{sub}</p></div>

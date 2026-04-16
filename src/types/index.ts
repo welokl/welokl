@@ -10,7 +10,7 @@ export type OrderStatus =
   | 'cancelled'
   | 'rejected'
 
-export type OrderType = 'delivery' | 'pickup'
+export type OrderType = 'delivery'
 export type PaymentMethod = 'cod' | 'upi'
 export type PaymentStatus = 'pending' | 'paid' | 'failed' | 'refunded'
 
@@ -178,12 +178,12 @@ export const PLATFORM_FEE = 5
 export const PARTNER_PAYOUT = 20
 export const FREE_DELIVERY_THRESHOLD = 399
 
-export function calculateFees(subtotal: number, commissionPercent: number = 15, type: OrderType = 'delivery'): OrderFees {
-  const delivery_fee = type === 'pickup' ? 0 : (subtotal >= FREE_DELIVERY_THRESHOLD ? 0 : DELIVERY_FEE)
+export function calculateFees(subtotal: number, commissionPercent: number = 15): OrderFees {
+  const delivery_fee = subtotal >= FREE_DELIVERY_THRESHOLD ? 0 : DELIVERY_FEE
   const platform_fee = PLATFORM_FEE
   const total_amount = subtotal + delivery_fee + platform_fee
   const commission_amount = Math.round(subtotal * commissionPercent / 100)
-  const partner_payout = type === 'delivery' ? PARTNER_PAYOUT : 0
+  const partner_payout = PARTNER_PAYOUT
   const delivery_margin = delivery_fee - partner_payout
   const platform_earnings = commission_amount + delivery_margin + platform_fee
 
