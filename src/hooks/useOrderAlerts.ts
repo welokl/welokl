@@ -86,11 +86,22 @@ async function pushNotify(title: string, body: string, tag = 'welokl', url = '/'
   try { new Notification(title, { body, icon: '/icons/icon-192.png', tag }) } catch { }
 }
 
-// Unlock AudioContext on first user gesture — call this once on dashboard mount
+// Unlock AudioContext on any user gesture — must be called on dashboard mount.
+// Listens for click, touchstart, and pointerdown so mobile taps register too.
+// Keeps listening (not once) so the context gets re-resumed after phone backgrounding.
 export function unlockAudio() {
   if (typeof window === 'undefined') return
-  const unlock = () => { getAudioCtx(); window.removeEventListener('click', unlock) }
-  window.addEventListener('click', unlock, { once: true })
+  const unlock = () => {
+    const ctx = getAudioCtx()
+    if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {})
+  }
+  window.addEventListener('click',       unlock, { passive: true })
+  window.addEventListener('touchstart',  unlock, { passive: true })
+  window.addEventListener('pointerdown', unlock, { passive: true })
+  // Re-resume when page becomes visible again after backgrounding
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) unlock()
+  })
 }
 
 export function requestNotificationPermission() {

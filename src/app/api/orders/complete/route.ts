@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
     // A01 — caller must be a delivery partner or admin
     const admin = createAdminClient()
     const { data: profile } = await admin.from('users').select('role').eq('id', user.id).single()
-    if (!profile || !['delivery_partner', 'admin'].includes(profile.role)) {
+    if (!profile || !['delivery', 'admin'].includes(profile.role)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 

@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { PhoneGate } from '@/components/PhoneGate'
 import { Navigation, MapPin, Package, DollarSign, Phone, Clock, TrendingUp } from 'lucide-react'
-import type { Order, DeliveryPartner, Wallet } from '@/types'
+import type { Order, DeliveryPartner } from '@/types'
 import Navbar from '@/components/Navbar'
 import Link from 'next/link'
 import { useVisibilityReconnect, useDeliveryPartnerAlerts, requestNotificationPermission } from '@/hooks/useOrderAlerts'
@@ -17,8 +17,7 @@ export default function DeliveryDashboard() {
   const watchIdRef = useRef<number | null>(null)
   const [assignedOrder, setAssignedOrder] = useState<Order | null>(null)
   const [availableOrders, setAvailableOrders] = useState<any[]>([])
-  const [wallet, setWallet] = useState<Wallet | null>(null)
-  const [todayEarnings, setTodayEarnings] = useState(0)
+  const [todayDeliveries, setTodayDeliveries] = useState(0)
   const [loading, setLoading] = useState(true)
   const [accepting, setAccepting] = useState<string | null>(null)
   const [showPhoneGate, setShowPhoneGate] = useState(false)
@@ -62,10 +61,7 @@ export default function DeliveryDashboard() {
     if (role === 'business' || role === 'shopkeeper')     { window.location.replace('/dashboard/business'); return }
     if (role === 'admin')                                 { window.location.replace('/dashboard/admin');    return }
 
-    const [{ data: partnerData }, { data: walletData }] = await Promise.all([
-      supabase.from('delivery_partners').select('*, user:users(name)').eq('user_id', user.id).single(),
-      supabase.from('wallets').select('*').eq('user_id', user.id).single(),
-    ])
+    const { data: partnerData } = await supabase.from('delivery_partners').select('*, user:users(name)').eq('user_id', user.id).single()
 
     setPartner(partnerData)
     setVerStatus((partnerData as any)?.verification_status ?? 'pending')
@@ -74,7 +70,6 @@ export default function DeliveryDashboard() {
       setRiderPos({ lat: partnerData.current_lat, lng: partnerData.current_long })
     }
     if (partnerData?.is_online && partnerData?.id) startGPSWatch(partnerData.id)
-    setWallet(walletData)
 
     if (partnerData) {
       const activeOrdersQuery = supabase
@@ -123,16 +118,16 @@ export default function DeliveryDashboard() {
         }
       }
 
-      // Today's earnings
+      // Today's delivery count
       const today = new Date().toISOString().split('T')[0]
-      const { data: todayTxns } = await supabase
-        .from('transactions')
-        .select('amount')
-        .eq('wallet_id', walletData?.id)
-        .eq('type', 'credit')
-        .gte('created_at', `${today}T00:00:00`)
+      const { count: todayCount } = await supabase
+        .from('orders')
+        .select('id', { count: 'exact', head: true })
+        .eq('delivery_partner_id', user.id)
+        .eq('status', 'delivered')
+        .gte('delivered_at', `${today}T00:00:00`)
 
-      setTodayEarnings((todayTxns ?? []).reduce((s, t) => s + t.amount, 0))
+      setTodayDeliveries(todayCount ?? 0)
     }
 
     setLoading(false)
@@ -402,7 +397,7 @@ export default function DeliveryDashboard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orderId }),
       })
-      notify('Delivery complete! Earnings added to wallet.')
+      notify('Delivery complete!')
     }
 
     loadData()
@@ -578,16 +573,16 @@ export default function DeliveryDashboard() {
         {/* Stats */}
         <div className="grid grid-cols-3 gap-3">
           <div className="card p-4 text-center">
-            <div className="font-display font-bold text-xl text-surface-950">{'\u20B9'}{todayEarnings.toFixed(0)}</div>
+            <div className="font-display font-bold text-xl text-surface-950">{todayDeliveries}</div>
             <div className="text-surface-400 text-xs mt-1">Today</div>
           </div>
           <div className="card p-4 text-center">
-            <div className="font-display font-bold text-xl text-surface-950">{'\u20B9'}{wallet?.balance.toFixed(0) ?? 0}</div>
-            <div className="text-surface-400 text-xs mt-1">Wallet</div>
+            <div className="font-display font-bold text-xl text-surface-950">₹{partnerPayout}</div>
+            <div className="text-surface-400 text-xs mt-1">Per delivery</div>
           </div>
           <div className="card p-4 text-center">
             <div className="font-display font-bold text-xl text-surface-950">{partner?.total_deliveries ?? 0}</div>
-            <div className="text-surface-400 text-xs mt-1">Deliveries</div>
+            <div className="text-surface-400 text-xs mt-1">Total</div>
           </div>
         </div>
 
@@ -990,7 +985,7 @@ export default function DeliveryDashboard() {
                         <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(22,163,74,.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>🏍️</div>
                         <div>
                           <p style={{ fontWeight: 800, fontSize: 14, color: 'var(--text)' }}>Your earnings</p>
-                          <p style={{ fontSize: 11, color: 'var(--text-3)' }}>Added to wallet on delivery</p>
+                          <p style={{ fontSize: 11, color: 'var(--text-3)' }}>Paid per delivery</p>
                         </div>
                       </div>
                       <span style={{ fontWeight: 900, fontSize: 16, color: '#16a34a' }}>₹{partnerPayout}</span>

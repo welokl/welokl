@@ -10,6 +10,7 @@ interface DeliveryRecord {
   created_at: string
   delivered_at: string | null
   total_amount: number
+  delivery_fee: number
   shop: { name: string } | null
   delivery_address: string
   earned: number
@@ -33,8 +34,6 @@ function fmtTime(iso: string) {
 export default function DeliveryAnalytics() {
   const router = useRouter()
   const [loading, setLoading]     = useState(true)
-  const [balance, setBalance]     = useState(0)
-  const [totalEarned, setTotalEarned] = useState(0)
   const [periods, setPeriods]     = useState<EarningPeriod[]>([])
   const [deliveries, setDeliveries] = useState<DeliveryRecord[]>([])
   const [totalDeliveries, setTotalDeliveries] = useState(0)
@@ -53,53 +52,46 @@ export default function DeliveryAnalytics() {
       window.location.replace('/dashboard/customer'); return
     }
 
-    const [{ data: wallet }, { data: dp }, { data: cfg }] = await Promise.all([
-      sb.from('wallets').select('balance, total_earned').eq('user_id', user.id).single(),
+    const [{ data: dp }, { data: cfg }] = await Promise.all([
       sb.from('delivery_partners').select('total_deliveries').eq('user_id', user.id).single(),
       sb.from('platform_config').select('key,value').in('key', ['partner_payout', 'delivery_fee_base']),
     ])
 
-    if (cfg?.length) {
-      const get = (key: string, fb: number) => Number(cfg.find((c: any) => c.key === key)?.value ?? fb)
-      setPartnerPayout(get('partner_payout', 20))
-      setDeliveryFee(get('delivery_fee_base', 25))
-    }
-
-    setBalance(wallet?.balance ?? 0)
-    setTotalEarned(wallet?.total_earned ?? 0)
+    const payout  = cfg?.length ? Number(cfg.find((c: any) => c.key === 'partner_payout')?.value  ?? 20) : 20
+    const defFee  = cfg?.length ? Number(cfg.find((c: any) => c.key === 'delivery_fee_base')?.value ?? 25) : 25
+    setPartnerPayout(payout)
+    setDeliveryFee(defFee)
     setTotalDeliveries(dp?.total_deliveries ?? 0)
 
-    // Fetch all credits for this wallet for period breakdowns
-    const walletRes = await sb.from('wallets').select('id').eq('user_id', user.id).single()
-    const walletId = walletRes.data?.id
+    // Period delivery counts — earnings = count × payout (no wallet needed)
+    const [todayRes, weekRes, monthRes] = await Promise.all([
+      sb.from('orders').select('id', { count: 'exact', head: true }).eq('delivery_partner_id', user.id).eq('status', 'delivered').gte('delivered_at', startOf('day')),
+      sb.from('orders').select('id', { count: 'exact', head: true }).eq('delivery_partner_id', user.id).eq('status', 'delivered').gte('delivered_at', startOf('week')),
+      sb.from('orders').select('id', { count: 'exact', head: true }).eq('delivery_partner_id', user.id).eq('status', 'delivered').gte('delivered_at', startOf('month')),
+    ])
 
-    if (walletId) {
-      const [todayRes, weekRes, monthRes] = await Promise.all([
-        sb.from('transactions').select('amount').eq('wallet_id', walletId).eq('type', 'credit').gte('created_at', startOf('day')),
-        sb.from('transactions').select('amount').eq('wallet_id', walletId).eq('type', 'credit').gte('created_at', startOf('week')),
-        sb.from('transactions').select('amount').eq('wallet_id', walletId).eq('type', 'credit').gte('created_at', startOf('month')),
-      ])
+    const todayCount = todayRes.count ?? 0
+    const weekCount  = weekRes.count  ?? 0
+    const monthCount = monthRes.count ?? 0
+    const allCount   = dp?.total_deliveries ?? 0
 
-      const sum = (rows: any[]) => (rows ?? []).reduce((s: number, r: any) => s + (r.amount || 0), 0)
+    setPeriods([
+      { label: 'Today',      amount: todayCount * payout, count: todayCount },
+      { label: 'This week',  amount: weekCount  * payout, count: weekCount  },
+      { label: 'This month', amount: monthCount * payout, count: monthCount },
+      { label: 'All time',   amount: allCount   * payout, count: allCount   },
+    ])
 
-      setPeriods([
-        { label: 'Today',      amount: sum(todayRes.data ?? []),  count: (todayRes.data ?? []).length  },
-        { label: 'This week',  amount: sum(weekRes.data ?? []),   count: (weekRes.data ?? []).length   },
-        { label: 'This month', amount: sum(monthRes.data ?? []),  count: (monthRes.data ?? []).length  },
-        { label: 'All time',   amount: wallet?.total_earned ?? 0, count: dp?.total_deliveries ?? 0     },
-      ])
-    }
-
-    // Delivery history — last 50 delivered orders
+    // Delivery history — include delivery_fee so platform cut is per-order accurate
     const { data: orders } = await sb
       .from('orders')
-      .select('id, order_number, created_at, delivered_at, total_amount, delivery_address, shop:shops(name)')
+      .select('id, order_number, created_at, delivered_at, total_amount, delivery_fee, delivery_address, shop:shops(name)')
       .eq('delivery_partner_id', user.id)
       .eq('status', 'delivered')
       .order('delivered_at', { ascending: false })
       .limit(50)
 
-    setDeliveries((orders ?? []).map((o: any) => ({ ...o, earned: cfg?.length ? Number(cfg.find((c: any) => c.key === 'partner_payout')?.value ?? 20) : 20 })))
+    setDeliveries((orders ?? []).map((o: any) => ({ ...o, earned: payout })))
 
     setLoading(false)
   }, [])
@@ -109,8 +101,6 @@ export default function DeliveryAnalytics() {
     const sb = createClient()
     const ch = sb.channel('dp-analytics-rt')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => load())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, () => load())
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'wallets' }, () => load())
       .subscribe()
     return () => { sb.removeChannel(ch) }
   }, [load])
@@ -134,7 +124,6 @@ export default function DeliveryAnalytics() {
     </div>
   )
 
-  // Avg deliveries per active day this month
   const daysInMonth = new Date().getDate()
   const monthCount  = periods.find(p => p.label === 'This month')?.count ?? 0
   const avgPerDay   = daysInMonth > 0 ? (monthCount / daysInMonth).toFixed(1) : '0'
@@ -150,9 +139,6 @@ export default function DeliveryAnalytics() {
             <svg viewBox="0 0 24 24" fill="none" width={20} height={20}><path d="M19 12H5M5 12l7 7M5 12l7-7" stroke="var(--text-primary)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
           </button>
           <h1 style={{ fontWeight: 900, fontSize: 18, color: 'var(--text-primary)', flex: 1 }}>My Earnings</h1>
-          <div style={{ padding: '5px 12px', borderRadius: 999, background: 'rgba(255,48,8,.08)' }}>
-            <span style={{ fontSize: 12, fontWeight: 800, color: '#FF3008' }}>₹{balance.toFixed(0)} wallet</span>
-          </div>
         </div>
 
         {/* Tabs */}
@@ -175,11 +161,11 @@ export default function DeliveryAnalytics() {
 
         {activeTab === 'earnings' && (
           <>
-            {/* Hero — wallet balance + all-time earned */}
+            {/* Hero — all-time earnings */}
             <div style={{ background: 'linear-gradient(135deg, #FF3008 0%, #ff6b35 100%)', borderRadius: 24, padding: '24px', marginBottom: 12, color: '#fff', boxShadow: '0 8px 32px rgba(255,48,8,.3)' }}>
-              <p style={{ fontSize: 12, fontWeight: 700, opacity: 0.75, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Wallet balance</p>
-              <p style={{ fontSize: 42, fontWeight: 900, letterSpacing: '-1.5px', marginBottom: 2 }}>₹{balance.toFixed(0)}</p>
-              <p style={{ fontSize: 13, opacity: 0.8 }}>Total earned all time: ₹{totalEarned.toFixed(0)} · {totalDeliveries} deliveries</p>
+              <p style={{ fontSize: 12, fontWeight: 700, opacity: 0.75, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.08em' }}>All time earnings</p>
+              <p style={{ fontSize: 42, fontWeight: 900, letterSpacing: '-1.5px', marginBottom: 2 }}>₹{(totalDeliveries * partnerPayout).toFixed(0)}</p>
+              <p style={{ fontSize: 13, opacity: 0.8 }}>{totalDeliveries} deliveries · ₹{partnerPayout} each</p>
             </div>
 
             {/* Per-delivery earnings breakdown — the most important card */}
@@ -227,7 +213,7 @@ export default function DeliveryAnalytics() {
 
             {/* Period breakdown */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
-              {periods.filter(p => p.label !== 'All time').map((p, i) => (
+              {periods.map((p, i) => (
                 <div key={p.label} style={{ background: 'var(--card-white)', borderRadius: 18, padding: '16px 18px', border: '1.5px solid var(--divider)' }}>
                   <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{p.label}</p>
                   <p style={{ fontSize: 26, fontWeight: 900, color: PERIOD_COLORS[i], marginBottom: 2 }}>₹{p.amount.toFixed(0)}</p>
@@ -303,7 +289,7 @@ export default function DeliveryAnalytics() {
                       </div>
                       <div style={{ flex: 1, background: '#fff5f0', borderRadius: 10, padding: '6px 10px', textAlign: 'center' }}>
                         <p style={{ fontSize: 10, color: '#FF3008', fontWeight: 600, marginBottom: 2 }}>Platform</p>
-                        <p style={{ fontSize: 13, fontWeight: 800, color: '#FF3008' }}>₹{deliveryFee - partnerPayout}</p>
+                        <p style={{ fontSize: 13, fontWeight: 800, color: '#FF3008' }}>₹{Math.max(0, (d.delivery_fee ?? deliveryFee) - partnerPayout)}</p>
                       </div>
                     </div>
 
