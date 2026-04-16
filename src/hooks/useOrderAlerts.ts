@@ -145,6 +145,14 @@ export function useShopkeeperOrderAlerts(shopId: string | null | undefined) {
       await pushNotify('🛒 New Order!', `Order #${orderNum} — tap to accept`, `order-${orderId}`, '/dashboard/business', 'order_placed')
     }
 
+    function stopAlarm(orderId: string) {
+      if (alarms.current[orderId]) {
+        clearInterval(alarms.current[orderId])
+        delete alarms.current[orderId]
+      }
+      window.dispatchEvent(new CustomEvent('welokl-order-resolved', { detail: { orderId } }))
+    }
+
     const ch = supabase
       .channel(`sk-alerts-${shopId}`)
       .on('postgres_changes',
@@ -158,9 +166,14 @@ export function useShopkeeperOrderAlerts(shopId: string | null | undefined) {
           await fireAlarm(o.id, orderNum)
           inAppToast('🛒 New Order!', `Order #${orderNum} just arrived`, '#FF3008', '🛒')
 
-          // Stop any existing alarm for this order then start fresh
+          // Show the full-screen incoming order overlay on the dashboard
+          window.dispatchEvent(new CustomEvent('welokl-new-order', {
+            detail: { orderId: o.id, orderNum, order: o }
+          }))
+
+          // Continuous ring every 1.5s until the order is resolved
           if (alarms.current[o.id]) clearInterval(alarms.current[o.id])
-          alarms.current[o.id] = window.setInterval(() => fireAlarm(o.id, orderNum), 8000) as unknown as number
+          alarms.current[o.id] = window.setInterval(() => fireAlarm(o.id, orderNum), 1500) as unknown as number
         }
       )
       .on('postgres_changes',
@@ -168,7 +181,7 @@ export function useShopkeeperOrderAlerts(shopId: string | null | undefined) {
         payload => {
           const n = payload.new as any
           if (['accepted', 'rejected', 'cancelled', 'preparing'].includes(n.status)) {
-            if (alarms.current[n.id]) { clearInterval(alarms.current[n.id]); delete alarms.current[n.id] }
+            stopAlarm(n.id)
           }
         }
       )

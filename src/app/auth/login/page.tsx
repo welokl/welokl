@@ -196,20 +196,21 @@ export default function LoginPage() {
 
       {/* Right panel */}
       <div className="auth-panel-right">
-        <div style={{ width: '100%', maxWidth: 380 }} className="ui-fadein">
 
-          {/* Mobile header — red top with logo + tagline (replaces left panel on mobile) */}
-          <div className="auth-mobile-logo" style={{ display: 'none', padding: '40px 24px 28px', width: '100%', boxSizing: 'border-box' }}>
-            <Link href="/" style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-              <div style={{ width: 32, height: 32, background: 'rgba(255,255,255,0.2)', borderRadius: 9, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <svg viewBox="0 0 22 16" fill="none" width={18} height={12}><polyline points="1,15 5,2 11,10 17,2 21,15" stroke="#fff" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>
-              </div>
-              <span style={{ color: '#fff', fontWeight: 800, fontSize: 20, letterSpacing: '-0.5px' }}>welokl</span>
-            </Link>
-            <p style={{ color: 'rgba(255,255,255,0.92)', fontWeight: 700, fontSize: 18, lineHeight: 1.3, margin: 0 }}>Your neighbourhood,<br />on demand.</p>
-          </div>
+        {/* Mobile header — red top with logo + tagline */}
+        <div className="auth-mobile-logo" style={{ display: 'none', padding: '40px 24px 28px', width: '100%', boxSizing: 'border-box', flexShrink: 0 }}>
+          <Link href="/" style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+            <div style={{ width: 32, height: 32, background: 'rgba(255,255,255,0.2)', borderRadius: 9, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <svg viewBox="0 0 22 16" fill="none" width={18} height={12}><polyline points="1,15 5,2 11,10 17,2 21,15" stroke="#fff" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            </div>
+            <span style={{ color: '#fff', fontWeight: 800, fontSize: 20, letterSpacing: '-0.5px' }}>welokl</span>
+          </Link>
+          <p style={{ color: 'rgba(255,255,255,0.92)', fontWeight: 700, fontSize: 18, lineHeight: 1.3, margin: 0 }}>Your neighbourhood,<br />on demand.</p>
+        </div>
 
-          <div className="auth-inner-card" style={{
+        <div style={{ width: '100%', maxWidth: isMobile ? '100%' : 380 }} className="ui-fadein">
+
+          <div className="auth-inner-card" style={isMobile ? {} : {
             background: 'var(--card-white, #fff)',
             borderRadius: 20,
             padding: '32px 28px',

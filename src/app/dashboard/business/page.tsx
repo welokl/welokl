@@ -93,8 +93,27 @@ export default function BusinessDashboard() {
   }, [])
 
   const [alertsOn, setAlertsOn] = useState(() => { try { return localStorage.getItem('welokl_alerts_on') === '1' } catch { return false } })
+  const [incomingOrders, setIncomingOrders] = useState<{ orderId: string; orderNum: string }[]>([])
   useShopkeeperOrderAlerts(shop?.id)
   useVisibilityReconnect(loadData)
+
+  // Listen for new order events fired by useShopkeeperOrderAlerts
+  useEffect(() => {
+    function onNew(e: Event) {
+      const { orderId, orderNum } = (e as CustomEvent).detail
+      setIncomingOrders(prev => prev.some(o => o.orderId === orderId) ? prev : [...prev, { orderId, orderNum }])
+    }
+    function onResolved(e: Event) {
+      const { orderId } = (e as CustomEvent).detail
+      setIncomingOrders(prev => prev.filter(o => o.orderId !== orderId))
+    }
+    window.addEventListener('welokl-new-order', onNew)
+    window.addEventListener('welokl-order-resolved', onResolved)
+    return () => {
+      window.removeEventListener('welokl-new-order', onNew)
+      window.removeEventListener('welokl-order-resolved', onResolved)
+    }
+  }, [])
 
   // Check notification permission on mount — show banner if not granted
   // Also unlock AudioContext on first click so automated sounds work
@@ -379,6 +398,69 @@ export default function BusinessDashboard() {
   return (
     <>
     {showPhoneGate && user && <PhoneGate userId={user.id} onDone={() => { setShowPhoneGate(false); loadData() }} />}
+
+    {/* ── Incoming order overlay — rings continuously until accepted/rejected ── */}
+    {incomingOrders.length > 0 && (() => {
+      const incoming = incomingOrders[0]
+      const order = orders.find(o => o.id === incoming.orderId)
+      return (
+        <div style={{ position:'fixed', inset:0, zIndex:9999, background:'rgba(0,0,0,.7)', display:'flex', alignItems:'flex-end', justifyContent:'center', fontFamily:"'Plus Jakarta Sans',sans-serif" }}>
+          <style>{`@keyframes ring-pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}} @keyframes ring-glow{0%,100%{box-shadow:0 0 0 0 rgba(255,48,8,.6)}50%{box-shadow:0 0 0 18px rgba(255,48,8,0)}}`}</style>
+          <div style={{ background:'#fff', borderRadius:'28px 28px 0 0', padding:'32px 24px 44px', width:'100%', maxWidth:480 }}>
+
+            {/* Pulsing ring icon */}
+            <div style={{ textAlign:'center', marginBottom:20 }}>
+              <div style={{ width:80, height:80, borderRadius:'50%', background:'#FF3008', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 14px', animation:'ring-pulse .7s ease-in-out infinite, ring-glow .7s ease-in-out infinite' }}>
+                <span style={{ fontSize:36 }}>🛒</span>
+              </div>
+              <p style={{ fontSize:12, fontWeight:800, color:'#FF3008', textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:4 }}>New Order</p>
+              <h2 style={{ fontWeight:900, fontSize:22, color:'#111', letterSpacing:'-0.03em' }}>#{incoming.orderNum}</h2>
+            </div>
+
+            {/* Order details if loaded */}
+            {order && (
+              <div style={{ background:'#fafaf9', borderRadius:18, padding:'14px 16px', marginBottom:20, border:'1px solid #f0eeec' }}>
+                {order.items && order.items.length > 0 && (
+                  <div style={{ marginBottom:10 }}>
+                    {(order.items as any[]).map((item: any, i: number) => (
+                      <div key={i} style={{ display:'flex', justifyContent:'space-between', fontSize:13, color:'#444', padding:'3px 0' }}>
+                        <span>{item.quantity}× {item.product_name}</span>
+                        <span style={{ fontWeight:700 }}>₹{item.price * item.quantity}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div style={{ borderTop:'1px dashed #eee', paddingTop:10, display:'flex', justifyContent:'space-between', fontWeight:900, fontSize:15 }}>
+                  <span>Total</span>
+                  <span style={{ color:'#FF3008' }}>₹{(order as any).total_amount}</span>
+                </div>
+                {(order as any).customer?.name && (
+                  <p style={{ fontSize:12, color:'#888', marginTop:8 }}>👤 {(order as any).customer.name}{(order as any).customer.phone ? ` · ${(order as any).customer.phone}` : ''}</p>
+                )}
+              </div>
+            )}
+
+            {/* Accept / Reject */}
+            <div style={{ display:'flex', gap:12 }}>
+              <button
+                onClick={() => updateOrderStatus(incoming.orderId, 'rejected')}
+                style={{ flex:1, padding:'16px', borderRadius:18, border:'2px solid #ef4444', background:'#fff5f5', color:'#ef4444', fontWeight:900, fontSize:16, cursor:'pointer', fontFamily:'inherit' }}>
+                ✕ Reject
+              </button>
+              <button
+                onClick={() => updateOrderStatus(incoming.orderId, 'accepted')}
+                style={{ flex:2, padding:'16px', borderRadius:18, border:'none', background:'#FF3008', color:'#fff', fontWeight:900, fontSize:16, cursor:'pointer', fontFamily:'inherit', boxShadow:'0 6px 24px rgba(255,48,8,.4)', animation:'ring-pulse .7s ease-in-out infinite' }}>
+                ✓ Accept Order
+              </button>
+            </div>
+
+            {incomingOrders.length > 1 && (
+              <p style={{ textAlign:'center', marginTop:12, fontSize:12, color:'#aaa', fontWeight:700 }}>+{incomingOrders.length - 1} more order{incomingOrders.length > 2 ? 's' : ''} waiting</p>
+            )}
+          </div>
+        </div>
+      )
+    })()}
 
     {/* Notification permission banner — critical for PWA installs */}
     {notifPerm === 'default' && (
