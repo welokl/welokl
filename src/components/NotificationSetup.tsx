@@ -1,10 +1,5 @@
-// src/components/NotificationSetup.tsx
-// Shows a one-time "Allow notifications" prompt to users.
-// Place this anywhere in your layout or dashboard.
-// After useFCM is added to dashboards, you may not need this at all —
-// useFCM handles permission + token registration automatically.
-// This component just gives a nicer in-app nudge UI.
 'use client'
+// NotificationSetup.tsx — Rapido-style full bottom-sheet notification permission prompt
 import { useEffect, useState } from 'react'
 import { useFCM } from '@/hooks/useFCM'
 
@@ -12,7 +7,6 @@ export default function NotificationSetup({ userId }: { userId: string }) {
   const [status, setStatus] = useState<'idle' | 'asking' | 'granted' | 'denied'>('idle')
   const [dismissed, setDismissed] = useState(false)
 
-  // This handles the actual FCM token registration
   useFCM(userId)
 
   useEffect(() => {
@@ -21,8 +15,7 @@ export default function NotificationSetup({ userId }: { userId: string }) {
     if (!('Notification' in window)) return
     if (Notification.permission === 'granted') { setStatus('granted'); return }
     if (Notification.permission === 'denied')  { setStatus('denied');  return }
-    // Show nudge after 3 seconds
-    const t = setTimeout(() => setStatus('asking'), 3000)
+    const t = setTimeout(() => setStatus('asking'), 2000)
     return () => clearTimeout(t)
   }, [userId])
 
@@ -35,39 +28,48 @@ export default function NotificationSetup({ userId }: { userId: string }) {
     const result = await Notification.requestPermission()
     setStatus(result === 'granted' ? 'granted' : 'denied')
     if (result !== 'granted') dismiss()
+    else setDismissed(true)
   }
 
   if (dismissed || status !== 'asking') return null
 
   return (
-    <div style={{
-      position: 'fixed', bottom: 80, left: 16, right: 16, zIndex: 999,
-      background: 'var(--card-bg)', border: '1px solid var(--border)',
-      borderRadius: 16, padding: '14px 16px',
-      boxShadow: '0 8px 32px rgba(0,0,0,.15)',
-      display: 'flex', alignItems: 'center', gap: 12,
-      fontFamily: "'Plus Jakarta Sans', sans-serif",
-      maxWidth: 420, margin: '0 auto',
-      animation: 'slideUp .3s ease',
-    }}>
-      <style>{`@keyframes slideUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}`}</style>
-      <span style={{ fontSize: 28, flexShrink: 0 }}>🔔</span>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <p style={{ fontWeight: 800, fontSize: 13, color: 'var(--text)', marginBottom: 2 }}>
-          Stay updated on your orders
-        </p>
-        <p style={{ fontSize: 12, color: 'var(--text-3)' }}>
-          Get notified when your order status changes
-        </p>
-      </div>
-      <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-        <button onClick={dismiss}
-          style={{ padding: '7px 12px', borderRadius: 10, border: '1px solid var(--border)', background: 'none', color: 'var(--text-3)', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
-          Not now
-        </button>
+    <div style={{ position:'fixed', inset:0, zIndex:9998, background:'rgba(0,0,0,.55)', display:'flex', alignItems:'flex-end', justifyContent:'center', fontFamily:"'Plus Jakarta Sans',sans-serif" }}>
+      <div style={{ background:'#fff', borderRadius:'24px 24px 0 0', padding:'32px 24px 40px', width:'100%', maxWidth:480, boxShadow:'0 -8px 40px rgba(0,0,0,.18)' }}>
+
+        {/* Icon + brand */}
+        <div style={{ textAlign:'center', marginBottom:24 }}>
+          <div style={{ width:72, height:72, borderRadius:22, background:'#FFF0EE', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 14px', boxShadow:'0 4px 20px rgba(255,48,8,.15)' }}>
+            <span style={{ fontSize:36 }}>🔔</span>
+          </div>
+          <h2 style={{ fontWeight:900, fontSize:20, color:'#111', marginBottom:6, letterSpacing:'-0.03em' }}>Stay in the loop</h2>
+          <p style={{ fontSize:14, color:'#888', lineHeight:1.6, maxWidth:300, margin:'0 auto' }}>
+            Get real-time updates when your order is accepted, out for delivery, and delivered
+          </p>
+        </div>
+
+        {/* Benefit bullets */}
+        <div style={{ display:'flex', flexDirection:'column', gap:10, marginBottom:28 }}>
+          {[
+            { icon:'✅', text:'Order confirmed by the shop' },
+            { icon:'🛵', text:'Rider picked up your order' },
+            { icon:'🎉', text:'Your order has arrived' },
+          ].map(({ icon, text }) => (
+            <div key={text} style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 14px', background:'#fafaf9', borderRadius:14, border:'1px solid #f0eeec' }}>
+              <span style={{ fontSize:20, flexShrink:0 }}>{icon}</span>
+              <p style={{ fontSize:14, fontWeight:600, color:'#333' }}>{text}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* CTA */}
         <button onClick={allow}
-          style={{ padding: '7px 14px', borderRadius: 10, border: 'none', background: '#ff3008', color: '#fff', fontSize: 12, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
-          Allow
+          style={{ width:'100%', padding:'16px', borderRadius:18, border:'none', background:'#FF3008', color:'#fff', fontWeight:900, fontSize:16, cursor:'pointer', fontFamily:'inherit', boxShadow:'0 6px 24px rgba(255,48,8,.35)', marginBottom:10 }}>
+          Allow Notifications
+        </button>
+        <button onClick={dismiss}
+          style={{ width:'100%', padding:'12px', borderRadius:16, border:'none', background:'none', color:'#aaa', fontWeight:700, fontSize:14, cursor:'pointer', fontFamily:'inherit' }}>
+          Not now
         </button>
       </div>
     </div>
