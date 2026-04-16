@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { creditPartnerWallet } from '@/lib/matching'
 import { createAdminClient, createServerSupabaseClient } from '@/lib/supabase/server'
-import { PARTNER_PAYOUT } from '@/types'
 
 export async function POST(req: NextRequest) {
   try {
@@ -38,17 +37,16 @@ export async function POST(req: NextRequest) {
     if (order.delivery_partner_id !== partnerId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
     // Idempotency: skip if already credited for this order
-    const { data: existing } = await supabase
-      .from('transactions')
-      .select('id')
-      .eq('order_id', orderId)
-      .eq('type', 'credit')
-      .maybeSingle()
+    const [{ data: existing }, { data: cfg }] = await Promise.all([
+      supabase.from('transactions').select('id').eq('order_id', orderId).eq('type', 'credit').maybeSingle(),
+      admin.from('platform_config').select('value').eq('key', 'partner_payout').maybeSingle(),
+    ])
 
     if (existing) return NextResponse.json({ success: true, amount: 0, note: 'already_credited' })
 
-    await creditPartnerWallet(partnerId, orderId, PARTNER_PAYOUT)
-    return NextResponse.json({ success: true, amount: PARTNER_PAYOUT })
+    const payout = cfg?.value ? Number(cfg.value) : 20
+    await creditPartnerWallet(partnerId, orderId, payout)
+    return NextResponse.json({ success: true, amount: payout })
   } catch (e) {
     console.error(e)
     return NextResponse.json({ error: 'Completion failed' }, { status: 500 })

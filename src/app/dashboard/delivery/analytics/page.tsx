@@ -39,6 +39,8 @@ export default function DeliveryAnalytics() {
   const [deliveries, setDeliveries] = useState<DeliveryRecord[]>([])
   const [totalDeliveries, setTotalDeliveries] = useState(0)
   const [activeTab, setActiveTab] = useState<'earnings' | 'history'>('earnings')
+  const [partnerPayout, setPartnerPayout] = useState(20)
+  const [deliveryFee, setDeliveryFee] = useState(25)
 
   const load = useCallback(async () => {
     const sb = createClient()
@@ -51,10 +53,17 @@ export default function DeliveryAnalytics() {
       window.location.replace('/dashboard/customer'); return
     }
 
-    const [{ data: wallet }, { data: dp }] = await Promise.all([
+    const [{ data: wallet }, { data: dp }, { data: cfg }] = await Promise.all([
       sb.from('wallets').select('balance, total_earned').eq('user_id', user.id).single(),
       sb.from('delivery_partners').select('total_deliveries').eq('user_id', user.id).single(),
+      sb.from('platform_config').select('key,value').in('key', ['partner_payout', 'delivery_fee_base']),
     ])
+
+    if (cfg?.length) {
+      const get = (key: string, fb: number) => Number(cfg.find((c: any) => c.key === key)?.value ?? fb)
+      setPartnerPayout(get('partner_payout', 20))
+      setDeliveryFee(get('delivery_fee_base', 25))
+    }
 
     setBalance(wallet?.balance ?? 0)
     setTotalEarned(wallet?.total_earned ?? 0)
@@ -90,9 +99,7 @@ export default function DeliveryAnalytics() {
       .order('delivered_at', { ascending: false })
       .limit(50)
 
-    // Each delivery earns a fixed partner payout (₹20 default, from the platform)
-    const PAYOUT = 20
-    setDeliveries((orders ?? []).map((o: any) => ({ ...o, earned: PAYOUT })))
+    setDeliveries((orders ?? []).map((o: any) => ({ ...o, earned: cfg?.length ? Number(cfg.find((c: any) => c.key === 'partner_payout')?.value ?? 20) : 20 })))
 
     setLoading(false)
   }, [])
@@ -184,21 +191,21 @@ export default function DeliveryAnalytics() {
                 {/* Customer pays */}
                 <div style={{ flex: 1, textAlign: 'center', padding: '10px 8px', background: '#f5f5f5', borderRadius: '12px 0 0 12px' }}>
                   <p style={{ fontSize: 10, color: '#888', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Customer pays</p>
-                  <p style={{ fontSize: 18, fontWeight: 900, color: '#111' }}>₹25</p>
+                  <p style={{ fontSize: 18, fontWeight: 900, color: '#111' }}>₹{deliveryFee}</p>
                   <p style={{ fontSize: 10, color: '#aaa' }}>delivery fee</p>
                 </div>
                 <div style={{ fontSize: 16, color: '#ccc', padding: '0 4px' }}>→</div>
                 {/* Your earning */}
                 <div style={{ flex: 1, textAlign: 'center', padding: '10px 8px', background: '#eefaf4', borderRadius: 0 }}>
                   <p style={{ fontSize: 10, color: '#16a34a', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>You receive</p>
-                  <p style={{ fontSize: 22, fontWeight: 900, color: '#16a34a' }}>₹20</p>
+                  <p style={{ fontSize: 22, fontWeight: 900, color: '#16a34a' }}>₹{partnerPayout}</p>
                   <p style={{ fontSize: 10, color: '#16a34a', opacity: 0.7 }}>per delivery</p>
                 </div>
                 <div style={{ fontSize: 16, color: '#ccc', padding: '0 4px' }}>+</div>
                 {/* Platform */}
                 <div style={{ flex: 1, textAlign: 'center', padding: '10px 8px', background: '#fff5f0', borderRadius: '0 12px 12px 0' }}>
                   <p style={{ fontSize: 10, color: '#FF3008', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Platform</p>
-                  <p style={{ fontSize: 18, fontWeight: 900, color: '#FF3008' }}>₹5</p>
+                  <p style={{ fontSize: 18, fontWeight: 900, color: '#FF3008' }}>₹{deliveryFee - partnerPayout}</p>
                   <p style={{ fontSize: 10, color: '#FF3008', opacity: 0.7 }}>service fee</p>
                 </div>
               </div>
@@ -206,9 +213,9 @@ export default function DeliveryAnalytics() {
               {/* Rules list */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {[
-                  { icon: '✅', text: 'You keep ₹20 flat for every delivery completed', color: '#16a34a' },
-                  { icon: '📦', text: 'Orders ≥ ₹299 have free delivery — you still earn ₹20', color: '#2563eb' },
-                  { icon: '🚫', text: 'No other deductions — ₹20 goes straight to your wallet', color: '#555' },
+                  { icon: '✅', text: `You keep ₹${partnerPayout} flat for every delivery completed`, color: '#16a34a' },
+                  { icon: '📦', text: `Orders ≥ ₹299 have free delivery — you still earn ₹${partnerPayout}`, color: '#2563eb' },
+                  { icon: '🚫', text: `No other deductions — ₹${partnerPayout} goes straight to your wallet`, color: '#555' },
                 ].map(({ icon, text, color }) => (
                   <div key={text} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px 12px', background: 'var(--page-bg)', borderRadius: 12 }}>
                     <span style={{ fontSize: 14, flexShrink: 0 }}>{icon}</span>
@@ -225,7 +232,7 @@ export default function DeliveryAnalytics() {
                   <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{p.label}</p>
                   <p style={{ fontSize: 26, fontWeight: 900, color: PERIOD_COLORS[i], marginBottom: 2 }}>₹{p.amount.toFixed(0)}</p>
                   <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>{p.count} {p.count === 1 ? 'delivery' : 'deliveries'}</p>
-                  {p.count > 0 && <p style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 2 }}>₹20 × {p.count}</p>}
+                  {p.count > 0 && <p style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 2 }}>₹{partnerPayout} × {p.count}</p>}
                 </div>
               ))}
             </div>
@@ -296,7 +303,7 @@ export default function DeliveryAnalytics() {
                       </div>
                       <div style={{ flex: 1, background: '#fff5f0', borderRadius: 10, padding: '6px 10px', textAlign: 'center' }}>
                         <p style={{ fontSize: 10, color: '#FF3008', fontWeight: 600, marginBottom: 2 }}>Platform</p>
-                        <p style={{ fontSize: 13, fontWeight: 800, color: '#FF3008' }}>₹5</p>
+                        <p style={{ fontSize: 13, fontWeight: 800, color: '#FF3008' }}>₹{deliveryFee - partnerPayout}</p>
                       </div>
                     </div>
 
