@@ -1,8 +1,8 @@
 {
-  "packageId": "com.welokl.app",
-  "host": "welokl.com",
-  "name": "Welokl",
-  "launcherName": "Welokl",
+  "packageId": "com.dwarpar.app",
+  "host": "dwarpar.com",
+  "name": "Dwarpar",
+  "launcherName": "Dwarpar",
   "display": "standalone",
   "themeColor": "#FF3008",
   "navigationColor": "#FF3008",
@@ -11,12 +11,12 @@
   "navigationDividerColorDark": "#FF3008",
   "backgroundColor": "#FFFBF5",
   "startUrl": "/?source=twa",
-  "iconUrl": "https://welokl.com/icons/icon-512.png",
-  "maskableIconUrl": "https://welokl.com/icons/icon-512-maskable.png",
+  "iconUrl": "https://dwarpar.com/icons/icon-512.png",
+  "maskableIconUrl": "https://dwarpar.com/icons/icon-512-maskable.png",
   "splashScreenFadeOutDuration": 300,
   "signingKey": {
-    "path": "./welokl-release-key.keystore",
-    "alias": "welokl"
+    "path": "./dwarpar-release-key.keystore",
+    "alias": "dwarpar"
   },
   "appVersionCode": 1,
   "appVersionName": "1.0.0",
@@ -25,13 +25,13 @@
       "name": "Browse Shops",
       "short_name": "Shops",
       "url": "/stores?source=shortcut",
-      "icons": [{ "src": "https://welokl.com/icons/icon-96.png", "sizes": "96x96" }]
+      "icons": [{ "src": "https://dwarpar.com/icons/icon-96.png", "sizes": "96x96" }]
     },
     {
       "name": "My Orders",
       "short_name": "Orders",
       "url": "/orders/history?source=shortcut",
-      "icons": [{ "src": "https://welokl.com/icons/icon-96.png", "sizes": "96x96" }]
+      "icons": [{ "src": "https://dwarpar.com/icons/icon-96.png", "sizes": "96x96" }]
     }
   ],
   "enableNotifications": true,
@@ -43,7 +43,7 @@
   "enableSiteSettingsShortcut": true,
   "isChromeOSOnly": false,
   "isMetaQuestOnly": false,
-  "fullScopeUrl": "https://welokl.com/",
+  "fullScopeUrl": "https://dwarpar.com/",
   "minSdkVersion": 19,
   "orientation": "portrait",
   "fingerprints": []

@@ -15,9 +15,9 @@ importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-comp
 // ── Firebase init ─────────────────────────────────────────────
 firebase.initializeApp({
   apiKey:            "AIzaSyAp08LtadKXqI4QVP0gIAvYx0wDlmW6C18",
-  authDomain:        "welokl-b47d4.firebaseapp.com",
-  projectId:         "welokl-b47d4",
-  storageBucket:     "welokl-b47d4.firebasestorage.app",
+  authDomain:        "dwarpar-b47d4.firebaseapp.com",
+  projectId:         "dwarpar-b47d4",
+  storageBucket:     "dwarpar-b47d4.firebasestorage.app",
   messagingSenderId: "551056082419",
   appId:             "1:551056082419:web:b357bc92820ac8ff66fe86",
 })
@@ -57,10 +57,10 @@ function ringUntilResolved(title, body, tag, url, ringEvery = 5000, maxRings = 1
 
 // ── FCM background messages (app closed / tab in background) ─
 messaging.onBackgroundMessage(payload => {
-  const title = payload.notification?.title || 'Welokl'
+  const title = payload.notification?.title || 'Dwarpar'
   const body  = payload.notification?.body  || 'You have a new update'
   const url   = payload.data?.url || '/'
-  const tag   = payload.data?.tag || 'welokl'
+  const tag   = payload.data?.tag || 'dwarpar'
   const type  = payload.data?.type || ''
 
   if (type === 'order_placed') {
@@ -80,7 +80,7 @@ messaging.onBackgroundMessage(payload => {
 })
 
 // ── Cache shell ───────────────────────────────────────────────
-const CACHE = 'welokl-v4'
+const CACHE = 'dwarpar-v4'
 const SHELL = ['/', '/stores', '/manifest.json', '/icons/icon-192.png', '/icons/icon-512.png']
 
 self.addEventListener('install', e => {
@@ -118,7 +118,7 @@ self.addEventListener('fetch', e => {
 
 // ── Push event (standard Web Push) ───────────────────────────
 self.addEventListener('push', e => {
-  let data = { title: 'Welokl', body: 'You have a new update', url: '/', tag: 'welokl', type: '' }
+  let data = { title: 'Dwarpar', body: 'You have a new update', url: '/', tag: 'dwarpar', type: '' }
   try { if (e.data) data = { ...data, ...e.data.json() } } catch {}
 
   if (data.type === 'order_placed') {
@@ -170,11 +170,11 @@ self.addEventListener('message', e => {
   if (e.data.type !== 'NOTIFY') return
   const { title, body, tag, url, notifType } = e.data
   // New-order from open tab: SW shows one notification (page's setInterval drives repeat)
-  self.registration.showNotification(title || 'Welokl', {
+  self.registration.showNotification(title || 'Dwarpar', {
     body:               body || '',
     icon:               '/icons/icon-192.png',
     badge:              '/icons/badge-72.png',
-    tag:                tag || 'welokl',
+    tag:                tag || 'dwarpar',
     renotify:           true,
     requireInteraction: notifType === 'order_placed',
     vibrate:            notifType === 'order_placed'

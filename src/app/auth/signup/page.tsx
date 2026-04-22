@@ -7,7 +7,7 @@ type UserRole = 'customer' | 'business' | 'delivery_partner' | 'admin'
 
 const ROLES: { id: UserRole; label: string; sub: string; icon: string }[] = [
   { id: 'customer',         label: 'Customer',       sub: 'Order from shops',    icon: '🛒' },
-  { id: 'business',         label: 'Shop Owner',     sub: 'Sell on Welokl',      icon: '🏪' },
+  { id: 'business',         label: 'Shop Owner',     sub: 'Sell on Dwarpar',      icon: '🏪' },
   { id: 'delivery_partner', label: 'Rider',          sub: 'Deliver & earn',      icon: '🛵' },
 ]
 
@@ -29,7 +29,7 @@ const ROLE_COPY: Record<string, { headline: string; sub: string; benefits: strin
     ],
   },
   business: {
-    headline: 'Grow your shop with Welokl.',
+    headline: 'Grow your shop with Dwarpar.',
     sub: 'Stop managing orders on WhatsApp. Go fully digital.',
     benefits: [
       'Get discovered by nearby customers',
@@ -66,7 +66,7 @@ function AuthPanel({ role }: { role: UserRole }) {
               <polyline points="1,15 5,2 11,10 17,2 21,15" stroke="#fff" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </div>
-          <span style={{ color: '#fff', fontWeight: 800, fontSize: 22, letterSpacing: '-0.5px' }}>welokl</span>
+          <span style={{ color: '#fff', fontWeight: 800, fontSize: 22, letterSpacing: '-0.5px' }}>dwarpar</span>
         </Link>
 
         <h2 style={{ color: '#fff', fontWeight: 800, fontSize: 26, lineHeight: 1.2, marginBottom: 10, letterSpacing: '-0.4px', transition: 'all 200ms' }}>
@@ -141,10 +141,10 @@ function SignupPageInner() {
   useEffect(() => {
     if (!fromGoogle) return
     try {
-      const saved = localStorage.getItem('welokl_pending_role') as UserRole | null
+      const saved = localStorage.getItem('dwarpar_pending_role') as UserRole | null
       if (saved && ['customer','business','delivery_partner'].includes(saved)) {
         setRole(saved)
-        localStorage.removeItem('welokl_pending_role')
+        localStorage.removeItem('dwarpar_pending_role')
       }
     } catch {}
     supabase.auth.getSession().then(({ data }) => {
@@ -155,7 +155,7 @@ function SignupPageInner() {
 
   async function handleGoogleSignup() {
     setGoogleLoad(true); setErr('')
-    try { localStorage.setItem('welokl_pending_role', role) } catch {}
+    try { localStorage.setItem('dwarpar_pending_role', role) } catch {}
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: { redirectTo:`${window.location.origin}/auth/callback`, queryParams:{access_type:'offline',prompt:'consent'} },
@@ -243,7 +243,7 @@ function SignupPageInner() {
                 <polyline points="1,15 5,2 11,10 17,2 21,15" stroke="#fff" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
             </div>
-            <span style={{ color: '#fff', fontWeight: 800, fontSize: 22, letterSpacing: '-0.5px' }}>welokl</span>
+            <span style={{ color: '#fff', fontWeight: 800, fontSize: 22, letterSpacing: '-0.5px' }}>dwarpar</span>
           </Link>
           <p style={{ color: 'rgba(255,255,255,0.85)', fontSize: 14, margin: 0, lineHeight: 1.5 }}>
             Join your neighbourhood,<br />on demand.

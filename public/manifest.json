@@ -1,6 +1,6 @@
 {
-  "name": "Welokl \u2014 Your Neighbourhood, Delivered",
-  "short_name": "Welokl",
+  "name": "Dwarpar \u2014 Your Neighbourhood, Delivered",
+  "short_name": "Dwarpar",
   "description": "Order from any local shop nearby. Food, grocery, pharmacy & more \u2014 delivered or pick up yourself.",
   "start_url": "/?source=pwa",
   "display": "standalone",
@@ -23,13 +23,13 @@
   "prefer_related_applications": false,
   "icons": [
     {
-      "src": "/icons/welokl-brand.svg",
+      "src": "/icons/dwarpar-brand.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"
     },
     {
-      "src": "/icons/welokl-brand.svg",
+      "src": "/icons/dwarpar-brand.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "maskable"
@@ -108,7 +108,7 @@
       "sizes": "1280x800",
       "type": "image/png",
       "form_factor": "wide",
-      "label": "Welokl desktop view"
+      "label": "Dwarpar desktop view"
     }
   ],
   "shortcuts": [

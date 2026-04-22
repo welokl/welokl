@@ -1,6 +1,6 @@
 /**
  * ╔══════════════════════════════════════════════════════════════════╗
- * ║  WELOKL IMAGE SERVICE                                           ║
+ * ║  DWARPAR IMAGE SERVICE                                           ║
  * ║                                                                 ║
  * ║  Single file that owns ALL image operations.                   ║
  * ║                                                                 ║
@@ -128,7 +128,7 @@ const BUCKET_MAP: Record<string, string> = {
   'shop-images':    process.env.S3_SHOP_IMAGES_BUCKET!,
   'product-images': process.env.S3_PRODUCT_IMAGES_BUCKET!,
 }
-const CDN_URL = process.env.CDN_URL!  // e.g. https://cdn.welokl.com
+const CDN_URL = process.env.CDN_URL!  // e.g. https://cdn.dwarpar.com
 
 const s3Provider: ImageProvider = {
   async upload(bucket, path, file) {

@@ -44,7 +44,7 @@ export default function ProfilePage() {
     ])
     setUser(profile); setName(profile?.name || ''); setPhone(profile?.phone || '')
     setOrderCount(count || 0)
-    try { setAddresses(JSON.parse(localStorage.getItem('welokl_addresses') || '[]')) } catch {}
+    try { setAddresses(JSON.parse(localStorage.getItem('dwarpar_addresses') || '[]')) } catch {}
     setLoading(false)
   }
 
@@ -57,7 +57,7 @@ export default function ProfilePage() {
 
   function removeAddress(label: string) {
     const updated = addresses.filter(a => a.label !== label)
-    setAddresses(updated); localStorage.setItem('welokl_addresses', JSON.stringify(updated))
+    setAddresses(updated); localStorage.setItem('dwarpar_addresses', JSON.stringify(updated))
   }
 
   async function signOut() {
@@ -237,7 +237,7 @@ function InstallButton() {
     if (!deferredPrompt) return
     deferredPrompt.prompt()
     const { outcome } = await deferredPrompt.userChoice
-    if (outcome === 'accepted') { setInstalled(true); localStorage.removeItem('welokl_install_dismissed') }
+    if (outcome === 'accepted') { setInstalled(true); localStorage.removeItem('dwarpar_install_dismissed') }
     setDeferredPrompt(null)
   }
 
@@ -252,14 +252,14 @@ function InstallButton() {
           <path d="M12 2v13M7 10l5 5 5-5" stroke="#FF3008" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
           <path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke="#FF3008" strokeWidth="2" strokeLinecap="round"/>
         </svg>
-        Install Welokl App
+        Install Dwarpar App
       </button>
 
       {showIOSGuide && (
         <div style={{ position:'fixed', inset:0, zIndex:9999, background:'rgba(0,0,0,.6)', display:'flex', alignItems:'flex-end', justifyContent:'center', fontFamily:"'Plus Jakarta Sans',sans-serif" }}>
           <div style={{ background:'#fff', borderRadius:'24px 24px 0 0', padding:'28px 20px 40px', width:'100%', maxWidth:480 }}>
             <p style={{ fontWeight:900, fontSize:17, color:'#111', marginBottom:4 }}>Add to Home Screen</p>
-            <p style={{ fontSize:13, color:'#888', marginBottom:20 }}>Install Welokl in 3 easy steps</p>
+            <p style={{ fontSize:13, color:'#888', marginBottom:20 }}>Install Dwarpar in 3 easy steps</p>
             {[
               { n:'1', icon:'⬆️', text: <><strong>Tap the Share button</strong> (box with arrow) at the bottom of Safari</> },
               { n:'2', icon:'📲', text: <>Scroll and tap <strong>"Add to Home Screen"</strong></> },

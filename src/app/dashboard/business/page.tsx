@@ -96,7 +96,7 @@ export default function BusinessDashboard() {
     setLoading(false)
   }, [])
 
-  const [alertsOn, setAlertsOn] = useState(() => { try { return localStorage.getItem('welokl_alerts_on') === '1' } catch { return false } })
+  const [alertsOn, setAlertsOn] = useState(() => { try { return localStorage.getItem('dwarpar_alerts_on') === '1' } catch { return false } })
   const [incomingOrders, setIncomingOrders] = useState<{ orderId: string; orderNum: string }[]>([])
   useShopkeeperOrderAlerts(shop?.id)
   useVisibilityReconnect(loadData)
@@ -111,11 +111,11 @@ export default function BusinessDashboard() {
       const { orderId } = (e as CustomEvent).detail
       setIncomingOrders(prev => prev.filter(o => o.orderId !== orderId))
     }
-    window.addEventListener('welokl-new-order', onNew)
-    window.addEventListener('welokl-order-resolved', onResolved)
+    window.addEventListener('dwarpar-new-order', onNew)
+    window.addEventListener('dwarpar-order-resolved', onResolved)
     return () => {
-      window.removeEventListener('welokl-new-order', onNew)
-      window.removeEventListener('welokl-order-resolved', onResolved)
+      window.removeEventListener('dwarpar-new-order', onNew)
+      window.removeEventListener('dwarpar-order-resolved', onResolved)
     }
   }, [])
 
@@ -381,7 +381,7 @@ export default function BusinessDashboard() {
             </div>
           ))}
         </div>
-        <p style={{ fontSize: 12, color: 'var(--text-4)', marginBottom: 16 }}>Questions? support@welokl.com</p>
+        <p style={{ fontSize: 12, color: 'var(--text-4)', marginBottom: 16 }}>Questions? support@dwarpar.com</p>
         <button onClick={async () => { await createClient().auth.signOut(); window.location.href = '/' }}
           style={{ fontSize: 13, color: 'var(--text-4)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>Sign out</button>
       </div>
@@ -402,7 +402,7 @@ export default function BusinessDashboard() {
             <p style={{ fontSize: 13, color: '#ef4444', lineHeight: 1.5 }}>{verNote}</p>
           </div>
         )}
-        <p style={{ fontSize: 12, color: 'var(--text-4)', marginBottom: 16 }}>Contact support@welokl.com for assistance.</p>
+        <p style={{ fontSize: 12, color: 'var(--text-4)', marginBottom: 16 }}>Contact support@dwarpar.com for assistance.</p>
         <button onClick={async () => { await createClient().auth.signOut(); window.location.href = '/' }}
           style={{ fontSize: 13, color: 'var(--text-4)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>Sign out</button>
       </div>
@@ -584,7 +584,7 @@ export default function BusinessDashboard() {
               {!alertsOn ? (
                 <button onClick={() => {
                   try { const A = window.AudioContext || (window as any).webkitAudioContext; if (A) { const c = new A(); c.resume(); c.close() } } catch {}
-                  setAlertsOn(true); try { localStorage.setItem('welokl_alerts_on','1') } catch {}
+                  setAlertsOn(true); try { localStorage.setItem('dwarpar_alerts_on','1') } catch {}
                 }} style={{ fontSize:11, fontWeight:700, padding:'5px 10px', borderRadius:8, background:'rgba(255,48,8,.1)', color:'#ff3008', border:'1px solid rgba(255,48,8,.2)', cursor:'pointer', fontFamily:'inherit', whiteSpace:'nowrap' }}>
                   🔔 Enable Alerts
                 </button>
@@ -1389,8 +1389,8 @@ function ShopSettings({ shop, onSaved }: { shop: any; onSaved: () => void }) {
     } catch(e: any) { setImgError(e.message || 'Upload failed') }
   }
 
-  const shopUrl  = typeof window !== 'undefined' ? `${window.location.origin}/stores/${shop.id}` : `https://welokl.com/stores/${shop.id}`
-  const waText   = encodeURIComponent(`Order from ${shop.name} on Welokl: ${shopUrl}`)
+  const shopUrl  = typeof window !== 'undefined' ? `${window.location.origin}/stores/${shop.id}` : `https://dwarpar.com/stores/${shop.id}`
+  const waText   = encodeURIComponent(`Order from ${shop.name} on Dwarpar: ${shopUrl}`)
   const waLink   = `https://wa.me/?text=${waText}`
   const smsLink  = `sms:?body=${encodeURIComponent(`Order from ${shop.name}: ${shopUrl}`)}`
   async function copyLink() {
@@ -1444,7 +1444,7 @@ function ShopSettings({ shop, onSaved }: { shop: any; onSaved: () => void }) {
                   <>
                     <p style={{ fontSize:13, fontWeight:800, color:'var(--text)' }}>No active boost</p>
                     <p style={{ fontSize:11, color:'var(--text-2)', marginTop:1 }}>
-                      Contact the Welokl team to boost your shop and appear at the top of the feed
+                      Contact the Dwarpar team to boost your shop and appear at the top of the feed
                     </p>
                   </>
                 )}
@@ -1467,7 +1467,7 @@ function ShopSettings({ shop, onSaved }: { shop: any; onSaved: () => void }) {
         </p>
         <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
           <div style={{ flex: 1, background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 10, padding: '9px 12px', fontSize: 11, color: 'var(--text-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'monospace' }}>
-            welokl.com/stores/{shop.id}
+            dwarpar.com/stores/{shop.id}
           </div>
           <button onClick={copyLink} style={{ padding: '9px 14px', borderRadius: 10, border: 'none', background: copied ? '#16a34a' : '#111', color: '#fff', fontWeight: 800, fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'inherit', transition: 'background .2s' }}>
             {copied ? 'Copied!' : 'Copy'}

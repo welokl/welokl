@@ -27,8 +27,8 @@ export default function InAppToast() {
       setVisible(true)
       try { if (navigator.vibrate) navigator.vibrate([200, 80, 200, 80, 300]) } catch {}
     }
-    window.addEventListener('welokl-toast', handler)
-    return () => window.removeEventListener('welokl-toast', handler)
+    window.addEventListener('dwarpar-toast', handler)
+    return () => window.removeEventListener('dwarpar-toast', handler)
   }, [])
 
   useEffect(() => {

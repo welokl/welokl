@@ -4,6 +4,9 @@
       "Bash(mv /tmp/page_clean.tsx \"c:/dev/welokl-cto-update/src/app/dashboard/customer/page.tsx\")",
       "Bash(node_modules/.bin/tsc --noEmit)",
       "Bash(cat c:/dev/welokl-cto-update/next.config.*)"
+    ],
+    "additionalDirectories": [
+      "C:\\dev\\welokl-cto-update\\src\\components"
     ]
   }
 }

@@ -1,10 +1,10 @@
 'use client'
 
 /**
- * Welokl wordmark — "Wel" + location-pin "o" + "kl"
+ * Dwarpar wordmark — "Wel" + location-pin "o" + "kl"
  * Uses HTML spans (not SVG text) so the web font loads correctly.
  */
-export function WelklLogo({
+export function DwarparLogo({
   height = 32,
   dark = false,
 }: {
@@ -30,7 +30,7 @@ export function WelklLogo({
 
   return (
     <span
-      aria-label="Welokl"
+      aria-label="Dwarpar"
       style={{
         display:    'inline-flex',
         alignItems: 'flex-end',

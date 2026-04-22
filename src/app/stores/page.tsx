@@ -52,7 +52,7 @@ export default function StoresPage() {
   useEffect(() => {
     loadShops()
     try {
-      const saved = JSON.parse(localStorage.getItem('welokl_location') || 'null')
+      const saved = JSON.parse(localStorage.getItem('dwarpar_location') || 'null')
       if (saved?.lat) {
         setUserLat(saved.lat); setUserLng(saved.lng); setLocStatus('granted')
         if (saved.name) setAreaName(saved.name)
@@ -71,9 +71,9 @@ export default function StoresPage() {
         const d = await r.json()
         const name = d.address?.suburb || d.address?.neighbourhood || d.address?.town || ''
         if (name) setAreaName(name)
-        localStorage.setItem('welokl_location', JSON.stringify({ lat, lng, name }))
+        localStorage.setItem('dwarpar_location', JSON.stringify({ lat, lng, name }))
       } catch {
-        localStorage.setItem('welokl_location', JSON.stringify({ lat, lng, name:'' }))
+        localStorage.setItem('dwarpar_location', JSON.stringify({ lat, lng, name:'' }))
       }
     }, () => setLocStatus('denied'), { timeout:6000, enableHighAccuracy:false })
   }

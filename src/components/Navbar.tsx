@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useCartStore } from '@/store/cart'
 import type { User as UserType } from '@/types'
-import { WelklLogo } from '@/components/WelklLogo'
+import { DwarparLogo } from '@/components/DwarparLogo'
 
 const ROLE_DASH: Record<string, string> = {
   customer:         '/dashboard/customer',
@@ -78,7 +78,7 @@ export default function Navbar() {
 
           {/* Logo */}
           <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: 9, textDecoration: 'none', flexShrink: 0 }}>
-            <WelklLogo height={27} />
+            <DwarparLogo height={27} />
           </Link>
 
           {/* Desktop right side */}

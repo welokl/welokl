@@ -1,4 +1,4 @@
-# Welokl — Your Neighbourhood, Delivered
+# Dwarpar — Your Neighbourhood, Delivered
 
 > A hyperlocal marketplace for every local shop. Food, grocery, pharmacy, electronics, salon & more — delivered or pick up yourself. UPI & Cash on Delivery.
 

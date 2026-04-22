@@ -94,7 +94,7 @@ export default function PrivacyPage() {
         <div style={{ maxWidth: 760, margin: '0 auto', padding: '0 20px', height: 56, display: 'flex', alignItems: 'center', gap: 12 }}>
           <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: 8, textDecoration: 'none' }}>
             <div style={{ width: 32, height: 32, borderRadius: 10, background: '#FF3008', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 15, color: '#fff' }}>W</div>
-            <span style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: 17, color: 'var(--text)', letterSpacing: '-0.03em' }}>welokl</span>
+            <span style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: 17, color: 'var(--text)', letterSpacing: '-0.03em' }}>dwarpar</span>
           </Link>
           <div style={{ flex: 1 }} />
           <Link href="/" style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-3)', textDecoration: 'none' }}>← Back to home</Link>
@@ -122,7 +122,7 @@ export default function PrivacyPage() {
         {/* Intro */}
         <div className="pp-card">
           <p className="pp-body">
-            Welokl ("we", "our", or "us") operates the Welokl mobile application and website. This page informs users about our policies regarding the collection, use, and disclosure of personal information when using our service. By using Welokl, you agree to the collection and use of information in accordance with this policy.
+            Dwarpar ("we", "our", or "us") operates the Dwarpar mobile application and website. This page informs users about our policies regarding the collection, use, and disclosure of personal information when using our service. By using Dwarpar, you agree to the collection and use of information in accordance with this policy.
           </p>
         </div>
 
@@ -140,7 +140,7 @@ export default function PrivacyPage() {
           </ul>
 
           <p className="pp-body" style={{ fontWeight: 700, color: 'var(--text-2)', marginBottom: 8, marginTop: 20 }}>Location Data</p>
-          <p className="pp-body">Welokl may collect precise or approximate location data to:</p>
+          <p className="pp-body">Dwarpar may collect precise or approximate location data to:</p>
           <ul className="pp-list">
             <li>Show nearby shops and services</li>
             <li>Enable delivery tracking</li>
@@ -155,7 +155,7 @@ export default function PrivacyPage() {
           </ul>
 
           <p className="pp-body" style={{ fontWeight: 700, color: 'var(--text-2)', marginBottom: 8, marginTop: 20 }}>Order Information</p>
-          <p className="pp-body">When you place orders through Welokl, we store order details including items ordered, payment information, and delivery status.</p>
+          <p className="pp-body">When you place orders through Dwarpar, we store order details including items ordered, payment information, and delivery status.</p>
         </div>
 
         {/* How We Use */}
@@ -163,7 +163,7 @@ export default function PrivacyPage() {
           <div className="pp-section-title"><span>⚙️</span> How We Use Your Information</div>
           <div className="pp-divider" />
           <ul className="pp-list">
-            <li>Provide and operate the Welokl platform</li>
+            <li>Provide and operate the Dwarpar platform</li>
             <li>Process orders and deliveries</li>
             <li>Connect customers with local shops and services</li>
             <li>Improve user experience</li>
@@ -176,7 +176,7 @@ export default function PrivacyPage() {
         <div className="pp-card">
           <div className="pp-section-title"><span>🤝</span> Data Sharing</div>
           <div className="pp-divider" />
-          <p className="pp-body">Welokl may share information with:</p>
+          <p className="pp-body">Dwarpar may share information with:</p>
           <ul className="pp-list" style={{ marginBottom: 16 }}>
             <li>Local shops to fulfill your orders</li>
             <li>Delivery partners for completing deliveries</li>
@@ -200,7 +200,7 @@ export default function PrivacyPage() {
         <div className="pp-card">
           <div className="pp-section-title"><span>🔗</span> Third-Party Services</div>
           <div className="pp-divider" />
-          <p className="pp-body" style={{ marginBottom: 12 }}>Welokl may use third-party services such as:</p>
+          <p className="pp-body" style={{ marginBottom: 12 }}>Dwarpar may use third-party services such as:</p>
           <ul className="pp-list">
             <li>Payment providers (UPI, cash processing)</li>
             <li>Cloud infrastructure (Supabase, Vercel)</li>
@@ -215,7 +215,7 @@ export default function PrivacyPage() {
           <div className="pp-section-title"><span>👶</span> Children's Privacy</div>
           <div className="pp-divider" />
           <p className="pp-body">
-            Welokl is not intended for users under the age of 13. We do not knowingly collect personal information from children under 13. If you become aware that a child has provided us with personal data, please contact us immediately.
+            Dwarpar is not intended for users under the age of 13. We do not knowingly collect personal information from children under 13. If you become aware that a child has provided us with personal data, please contact us immediately.
           </p>
         </div>
 
@@ -236,11 +236,11 @@ export default function PrivacyPage() {
             If you have any questions about this Privacy Policy, we're here to help.
           </p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center' }}>
-            <a href="mailto:support@welokl.com" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: '#fff', color: '#FF3008', padding: '12px 28px', borderRadius: 14, fontWeight: 800, fontSize: 14, textDecoration: 'none' }}>
-              ✉️ support@welokl.com
+            <a href="mailto:support@dwarpar.com" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: '#fff', color: '#FF3008', padding: '12px 28px', borderRadius: 14, fontWeight: 800, fontSize: 14, textDecoration: 'none' }}>
+              ✉️ support@dwarpar.com
             </a>
-            <a href="https://welokl.com" style={{ fontSize: 13, color: 'rgba(255,255,255,.75)', fontWeight: 600, textDecoration: 'none' }}>
-              welokl.com
+            <a href="https://dwarpar.com" style={{ fontSize: 13, color: 'rgba(255,255,255,.75)', fontWeight: 600, textDecoration: 'none' }}>
+              dwarpar.com
             </a>
           </div>
         </div>
@@ -248,7 +248,7 @@ export default function PrivacyPage() {
         {/* Footer */}
         <div style={{ textAlign: 'center' }}>
           <p style={{ fontSize: 12, color: 'var(--text-3)', fontWeight: 600 }}>
-            © {new Date().getFullYear()} Welokl · Your neighbourhood on your phone
+            © {new Date().getFullYear()} Dwarpar · Your neighbourhood on your phone
           </p>
           <div style={{ display: 'flex', gap: 20, justifyContent: 'center', marginTop: 10 }}>
             <Link href="/" style={{ fontSize: 12, color: 'var(--text-3)', textDecoration: 'none', fontWeight: 600 }}>Home</Link>

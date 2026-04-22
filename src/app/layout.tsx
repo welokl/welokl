@@ -29,24 +29,24 @@ export const viewport: Viewport = {
 }
 
 export const metadata: Metadata = {
-  title: 'Welokl — Anything nearby, delivered',
+  title: 'Dwarpar — Anything nearby, delivered',
   description: 'Hyperlocal delivery from local shops, restaurants and pharmacies near you.',
   keywords: ['hyperlocal', 'delivery', 'local shops', 'grocery', 'food', 'pharmacy'],
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: 'Welokl',
+    title: 'Dwarpar',
   },
   openGraph: {
-    title: 'Welokl — Anything nearby, delivered',
+    title: 'Dwarpar — Anything nearby, delivered',
     description: 'Your neighbourhood, delivered in under 30 min.',
     type: 'website',
     images: [{ url: '/og-image.png', width: 1200, height: 630 }],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Welokl',
+    title: 'Dwarpar',
     description: 'Hyperlocal delivery from local shops near you.',
   },
   icons: {

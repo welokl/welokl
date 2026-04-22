@@ -43,7 +43,7 @@ export default function CheckoutPage() {
   // Generate/restore a stable device fingerprint stored in localStorage
   function getOrCreateDeviceId(): string {
     try {
-      const stored = localStorage.getItem('welokl_device_id')
+      const stored = localStorage.getItem('dwarpar_device_id')
       if (stored) return stored
       const components = [
         navigator.userAgent,
@@ -59,7 +59,7 @@ export default function CheckoutPage() {
         hash = Math.imul(31, hash) + components.charCodeAt(i) | 0
       }
       const id = Math.abs(hash).toString(36) + '-' + Date.now().toString(36)
-      localStorage.setItem('welokl_device_id', id)
+      localStorage.setItem('dwarpar_device_id', id)
       return id
     } catch { return '' }
   }
@@ -101,7 +101,7 @@ export default function CheckoutPage() {
 
     // ── Try to get readable address from saved GPS coords ──────
     try {
-      const loc = JSON.parse(localStorage.getItem('welokl_location') || 'null')
+      const loc = JSON.parse(localStorage.getItem('dwarpar_location') || 'null')
       if (loc?.lat && loc?.lng) {
         setDeliveryLat(loc.lat)
         setDeliveryLng(loc.lng)

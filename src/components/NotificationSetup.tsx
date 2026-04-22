@@ -11,7 +11,7 @@ export default function NotificationSetup({ userId }: { userId: string }) {
 
   useEffect(() => {
     if (typeof window === 'undefined') return
-    if (localStorage.getItem('welokl_notif_dismissed')) { setDismissed(true); return }
+    if (localStorage.getItem('dwarpar_notif_dismissed')) { setDismissed(true); return }
     if (!('Notification' in window)) return
     if (Notification.permission === 'granted') { setStatus('granted'); return }
     if (Notification.permission === 'denied')  { setStatus('denied');  return }
@@ -20,7 +20,7 @@ export default function NotificationSetup({ userId }: { userId: string }) {
   }, [userId])
 
   function dismiss() {
-    localStorage.setItem('welokl_notif_dismissed', '1')
+    localStorage.setItem('dwarpar_notif_dismissed', '1')
     setDismissed(true)
   }
 

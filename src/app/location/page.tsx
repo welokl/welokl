@@ -81,7 +81,7 @@ export default function LocationPickerPage() {
     let centerLng = 72.8777
 
     try {
-      const saved = JSON.parse(localStorage.getItem('welokl_location') || 'null')
+      const saved = JSON.parse(localStorage.getItem('dwarpar_location') || 'null')
       if (saved?.lat) { centerLat = saved.lat; centerLng = saved.lng }
     } catch {}
 
@@ -134,10 +134,10 @@ export default function LocationPickerPage() {
     setSaving(true)
     const label = addressType === 'other' && customLabel ? customLabel : addressType
     const saved = { lat, lng, address, area, city, pincode, label, savedAt: new Date().toISOString() }
-    localStorage.setItem('welokl_location', JSON.stringify(saved))
-    const existing = JSON.parse(localStorage.getItem('welokl_addresses') || '[]')
+    localStorage.setItem('dwarpar_location', JSON.stringify(saved))
+    const existing = JSON.parse(localStorage.getItem('dwarpar_addresses') || '[]')
     const updated = [saved, ...existing.filter((a: any) => a.label !== label)].slice(0, 5)
-    localStorage.setItem('welokl_addresses', JSON.stringify(updated))
+    localStorage.setItem('dwarpar_addresses', JSON.stringify(updated))
     const returnTo = new URLSearchParams(window.location.search).get('return') || '/stores'
     window.location.href = returnTo
   }

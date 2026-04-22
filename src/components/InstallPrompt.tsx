@@ -30,7 +30,7 @@ export default function InstallPrompt() {
 
   useEffect(() => {
     if (isStandalone()) return                              // already installed
-    if (localStorage.getItem('welokl_install_dismissed')) return // user said no
+    if (localStorage.getItem('dwarpar_install_dismissed')) return // user said no
 
     const p = detectPlatform()
     setPlatform(p)
@@ -53,7 +53,7 @@ export default function InstallPrompt() {
   }, [])
 
   function dismiss() {
-    localStorage.setItem('welokl_install_dismissed', '1')
+    localStorage.setItem('dwarpar_install_dismissed', '1')
     setShow(false)
     setShowIOS(false)
   }
@@ -62,7 +62,7 @@ export default function InstallPrompt() {
     if (!deferredPrompt) return
     deferredPrompt.prompt()
     const { outcome } = await deferredPrompt.userChoice
-    if (outcome === 'accepted') localStorage.setItem('welokl_install_dismissed', '1')
+    if (outcome === 'accepted') localStorage.setItem('dwarpar_install_dismissed', '1')
     setDeferredPrompt(null)
     setShow(false)
   }
@@ -75,9 +75,9 @@ export default function InstallPrompt() {
       <div style={{ background:'#fff', borderRadius:'24px 24px 0 0', padding:'28px 20px 40px', width:'100%', maxWidth:480, boxShadow:'0 -8px 40px rgba(0,0,0,.2)' }}>
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20 }}>
           <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-            <img src="/icons/icon-96.png" alt="Welokl" style={{ width:44, height:44, borderRadius:12 }} />
+            <img src="/icons/icon-96.png" alt="Dwarpar" style={{ width:44, height:44, borderRadius:12 }} />
             <div>
-              <p style={{ fontWeight:900, fontSize:16, color:'#111' }}>Install Welokl</p>
+              <p style={{ fontWeight:900, fontSize:16, color:'#111' }}>Install Dwarpar</p>
               <p style={{ fontSize:12, color:'#888' }}>Add to your home screen</p>
             </div>
           </div>
@@ -88,7 +88,7 @@ export default function InstallPrompt() {
           {[
             { step:'1', icon:'⬆️', text: <>Tap the <strong>Share</strong> button at the bottom of Safari</> },
             { step:'2', icon:'📲', text: <>Scroll down and tap <strong>"Add to Home Screen"</strong></> },
-            { step:'3', icon:'✅', text: <>Tap <strong>"Add"</strong> — Welokl will appear on your home screen like a real app</> },
+            { step:'3', icon:'✅', text: <>Tap <strong>"Add"</strong> — Dwarpar will appear on your home screen like a real app</> },
           ].map(({ step, icon, text }) => (
             <div key={step} style={{ display:'flex', alignItems:'flex-start', gap:14 }}>
               <div style={{ width:32, height:32, borderRadius:999, background:'#FF3008', color:'#fff', fontWeight:900, fontSize:14, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>{step}</div>
@@ -117,9 +117,9 @@ export default function InstallPrompt() {
   return (
     <div style={{ position:'fixed', bottom:'calc(72px + env(safe-area-inset-bottom, 0px) + 12px)', left:12, right:12, zIndex:9999, fontFamily:"'Plus Jakarta Sans',sans-serif" }}>
       <div style={{ background:'#fff', borderRadius:20, padding:'14px 16px', boxShadow:'0 8px 32px rgba(0,0,0,.18)', border:'1px solid #f0f0f0', display:'flex', alignItems:'center', gap:12 }}>
-        <img src="/icons/icon-96.png" alt="Welokl" style={{ width:44, height:44, borderRadius:12, flexShrink:0 }} />
+        <img src="/icons/icon-96.png" alt="Dwarpar" style={{ width:44, height:44, borderRadius:12, flexShrink:0 }} />
         <div style={{ flex:1, minWidth:0 }}>
-          <p style={{ fontWeight:900, fontSize:14, color:'#111', marginBottom:1 }}>Install Welokl</p>
+          <p style={{ fontWeight:900, fontSize:14, color:'#111', marginBottom:1 }}>Install Dwarpar</p>
           <p style={{ fontSize:12, color:'#888', lineHeight:1.4 }}>Add to home screen for the full app experience</p>
         </div>
         <div style={{ display:'flex', flexDirection:'column', gap:6, flexShrink:0 }}>

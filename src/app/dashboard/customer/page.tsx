@@ -153,7 +153,7 @@ export default function CustomerHome() {
 
   }, [])
 
-  const SHOPS_CACHE_KEY = 'welokl_shops_v2'
+  const SHOPS_CACHE_KEY = 'dwarpar_shops_v2'
   const SHOPS_TTL_MS   = 5 * 60 * 1000 // 5 minutes
 
   const loadShops = useCallback(async () => {
@@ -263,22 +263,22 @@ export default function CustomerHome() {
         const d = await r.json()
         const name = d.address?.suburb || d.address?.neighbourhood || d.address?.village || d.address?.town || d.address?.city_district || d.address?.city || d.address?.county || ''
         setAreaName(name)
-        localStorage.setItem('welokl_location', JSON.stringify({ lat, lng, name }))
-      } catch { localStorage.setItem('welokl_location', JSON.stringify({ lat, lng, name: '' })) }
+        localStorage.setItem('dwarpar_location', JSON.stringify({ lat, lng, name }))
+      } catch { localStorage.setItem('dwarpar_location', JSON.stringify({ lat, lng, name: '' })) }
     }, () => setLocStatus('denied'), { timeout: 8000, enableHighAccuracy: false })
   }
 
   useEffect(() => {
     loadOrders(); loadShops()
     try {
-      const saved = JSON.parse(localStorage.getItem('welokl_location') || 'null')
+      const saved = JSON.parse(localStorage.getItem('dwarpar_location') || 'null')
       if (saved?.lat) {
         setUserLat(saved.lat); setUserLng(saved.lng); setLocStatus('granted')
         if (saved.name) { setAreaName(saved.name); return }
         fetch(`https://nominatim.openstreetmap.org/reverse?lat=${saved.lat}&lon=${saved.lng}&format=json`, { headers: { 'Accept-Language': 'en' } })
           .then(r => r.json()).then(d => {
             const name = d.address?.suburb || d.address?.neighbourhood || d.address?.village || d.address?.town || d.address?.city_district || d.address?.city || d.address?.county || ''
-            if (name) { setAreaName(name); localStorage.setItem('welokl_location', JSON.stringify({ lat: saved.lat, lng: saved.lng, name })) }
+            if (name) { setAreaName(name); localStorage.setItem('dwarpar_location', JSON.stringify({ lat: saved.lat, lng: saved.lng, name })) }
           }).catch(() => {})
         return
       }

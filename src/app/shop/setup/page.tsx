@@ -140,7 +140,7 @@ export default function ShopSetupPage() {
 
       <div className="max-w-2xl mx-auto px-4 py-6">
         <div className="p-4 rounded-2xl mb-6 border" style={{ background: '#fff3ef', borderColor: '#fed7aa' }}>
-          <p className="font-bold text-sm" style={{ color: '#c2410c' }}>🏪 Welcome to Welokl for Business</p>
+          <p className="font-bold text-sm" style={{ color: '#c2410c' }}>🏪 Welcome to Dwarpar for Business</p>
           <p className="text-xs mt-1" style={{ color: '#ea580c' }}>Fill in your shop details below. Your location helps nearby customers find you.</p>
         </div>
 

@@ -6,7 +6,7 @@ export default function FavouriteButton({ shopId }: { shopId: string }) {
 
   useEffect(() => {
     try {
-      const ids: string[] = JSON.parse(localStorage.getItem('welokl_favourites') || '[]')
+      const ids: string[] = JSON.parse(localStorage.getItem('dwarpar_favourites') || '[]')
       setIsFav(ids.includes(shopId))
     } catch {}
   }, [shopId])
@@ -15,9 +15,9 @@ export default function FavouriteButton({ shopId }: { shopId: string }) {
     e.preventDefault()
     e.stopPropagation()
     try {
-      const ids: string[] = JSON.parse(localStorage.getItem('welokl_favourites') || '[]')
+      const ids: string[] = JSON.parse(localStorage.getItem('dwarpar_favourites') || '[]')
       const next = isFav ? ids.filter(id => id !== shopId) : [...ids, shopId]
-      localStorage.setItem('welokl_favourites', JSON.stringify(next))
+      localStorage.setItem('dwarpar_favourites', JSON.stringify(next))
       setIsFav(!isFav)
     } catch {}
   }

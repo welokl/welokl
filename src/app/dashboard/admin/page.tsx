@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { WelklLogo } from '@/components/WelklLogo'
+import { DwarparLogo } from '@/components/DwarparLogo'
  
 type Tab = 'overview' | 'orders' | 'shops' | 'users' | 'verify' | 'pricing' | 'delivery' | 'categories' | 'wallets' | 'boosts' | 'promos'
  
@@ -315,7 +315,7 @@ export default function AdminDashboard() {
       <div style={{ background: '#0f0f0f', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
         <div style={{ maxWidth: 1280, margin: '0 auto', padding: '14px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <WelklLogo height={28} dark={true} />
+            <DwarparLogo height={28} dark={true} />
             <div className="admin-topbar-brand">
               <p style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.08em' }}>ADMIN CONSOLE</p>
             </div>
@@ -780,14 +780,14 @@ export default function AdminDashboard() {
                 </button>
               </div>
  
-              {config.filter(c => !['upi_id','upi_name','welokl_upi_name'].includes(c.key)).length === 0 ? (
+              {config.filter(c => !['upi_id','upi_name','dwarpar_upi_name'].includes(c.key)).length === 0 ? (
                 <div style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 16, padding: 24, textAlign: 'center' }}>
                   <p style={{ fontWeight: 900, fontSize: 15, color: '#d97706' }}>Run verification-migration.sql first</p>
                   <p style={{ fontSize: 13, color: '#d97706', marginTop: 6, opacity: 0.8 }}>The platform_config table needs to be set up in Supabase SQL Editor</p>
                 </div>
               ) : (
                 <div style={{ ...card2 }}>
-                  {config.filter(c => !['upi_id','upi_name','welokl_upi_name'].includes(c.key)).map((c, i) => (
+                  {config.filter(c => !['upi_id','upi_name','dwarpar_upi_name'].includes(c.key)).map((c, i) => (
                     <div key={c.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderTop: i > 0 ? '1px solid var(--border)' : 'none' }}>
                       <div>
                         <p style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)' }}>{c.label}</p>
@@ -1667,7 +1667,7 @@ function ShopOperatorsModal({ shop, onClose }: { shop: any; onClose: () => void 
       .select('id, name, email')
       .eq('email', trimmed)
       .maybeSingle()
-    if (!found) { setErr('No Welokl account found with that email'); setSearching(false); return }
+    if (!found) { setErr('No Dwarpar account found with that email'); setSearching(false); return }
     // Check not already added
     if (operators.find(o => (o.user as any)?.id === found.id)) {
       setErr('This user is already an operator for this shop'); setSearching(false); return

@@ -266,7 +266,7 @@ export default function BusinessAnalytics({ shopId, commissionPercent = 15 }: { 
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <div style={{ width: 8, height: 8, borderRadius: 2, background: '#ef4444', flexShrink: 0 }} />
-                    <span style={{ color: 'var(--text-2)' }}>Welokl commission ({commissionPercent}%)</span>
+                    <span style={{ color: 'var(--text-2)' }}>Dwarpar commission ({commissionPercent}%)</span>
                   </div>
                   <span style={{ fontWeight: 700, color: '#ef4444' }}>− ₹{stats.commission.toLocaleString('en-IN')}</span>
                 </div>

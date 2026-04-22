@@ -42,7 +42,7 @@ export function useFCM(userId: string | null) {
 
     // Foreground notifications
     onForegroundMessage(({ title, body, url }) => {
-      window.dispatchEvent(new CustomEvent('welokl-notification', {
+      window.dispatchEvent(new CustomEvent('dwarpar-notification', {
         detail: { title, body, url }
       }))
       if (Notification.permission === 'granted') {

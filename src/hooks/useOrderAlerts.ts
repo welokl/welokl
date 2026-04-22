@@ -49,13 +49,13 @@ function vibrate(pattern: number[]) {
 function inAppToast(title: string, body: string, color = '#FF3008', icon = '🔔') {
   try {
     if (typeof window !== 'undefined')
-      window.dispatchEvent(new CustomEvent('welokl-toast', { detail: { title, body, color, icon } }))
+      window.dispatchEvent(new CustomEvent('dwarpar-toast', { detail: { title, body, color, icon } }))
   } catch {}
 }
 
 // ── Notification via Service Worker (survives backgrounding on Android/iOS PWA)
 // Falls back to new Notification() if SW not available
-async function pushNotify(title: string, body: string, tag = 'welokl', url = '/', notifType = '') {
+async function pushNotify(title: string, body: string, tag = 'dwarpar', url = '/', notifType = '') {
   if (typeof window === 'undefined') return
   if (!('Notification' in window)) return
   // Don't prompt mid-flow — permission must already be granted (done at login/mount)
@@ -161,7 +161,7 @@ export function useShopkeeperOrderAlerts(shopId: string | null | undefined) {
         clearInterval(alarms.current[orderId])
         delete alarms.current[orderId]
       }
-      window.dispatchEvent(new CustomEvent('welokl-order-resolved', { detail: { orderId } }))
+      window.dispatchEvent(new CustomEvent('dwarpar-order-resolved', { detail: { orderId } }))
       // Tell the service worker to kill its own repeat loop for this order
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.ready.then(reg => {
@@ -184,7 +184,7 @@ export function useShopkeeperOrderAlerts(shopId: string | null | undefined) {
           inAppToast('🛒 New Order!', `Order #${orderNum} just arrived`, '#FF3008', '🛒')
 
           // Show the full-screen incoming order overlay on the dashboard
-          window.dispatchEvent(new CustomEvent('welokl-new-order', {
+          window.dispatchEvent(new CustomEvent('dwarpar-new-order', {
             detail: { orderId: o.id, orderNum, order: o }
           }))
 

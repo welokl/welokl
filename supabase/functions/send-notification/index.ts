@@ -8,7 +8,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 // A05 — restrict CORS to your own domain only
 // @ts-ignore — Deno global available at Edge Function runtime
 const _appOrigin: string = typeof Deno !== 'undefined' ? (Deno.env.get('APP_ORIGIN') ?? '') : ''
-const ALLOWED_ORIGINS = ['https://welokl.com', 'https://www.welokl.com', _appOrigin].filter(Boolean)
+const ALLOWED_ORIGINS = ['https://dwarpar.com', 'https://www.dwarpar.com', _appOrigin].filter(Boolean)
 
 function makeCorsHeaders(origin: string | null): Record<string, string> {
   const allowed = (origin && ALLOWED_ORIGINS.includes(origin)) ? origin : (ALLOWED_ORIGINS[0] ?? '*')
@@ -104,7 +104,7 @@ async function sendPush(
             title,
             body,
             url:      extra.url      || '/',
-            tag:      extra.tag      || 'welokl',
+            tag:      extra.tag      || 'dwarpar',
             order_id: extra.order_id || '',
           },
           webpush: {
@@ -114,7 +114,7 @@ async function sendPush(
               body,
               icon:              '/icons/icon-192.png',
               badge:             '/icons/badge-72.png',
-              tag:               extra.tag || 'welokl',
+              tag:               extra.tag || 'dwarpar',
               renotify:          'true',
               requireInteraction:'false',
             },

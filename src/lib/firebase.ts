@@ -4,9 +4,9 @@ import { getMessaging, getToken, onMessage, isSupported } from 'firebase/messagi
 
 const firebaseConfig = {
   apiKey:            "AIzaSyAp08LtadKXqI4QVP0gIAvYx0wDlmW6C18",
-  authDomain:        "welokl-b47d4.firebaseapp.com",
-  projectId:         "welokl-b47d4",
-  storageBucket:     "welokl-b47d4.firebasestorage.app",
+  authDomain:        "dwarpar-b47d4.firebaseapp.com",
+  projectId:         "dwarpar-b47d4",
+  storageBucket:     "dwarpar-b47d4.firebasestorage.app",
   messagingSenderId: "551056082419",
   appId:             "1:551056082419:web:b357bc92820ac8ff66fe86",
 }
@@ -65,7 +65,7 @@ export async function onForegroundMessage(
     if (!supported) return
     const messaging = getMessaging(app)
     onMessage(messaging, (payload) => {
-      const { title = 'Welokl', body = '' } = payload.notification || {}
+      const { title = 'Dwarpar', body = '' } = payload.notification || {}
       const url = (payload.data as any)?.url || '/'
       handler({ title, body, url })
     })

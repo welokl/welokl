@@ -14,7 +14,7 @@ interface Product {
 }
 
 const TRENDING = ['milk','bread','eggs','rice','tea','biryani','paneer','atta','oil','chips','water','medicine']
-const RECENT_KEY = 'welokl_recent_searches'
+const RECENT_KEY = 'dwarpar_recent_searches'
 
 export default function SearchPage() {
   const router   = useRouter()

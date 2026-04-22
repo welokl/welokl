@@ -437,7 +437,7 @@ export default function DeliveryDashboard() {
             </div>
           ))}
         </div>
-        <p style={{ fontSize: 12, color: '#9ca3af', marginBottom: 16 }}>Questions? support@welokl.com</p>
+        <p style={{ fontSize: 12, color: '#9ca3af', marginBottom: 16 }}>Questions? support@dwarpar.com</p>
         <button onClick={async () => { await createClient().auth.signOut(); window.location.href = '/' }}
           style={{ fontSize: 13, color: '#9ca3af', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>Sign out</button>
       </div>
@@ -458,7 +458,7 @@ export default function DeliveryDashboard() {
             <p style={{ fontSize: 13, color: '#ef4444', lineHeight: 1.5 }}>{verNote}</p>
           </div>
         )}
-        <p style={{ fontSize: 12, color: '#9ca3af', marginBottom: 16 }}>Contact support@welokl.com for assistance.</p>
+        <p style={{ fontSize: 12, color: '#9ca3af', marginBottom: 16 }}>Contact support@dwarpar.com for assistance.</p>
         <button onClick={async () => { await createClient().auth.signOut(); window.location.href = '/' }}
           style={{ fontSize: 13, color: '#9ca3af', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>Sign out</button>
       </div>
@@ -945,7 +945,7 @@ export default function DeliveryDashboard() {
               const commissionAmt  = Math.round(subtotal * commissionPct / 100)
               const deliveryMargin = Math.max(0, ((assignedOrder as any).delivery_fee ?? 0) - partnerPayout)
               const payToShop      = subtotal - commissionAmt
-              const weloklCut      = commissionAmt + deliveryMargin
+              const dwarparCut      = commissionAmt + deliveryMargin
               return (
                 <div style={{ background: 'var(--bg-3)', borderRadius: 16, padding: '14px 16px', marginBottom: 16 }}>
                   <p style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 12 }}>Money flow (COD)</p>
@@ -975,11 +975,11 @@ export default function DeliveryDashboard() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(217,119,6,.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>🏢</div>
                           <div>
-                            <p style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-2)' }}>Welokl platform fee</p>
+                            <p style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-2)' }}>Dwarpar platform fee</p>
                             <p style={{ fontSize: 11, color: 'var(--text-3)' }}>Commission + delivery margin</p>
                           </div>
                         </div>
-                        <span style={{ fontWeight: 800, fontSize: 13, color: '#d97706' }}>− ₹{weloklCut}</span>
+                        <span style={{ fontWeight: 800, fontSize: 13, color: '#d97706' }}>− ₹{dwarparCut}</span>
                       </div>
                     </div>
                     <div style={{ borderTop: '2px solid var(--border)', paddingTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

@@ -9,7 +9,7 @@ export default function ThemeToggle() {
 
   useEffect(() => {
     setMounted(true)
-    const saved = localStorage.getItem('welokl_theme') as Theme | null
+    const saved = localStorage.getItem('dwarpar_theme') as Theme | null
     const dark = saved === 'dark'
     setIsDark(dark)
     applyTheme(dark ? 'dark' : 'light', false)
@@ -30,7 +30,7 @@ export default function ThemeToggle() {
   function toggle() {
     const next: Theme = isDark ? 'light' : 'dark'
     setIsDark(next === 'dark')
-    localStorage.setItem('welokl_theme', next)
+    localStorage.setItem('dwarpar_theme', next)
     applyTheme(next)
   }
 

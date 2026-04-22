@@ -26,15 +26,15 @@ export default function FavouritesPage() {
   useEffect(() => { loadFavourites() }, [])
 
   async function loadFavourites() {
-    const ids: string[] = JSON.parse(localStorage.getItem('welokl_favourites') || '[]')
+    const ids: string[] = JSON.parse(localStorage.getItem('dwarpar_favourites') || '[]')
     if (!ids.length) { setLoading(false); return }
     const { data } = await createClient().from('shops').select('*').in('id', ids).eq('is_active', true)
     setShops(data || []); setLoading(false)
   }
 
   function removeFavourite(shopId: string) {
-    const ids: string[] = JSON.parse(localStorage.getItem('welokl_favourites') || '[]')
-    localStorage.setItem('welokl_favourites', JSON.stringify(ids.filter(id => id !== shopId)))
+    const ids: string[] = JSON.parse(localStorage.getItem('dwarpar_favourites') || '[]')
+    localStorage.setItem('dwarpar_favourites', JSON.stringify(ids.filter(id => id !== shopId)))
     setShops(shops.filter(s => s.id !== shopId))
   }
 

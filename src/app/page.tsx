@@ -128,7 +128,7 @@ function Navbar() {
     <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${scrolled ? 'bg-white/95 backdrop-blur-md border-b border-black/5 shadow-sm' : 'bg-transparent'}`}>
       <div className="max-w-6xl mx-auto px-5 h-16 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2.5">
-          <span className="font-display font-extrabold text-2xl" style={{ color: scrolled ? '#111' : '#fff' }}>Welokl</span>
+          <span className="font-display font-extrabold text-2xl" style={{ color: scrolled ? '#111' : '#fff' }}>Dwarpar</span>
         </Link>
         <div className="flex items-center gap-2">
           <Link href="/auth/login"
@@ -219,7 +219,7 @@ function Hero() {
                 {/* Status bar */}
                 <div className="bg-brand-500 px-5 pt-4 pb-3 flex items-center justify-between">
                   <span className="text-white/80 text-[10px] font-bold">9:41</span>
-                  <span className="font-extrabold text-xs text-white">Welokl</span>
+                  <span className="font-extrabold text-xs text-white">Dwarpar</span>
                   <div className="flex gap-1 items-center">
                     <div className="w-3 h-1.5 bg-white/60 rounded-sm" />
                     <div className="w-3 h-1.5 bg-white/60 rounded-sm" />
@@ -385,7 +385,7 @@ function ProblemSolution() {
               <div className="w-5 h-5 rounded-full bg-red-500/20 flex items-center justify-center">
                 <svg viewBox="0 0 10 10" fill="none" width={8} height={8}><path d="M2 2l6 6M8 2L2 8" stroke="#ef4444" strokeWidth="1.6" strokeLinecap="round"/></svg>
               </div>
-              <span className="text-xs font-extrabold text-red-400 uppercase tracking-widest">Before Welokl</span>
+              <span className="text-xs font-extrabold text-red-400 uppercase tracking-widest">Before Dwarpar</span>
             </div>
             <div className="space-y-4">
               {[
@@ -411,7 +411,7 @@ function ProblemSolution() {
               <div className="w-5 h-5 rounded-full bg-green-500/20 flex items-center justify-center">
                 <svg viewBox="0 0 10 10" fill="none" width={8} height={8}><path d="M1.5 5l2.5 2.5 4.5-4.5" stroke="#22c55e" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
               </div>
-              <span className="text-xs font-extrabold text-green-400 uppercase tracking-widest">With Welokl</span>
+              <span className="text-xs font-extrabold text-green-400 uppercase tracking-widest">With Dwarpar</span>
             </div>
             <div className="space-y-4">
               {[
@@ -458,7 +458,7 @@ function ForShopOwners() {
               <span className="text-brand-500">chaos.</span>
             </h2>
             <p className="text-gray-500 text-base leading-relaxed mb-8 max-w-sm">
-              Stop managing orders on WhatsApp and Excel. Get on Welokl — handle everything from one screen while we send you customers.
+              Stop managing orders on WhatsApp and Excel. Get on Dwarpar — handle everything from one screen while we send you customers.
             </p>
             <Link href="/auth/signup?type=business"
               className="group inline-flex items-center gap-3 bg-gray-900 hover:bg-gray-800 text-white font-extrabold text-sm px-7 py-3.5 rounded-xl transition-all hover:-translate-y-0.5">
@@ -625,9 +625,9 @@ function Footer() {
       <div className="max-w-5xl mx-auto">
         <div className="flex flex-col sm:flex-row gap-12 justify-between mb-12">
           <div className="max-w-xs">
-            <div className="font-display font-extrabold text-2xl text-white mb-3">Welokl</div>
+            <div className="font-display font-extrabold text-2xl text-white mb-3">Dwarpar</div>
             <p className="text-gray-500 text-sm leading-relaxed mb-4">Hyperlocal delivery — connecting local shops with nearby customers. Fast, reliable, fair.</p>
-            <p className="text-xs text-gray-600">support@welokl.com</p>
+            <p className="text-xs text-gray-600">support@dwarpar.com</p>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-8">
             <div>
@@ -654,7 +654,7 @@ function Footer() {
           </div>
         </div>
         <div className="border-t border-white/5 pt-8 flex flex-col sm:flex-row justify-between items-center gap-3">
-          <p className="text-gray-600 text-xs">© 2026 Welokl. All rights reserved.</p>
+          <p className="text-gray-600 text-xs">© 2026 Dwarpar. All rights reserved.</p>
           <p className="text-gray-600 text-xs">Built for local India</p>
         </div>
       </div>
@@ -663,7 +663,7 @@ function Footer() {
 }
 
 // ── Main ──────────────────────────────────────────────────────────────
-const LANDING_CACHE_KEY = 'welokl_landing_v1'
+const LANDING_CACHE_KEY = 'dwarpar_landing_v1'
 const LANDING_TTL_MS    = 10 * 60 * 1000 // 10 minutes
 
 const ROLE_HOME: Record<string, string> = {

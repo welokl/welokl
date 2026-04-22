@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import { WelklLogo } from '@/components/WelklLogo'
+import { DwarparLogo } from '@/components/DwarparLogo'
 
 type Mode = 'login' | 'forgot'
 
@@ -24,7 +24,7 @@ function AuthPanel() {
               <polyline points="1,15 5,2 11,10 17,2 21,15" stroke="#fff" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </div>
-          <span style={{ color: '#fff', fontWeight: 800, fontSize: 22, letterSpacing: '-0.5px' }}>welokl</span>
+          <span style={{ color: '#fff', fontWeight: 800, fontSize: 22, letterSpacing: '-0.5px' }}>dwarpar</span>
         </Link>
 
         <h2 style={{ color: '#fff', fontWeight: 800, fontSize: 28, lineHeight: 1.2, marginBottom: 12, letterSpacing: '-0.5px' }}>
@@ -58,7 +58,7 @@ function AuthPanel() {
         marginTop: 40,
       }}>
         <p style={{ color: 'rgba(255,255,255,0.9)', fontSize: 13, lineHeight: 1.6, margin: '0 0 10px', fontStyle: 'italic' }}>
-          "Got medicine at 11pm without stepping out. Welokl is a lifeline for hostel life."
+          "Got medicine at 11pm without stepping out. Dwarpar is a lifeline for hostel life."
         </p>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'rgba(255,255,255,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, color: '#fff' }}>R</div>
@@ -203,7 +203,7 @@ export default function LoginPage() {
             <div style={{ width: 32, height: 32, background: 'rgba(255,255,255,0.2)', borderRadius: 9, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <svg viewBox="0 0 22 16" fill="none" width={18} height={12}><polyline points="1,15 5,2 11,10 17,2 21,15" stroke="#fff" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>
             </div>
-            <span style={{ color: '#fff', fontWeight: 800, fontSize: 20, letterSpacing: '-0.5px' }}>welokl</span>
+            <span style={{ color: '#fff', fontWeight: 800, fontSize: 20, letterSpacing: '-0.5px' }}>dwarpar</span>
           </Link>
           <p style={{ color: 'rgba(255,255,255,0.92)', fontWeight: 700, fontSize: 18, lineHeight: 1.3, margin: 0 }}>Your neighbourhood,<br />on demand.</p>
         </div>

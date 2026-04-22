@@ -1,6 +1,6 @@
 // src/store/cart.ts
 // User-specific cart — each user gets their own localStorage key
-// Key format: welokl_cart_{userId} or welokl_cart_guest
+// Key format: dwarpar_cart_{userId} or dwarpar_cart_guest
 
 import { create } from 'zustand'
 
@@ -36,7 +36,7 @@ interface CartStore {
 }
 
 function storageKey(userId: string | null) {
-  return userId ? `welokl_cart_${userId}` : 'welokl_cart_guest'
+  return userId ? `dwarpar_cart_${userId}` : 'dwarpar_cart_guest'
 }
 
 function read(userId: string | null): Pick<CartStore, 'items'|'shop_id'|'shop_name'> {
